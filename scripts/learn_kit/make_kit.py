@@ -111,8 +111,8 @@ QUOTE_FROM = {v: (where, ref) for v, where, ref, _rates in _CS["quotes"]}
 ORDERED, DELIVERED = _CS["ordered"], _CS["sent"]
 BILL_RATE, CEMENT_GST = _CS["bill_rate"], 18  # cement's GST: 18% since the change of 22 Sept 2025 (was 28%; LRN-F17)
 #: Joy Tiling's flooring: measured room by room from the plan (rooms with floor tiles), billed for more.
-TILED = ("LIVING", "DINING", "KITCHEN", "BEDROOM-1", "BEDROOM-2", "SIT OUT")
-TILING_RATE, TILING_BILLED = 320, 92.0
+TILED = green_villa.TILED_ROOMS  # LRN-F28: the sample company plays the same subcontract
+TILING_RATE, TILING_BILLED = green_villa.TILING["rate"], green_villa.TILING["billed"]
 
 #: What the Learn page shows for each file: what it is, where it goes, what to look for.
 MANIFEST = (
@@ -387,7 +387,7 @@ def sub_bill_bytes() -> bytes:
     amount = round(TILING_BILLED * TILING_RATE)
     rows = [["Work", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"],
             ["Vitrified tile flooring, laying", "sqm", f"{TILING_BILLED:.2f}", f"{TILING_RATE}", _rupees(amount)[3:]]]
-    return _doc("Bill: Joy Tiling Works", [("From", "Joy Tiling Works, Angamaly"), ("Bill no.", "JTW-014"),
+    return _doc("Bill: Joy Tiling Works", [("From", "Joy Tiling Works, Angamaly"), ("Bill no.", green_villa.TILING["bill"]),
                                           ("To", "Green Villa Builders"), ("Work", "Ground floor flooring, Green Villa"),
                                           ("Date", "29 November 2026")],
                 rows, ["Labour only; tiles and adhesive supplied by the contractor."])

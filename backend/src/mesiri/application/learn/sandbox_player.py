@@ -128,6 +128,7 @@ PAGE = {
     "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
     "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
     "bill_reverse": "/finance/vendors", "stock_count": "/materials/counts", "count_approve": "/materials/counts",
+    "sub_bill_reject": "/subcontract/bills",
     # LRN-F25: the Annex mixer.
     "machine": "/equipment", "machine_log": "/equipment/log", "task": "/tasks?view=all", "task_status": "/tasks?view=all",
     "hire_bill": "/equipment/hire", "hire_bill_fix": "/equipment/hire",
@@ -194,6 +195,9 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
         return bool(await scalar("SELECT count(*) FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
                                  "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status <> 'confirmed'",
                                  n=e.data["bill_number"]))
+    if e.kind == "sub_bill_reject":  # LRN-F28: that bill turned down (here or by the person, on screen)
+        return bool(await scalar("SELECT count(*) FROM work_order_bills WHERE organization_id = :o AND their_bill_no = :n "
+                                 "AND check_status = 'rejected'", n=e.data["bill"]))
     # LRN-F25: the Annex mixer's story, known by what it leaves (whoever saved it, here or on WhatsApp).
     if e.kind == "machine":
         return bool(await scalar("SELECT count(*) FROM equipment WHERE organization_id = :o AND name = :n", n=e.data["machine"]))
@@ -586,7 +590,13 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
                 "line_id": str(wo["line_id"]), "quantity": d["quantity"], "measured_on": iso}), e.kind)
         return _ok(await w.call(role, "POST", f"/subcontracts/work-orders/{wo['id']}/bills", json={
             "lines": [{"line_id": str(wo["line_id"]), "quantity": d["quantity"]}], "bill_date": iso,
-            "their_bill_no": f"JTW/{w.day:02d}"}), e.kind)
+            "their_bill_no": d.get("their_bill_no") or f"JTW/{w.day:02d}"}), e.kind)
+    if e.kind == "sub_bill_reject":  # LRN-F28: the bill above the measurement, turned down
+        bill = await w.one("SELECT id FROM work_order_bills WHERE organization_id = :o AND their_bill_no = :n "
+                           "AND check_status IN ('flagged', 'waiting') ORDER BY created_at DESC LIMIT 1", n=d["bill"])
+        if not bill:
+            raise _Wait("no flagged bill of that number")
+        return _ok(await w.call(role, "POST", f"/subcontracts/bills/{bill['id']}/reject", json={"reason": d["reason"]}), e.kind)
     if e.kind == "advance":
         return _ok(await w.call(role, "POST", "/labour/advances", json={
             "project_id": project, "site_id": site, "worker_id": w.workers.get(d["worker"]), "amount": d["amount"],

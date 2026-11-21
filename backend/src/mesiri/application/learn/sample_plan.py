@@ -160,8 +160,8 @@ ISSUES = (
 )
 #: Advances to workers: (day, worker, amount).
 ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30, "Vinod", 1000), (41, "Manoj", 2500))
-#: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention.
-TILING_RATE, TILING_RETENTION = 95, 5
+#: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention (green_villa.TILING, LRN-F28).
+TILING_RATE, TILING_RETENTION = gv.TILING["rate"], gv.TILING["retention_pct"]
 #: Units counted in whole pieces (work in nos, cement in bags): a day's share is a whole number (LRN-F14).
 WHOLE_UNITS = ("nos", "bags")
 #: Lake View's running bill to the client, sent by the owner on these days.
@@ -220,6 +220,8 @@ KINDS: dict[str, Kind] = {
     "supplier_payment": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/payments"),)),
     "sub_bill": Kind(ACCOUNTS, (("POST", "/subcontracts/work-orders/{wo_id}/bills"),)),
     "sub_payment": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/payments"),)),
+    # LRN-F28 (episode 7): a subcontractor's bill above the measurement, turned down by the office.
+    "sub_bill_reject": Kind(PM, (("POST", "/subcontracts/bills/{bill_id}/reject"),)),
     "advance": Kind(ACCOUNTS, (("POST", "/labour/advances"),)),
     "wage_pay": Kind(ACCOUNTS, (("POST", "/labour/wage-sheets/{sheet_id}/pay"),)),
     "client_receipt": Kind(ACCOUNTS, (("POST", "/billing/receipts"),)),
@@ -422,7 +424,9 @@ def build() -> Plan:
     story_used = False
     to_bill: list[tuple[int, Entry]] = []                  # (bill on this day, delivery)
     unpaid: dict[str, list[Entry]] = defaultdict(list)     # vendor -> bills
-    week_work: dict[str, float] = defaultdict(float)       # tiling laid this week, to measure on Saturday
+    week_work: dict[str, float] = defaultdict(float)       # tiling laid and not measured yet
+    laid: dict[str, float] = defaultdict(float)            # LRN-F28: all the tiling laid so far
+    tiling_bills: dict[int, list[tuple[str, Entry]]] = defaultdict(list)  # day -> (which bill, its measurement)
     tiling: dict[str, Entry] = {}                          # the work order, and the last measurement and bill
     to_count: list[tuple[int, Entry]] = []                 # work to count on the BOQ, on this day
     gv_setup: dict[str, Entry] = {}                        # D2: Green Villa's contract and BOQ entries
@@ -661,6 +665,7 @@ def build() -> Plan:
                     to_count.append((_working_after(day, 1), work))
                 if s.by:
                     week_work[site] += qty
+                    laid[site] += qty
             vendor, category, amount, what = story.DEMO_SPENDS[spend % len(story.DEMO_SPENDS)]
             spend += 1
             b.add(day, "expense", f"{what}, {_amount(amount)} at {vendor}", site=site,
@@ -774,21 +779,41 @@ def build() -> Plan:
                                                  f"{_fmt(quantity)} {st.unit} at {_amount(TILING_RATE)}", site=site,
                                                  data={"vendor": st.by, "work": st.work, "unit": st.unit, "quantity": quantity,
                                                        "rate": TILING_RATE, "retention_pct": TILING_RETENTION})
-            if saturday and week_work[site] > 0 and "work_order" in tiling:
-                qty = round(week_work[site], 2)
-                week_work[site] = 0
-                tiling[f"m{day}"] = b.add(day, "measurement", f"Measure the tiling {st_by(site)} laid this week: {_fmt(qty)} sqm",
-                                          site=site, data={"work": "Floor tiling", "quantity": qty},
-                                          needs=(tiling["work_order"].id,))
-            if weekday(day) == 0:
-                for key in [k for k in tiling if k.startswith("m")]:
-                    measured = tiling.pop(key)
-                    qty = measured.data["quantity"]
-                    amount = round(qty * TILING_RATE, 2)
-                    tiling[f"b{day}"] = b.add(day, "sub_bill", f"Bill from {st_by(site)}: {_fmt(qty)} sqm of tiling, {_amount(amount)}",
-                                              site=site, data={"vendor": "Joy Tiling Works", "work": "Floor tiling",
-                                                               "quantity": qty, "rate": TILING_RATE, "amount": amount},
-                                              needs=(measured.id,))
+            # LRN-F28 (episode 7): measured when the ground floor is finished (the kit's measurement sheet) and when
+            # the tiling is done; billed the next working day. The ground floor's bill asks for more than was measured
+            # (green_villa.TILING), is turned down the same day, and Joy's corrected bill comes the day after.
+            if "work_order" in tiling and week_work[site] > 0:
+                ground = gv.ground_floor_tiled()
+                tiling_now = stage(site) is not None and stage(site).by  # still laying
+                part = ("ground" if "ground" not in tiling and laid[site] >= ground
+                        else "rest" if "ground" in tiling and "rest" not in tiling and not tiling_now else None)
+                if part:
+                    qty = ground if part == "ground" else round(week_work[site], 2)
+                    week_work[site] = round(week_work[site] - qty, 2)
+                    words = "the finished ground floor, room by room" if part == "ground" else "the first floor, the rest of the order"
+                    m = b.add(day, "measurement", f"Measure the tiling {st_by(site)} laid: {words}, {qty:g} sqm",
+                              site=site, data={"work": "Floor tiling", "quantity": qty}, needs=(tiling["work_order"].id,))
+                    tiling[part] = m
+                    tiling_bills[_working_after(day, 1)].append((part, m))
+            for part, measured in tiling_bills.pop(day, []):
+                t, qty = gv.TILING, measured.data["quantity"]
+                if part == "ground":
+                    asked = t["billed"]
+                    flagged = b.add(day, "sub_bill", f"Bill {t['bill']} from {st_by(site)}: {_fmt(asked)} sqm of tiling, "
+                                    f"{_amount(asked * TILING_RATE)} (measured {_fmt(qty)})", site=site,
+                                    data={"vendor": t["vendor"], "work": "Floor tiling", "quantity": asked, "rate": TILING_RATE,
+                                          "amount": round(asked * TILING_RATE, 2), "their_bill_no": t["bill"], "flagged": True},
+                                    needs=(measured.id,))
+                    b.add(day, "sub_bill_reject", f"Turn down bill {t['bill']}: {t['reject']}", site=site,
+                          data={"bill": t["bill"], "reason": t["reject"]}, needs=(flagged.id,))
+                    tiling_bills[_working_after(day, 1)].append(("corrected", measured))
+                    continue
+                ref = t["corrected"] if part == "corrected" else t["last_bill"]
+                amount = round(qty * TILING_RATE, 2)
+                tiling[f"b{day}"] = b.add(day, "sub_bill", f"Bill {ref} from {st_by(site)}: {qty:g} sqm of tiling, {_amount(amount)}",
+                                          site=site, data={"vendor": t["vendor"], "work": "Floor tiling", "quantity": qty,
+                                                           "rate": TILING_RATE, "amount": amount, "their_bill_no": ref},
+                                          needs=(measured.id,))
 
         # Saturday: suppliers paid for bills a week old, the subcontractor's bills paid, wages approved and paid.
         if saturday:

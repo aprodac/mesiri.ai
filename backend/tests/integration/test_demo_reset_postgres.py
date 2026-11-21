@@ -75,7 +75,11 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
     # SA-36: two weeks on two projects (2 Nov 2026 is a Monday: 12 working days, 4 sites).
     assert result.seeded.get("project") == 1 and result.seeded.get("site") == 2 and result.seeded.get("member") == 2
     assert result.seeded.get("attendance") == 48 and result.seeded.get("work done") == 48 and result.seeded.get("expense") == 48
-    assert result.seeded.get("site conditions") == 48 and result.seeded.get("worker") == 15 and result.seeded.get("vendor") == 7
+    from mesiri.application.organizations import sample_story
+
+    # Suppliers from the seed's own list (it grows with the story: Kerala Earthmovers, episode 6).
+    assert result.seeded.get("site conditions") == 48 and result.seeded.get("worker") == 15
+    assert result.seeded.get("vendor") == len(sample_story.DEMO_VENDORS)
     # SS-65: a subcontractor for the guided demo's subcontract chapter.
     assert result.seeded.get("subcontractor") == 1
     assert result.seeded.get("material received", 0) >= 40 and result.seeded.get("material used", 0) >= 150

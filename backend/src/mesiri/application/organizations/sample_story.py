@@ -206,6 +206,8 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                                                                 "notes": notes})
         if made and made.get("id"):
             vendors[name] = str(made["id"])
+    # LRN-F28: TDS on subcontractors' bills (1%, a proprietor's firm), so Joy Tiling's bills show it (episode 7).
+    await call("finance settings", "PATCH", "/finance/settings", {"tds_enabled": True, "tds_default_pct": 1})
     # D5: the bank account and each site's petty cash, before anything is paid.
     await post("money account", "/finance/accounts", {"name": DEMO_BANK[0], "account_type": "bank", "bank_name": DEMO_BANK[1],
                                                       "opening_balance": DEMO_BANK[2]})

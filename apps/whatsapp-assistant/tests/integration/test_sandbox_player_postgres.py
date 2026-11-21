@@ -210,3 +210,27 @@ async def test_a_role_i_left_is_never_played_late_on_another_day(world):
     assert [(x["occurred_date"] - day0).days for x in logs] == [2, 3, 4, 6]
     assert float(logs[-1]["breakdown_hours"] or 0) == 0 and float(logs[-1]["duration_hours"]) == 7
     assert late == 0
+
+
+async def test_the_tiling_subcontract_plays_on_the_real_api(world):
+    """LRN-F28 (episode 7): Joy's bill JTW-014 (92 sqm) against the ground floor measured (81.88) is flagged by the
+    check and turned down; the corrected JTW-014A passes, with 5% retention held and 1% TDS."""
+    from mesiri.application.learn import green_villa as gv
+
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    for days in (7, 7, 7, 7, 7, 5):  # to day 40
+        moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
+        assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        bills = (await conn.execute(text(
+            "SELECT their_bill_no, check_status, gross, tds_pct FROM work_order_bills WHERE organization_id = :o "
+            "ORDER BY number"), {"o": opened.organization_id})).mappings().all()
+        measured = (await conn.execute(text(
+            "SELECT quantity FROM work_order_measurements WHERE organization_id = :o ORDER BY measured_on"),
+            {"o": opened.organization_id})).scalars().all()
+    t = gv.TILING
+    assert float(measured[0]) == gv.ground_floor_tiled()
+    assert [(b["their_bill_no"], b["check_status"]) for b in bills] == [(t["bill"], "rejected"), (t["corrected"], "passed")]
+    assert float(bills[1]["gross"]) == round(gv.ground_floor_tiled() * t["rate"], 2)
+    assert float(bills[1]["tds_pct"]) == t["tds_pct"]
