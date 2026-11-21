@@ -1058,13 +1058,25 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/accounts/cash-bank': {
     key: '/tour/accounts-cash-bank',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['cash.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
       { target: 'cash.stats', title: 'At a glance', text: 'Opening plus money in, less money out, is what you hold now, and how much more or less than at the start.', mood: 'look' },
       { target: 'cash.list', title: 'Each account', text: 'Every bank account and cash box in one table: money in, money out, its balance and its share of all your money. Entries opens them under its row.' },
+      { target: 'cash.bankrec', title: 'Check against the bank', text: "Reconcile bank imports a statement from net banking and ticks off each line against what is in the books." },
+    ],
+  },
+  '/accounts/bank-rec': {
+    key: '/tour/accounts-bank-rec',
+    version: 1,
+    introFromPage: true,
+    startWhen: ['bankrec.stats'],
+    steps: [
+      { target: 'bankrec.import', title: 'Bring the statement', text: 'Download the statement from net banking as CSV and import it here. A statement that overlaps an earlier one only adds the new lines.' },
+      { target: 'bankrec.stats', title: 'Bank and books side by side', text: 'What the bank says, what the books say on the same day, and the difference still to explain.', mood: 'look' },
+      { target: 'bankrec.lines', title: 'Tick them off', text: 'Mesiri matches lines with the same amount within a few days. For the rest: match by hand, book bank charges or interest in one tap, or leave a line out with a reason.', mood: 'think' },
     ],
   },
   '/accounts/projects': {

@@ -179,7 +179,7 @@ export function billDay(d: string | null | undefined): string {
 /** WEB-91 / UX-60: measured work on no client bill yet, at the client rate (before retention and GST), per project. */
 export interface ToBill {
   amount: string
-  projects: { project_id: string; project: string; lines: number; amount: string }[]
+  projects: { project_id: string; project: string; lines: number; amount: string; /** FB-01: lump sum: the lines are payment stages reached. */ stages?: boolean }[]
 }
 export async function fetchToBill(): Promise<ToBill> {
   return (await api.get<ToBill>('/billing/to-bill')).data

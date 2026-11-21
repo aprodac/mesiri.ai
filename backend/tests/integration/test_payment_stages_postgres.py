@@ -112,6 +112,7 @@ async def test_lump_sum_bills_the_reached_stages_once(conn) -> None:  # noqa: F8
 
     to_bill = await billing.work_to_bill(auth=owner, conn=conn)
     assert to_bill["amount"] == "300000.00"
+    assert to_bill["projects"][0]["stages"] is True  # Home says "1 payment stage reached", not BOQ lines
 
     bill = await billing.create_ra_bill(project, billing.BillCreate(), auth=owner, conn=conn)
     [line] = bill["lines"]

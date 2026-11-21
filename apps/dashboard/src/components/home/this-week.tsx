@@ -159,7 +159,7 @@ export function ThisWeek({ onCount }: { onCount?: (count: { total: number; urgen
   // Money to raise: work done on no bill yet.
   for (const p of toBill.data?.projects ?? []) {
     if (!mine(p.project_id)) continue
-    items.push({ key: `bill-${p.project_id}`, tone: n(p.amount) >= 500000 ? 'bad' : 'attention', icon: FileText, verb: 'Raise the RA bill', what: `${plural(p.lines, 'line')} of work done`, project: p.project, amount: short(p.amount), to: `/billing/ra-bills?project=${p.project_id}` })
+    items.push({ key: `bill-${p.project_id}`, tone: n(p.amount) >= 500000 ? 'bad' : 'attention', icon: FileText, verb: 'Raise the RA bill', what: p.stages ? `${plural(p.lines, 'payment stage')} reached` : `${plural(p.lines, 'line')} of work done`, project: p.project, amount: short(p.amount), to: `/billing/ra-bills?project=${p.project_id}` })
   }
   // Money to chase: each client's oldest unpaid bill.
   for (const c of receivables.data?.clients ?? []) {

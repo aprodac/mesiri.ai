@@ -442,7 +442,9 @@ async def work_to_bill(project_id: uuid.UUID | None = None, auth: AuthorizationC
         lines = await bills.unbilled_lines(conn, auth.organization_id, p.id)
         amount = sum((ra.line_amount(ln["quantity"], ln["line"]["client_rate"]) for ln in lines), Decimal(0))
         if amount > 0:
-            projects.append({"project_id": p.id, "project": p.name, "lines": len(lines), "amount": amount})
+            projects.append({"project_id": p.id, "project": p.name, "lines": len(lines), "amount": amount,
+                             # FB-01: a lump-sum project's lines are payment stages reached, not BOQ work.
+                             "stages": lines[0]["line"].get("payment_stage_id") is not None})
     projects.sort(key=lambda x: -x["amount"])
     return _out({"amount": ra.money(sum((x["amount"] for x in projects), Decimal(0))), "projects": projects})
 

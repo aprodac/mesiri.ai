@@ -50,6 +50,7 @@ import AccountsHomePage from '@/pages/accounts/AccountsHomePage'
 import ProfitLossPage from '@/pages/accounts/ProfitLossPage'
 import BalanceSheetPage from '@/pages/accounts/BalanceSheetPage'
 import CashBankPage from '@/pages/accounts/CashBankPage'
+import BankRecPage from '@/pages/accounts/BankRecPage'
 import ProjectsBooksPage from '@/pages/accounts/ProjectsBooksPage'
 import ProjectBooksPage from '@/pages/accounts/ProjectBooksPage'
 import GstPage from '@/pages/accounts/GstPage'
@@ -280,6 +281,7 @@ export default function App() {
           <Route path="accounts/pl" element={acc(<ProfitLossPage />)} />
           <Route path="accounts/balance-sheet" element={acc(<BalanceSheetPage />)} />
           <Route path="accounts/cash-bank" element={acc(<CashBankPage />)} />
+          <Route path="accounts/bank-rec" element={acc(<BankRecPage />)} />
           <Route path="accounts/cash-flow" element={acc(<CashFlowPage />)} />
           <Route path="accounts/projects" element={acc(<ProjectsBooksPage />)} />
           <Route path="accounts/projects/:id" element={acc(<ProjectBooksPage />)} />

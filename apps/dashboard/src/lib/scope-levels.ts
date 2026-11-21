@@ -60,6 +60,7 @@ const LEVELS: [string, ScopeLevel][] = [
   ['/accounts/pl', 'site'],
   ['/accounts/trial-balance', 'site'],
   ['/accounts/cash-bank', 'site'],
+  ['/accounts/bank-rec', 'company'],
   ['/accounts/day-book', 'site'],
   ['/accounts/ledgers', 'company'],
   ['/accounts/balance-sheet', 'company'],

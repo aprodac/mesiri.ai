@@ -120,7 +120,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
         <Skeleton className="h-48 w-full" />
       ) : list.data.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="ra.empty">
-          No bills yet. New RA bill counts the work done so far.
+          {c?.contract_type === 'lump_sum' ? 'No bills yet. New RA bill asks for the payment stages reached so far.' : 'No bills yet. New RA bill counts the work done so far.'}
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
