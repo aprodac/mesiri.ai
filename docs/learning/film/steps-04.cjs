@@ -125,7 +125,7 @@ module.exports = {
       return card(pg, /^10 bags still to come/)
     },
   ],
-  // Meera, day 9: Malabar's bill MCA/INV/2611 as it came (190 bags at Rs 410, GST 18%), against Friday's delivery.
+  // Meera, day 9: Malabar's bill MCA/INV/2611 as it came, line by line (UX-87): 190 bags at Rs 410 against the site's Rs 400.
   match: [
     async (pg, h) => {
       await h.go('/finance/vendors')
@@ -136,22 +136,23 @@ module.exports = {
     async (pg, h) => {
       await pg.getByRole('tab', { name: /Not billed/ }).or(pg.getByRole('button', { name: /^Not billed/ })).first().click()
       await h.wait(1500)
-      const row = pg.locator('main li').filter({ hasText: /190 bags/ }).first()
-      await row.locator('input[type="checkbox"]').check()
+      await pg.locator('main li').filter({ hasText: /190 bags/ }).first().locator('input[type="checkbox"]').check()
       await pg.getByRole('button', { name: 'Bill these' }).click()
       await h.wait(1500)
       const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
+      await dlg.getByLabel(/rate on the bill$/).first().fill('410')
       await dlg.locator('#b-amount').fill('91922')
       await dlg.locator('#b-gst').fill('14022')
       await dlg.locator('#b-no').fill('MCA/INV/2611')
-      return dlg
+      return dlg.locator('[data-guide="bill.lines"]')
     },
+    async (pg) => pg.locator('[data-guide="bill.differs"]').first(),
     async (pg, h) => {
-      const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
-      await dlg.getByRole('button', { name: 'Record bill' }).click()
+      await pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last().getByRole('button', { name: 'Record bill' }).click()
       await h.wait(3000)
-      return 'main'
+      await pg.getByRole('tab', { name: /Bills to pay/ }).or(pg.getByRole('button', { name: /^Bills to pay/ })).first().click()
+      await h.wait(1500)
+      return pg.locator('main').getByText(/MCA\/INV\/2611/).first().locator('xpath=ancestor::*[3]')
     },
-    async () => null,
   ],
 }

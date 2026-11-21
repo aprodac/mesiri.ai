@@ -183,6 +183,9 @@ async def fetch_entries(
             "project_id": r["project_id"], "project": r["project"], "site": r["site"],
             "ref": order_ref(r["order_number"]) if r["order_number"] else None,
             "links": {"receipt_id": str(r["id"]), **({"order_id": str(r["order_id"])} if r["order_id"] else {})},
+            # UX-87: what the site recorded, for a bill checked line by line against it.
+            "delivered": {"quantity": format(Decimal(r["quantity"]).normalize(), "f"), "unit": r["unit"],
+                          "rate": money(r["unit_cost"]) if r["unit_cost"] is not None else None},
         })
 
     # A bill paid by staff from their own pocket is settled with the supplier; payments on it repay the staff member,
@@ -344,6 +347,7 @@ def entry_out(e: dict, balance: Decimal) -> dict:
         "balance": money(balance), "project_id": str(e["project_id"]) if e["project_id"] else None,
         "project": e["project"], "site": e["site"], "ref": e["ref"], "links": e["links"],
         **({"bill_left": e["bill_left"], "mismatches": e.get("mismatches", 0)} if "bill_left" in e else {}),
+        **({"delivered": e["delivered"]} if "delivered" in e else {}),
         **({"on_account": e["on_account"], "advance_left": e["advance_left"], "recorded_by": e.get("recorded_by")}
            if e["kind"] == "payment" else {}),
     }

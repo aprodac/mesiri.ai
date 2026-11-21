@@ -127,6 +127,8 @@ export interface LedgerLine {
   on_account?: boolean
   advance_left?: string | null
   recorded_by?: string | null
+  /** A delivery not billed yet: what the site recorded (UX-87), to check the bill against line by line. */
+  delivered?: { quantity: string; unit: string | null; rate: string | null }
 }
 
 export interface Ledger {
@@ -221,7 +223,7 @@ export async function undoVendorPayment(id: string, paymentId: string): Promise<
   await api.post(`/finance/vendors/${id}/payments/${paymentId}/reverse`)
 }
 
-export async function billDeliveries(id: string, body: { receipt_ids: string[]; amount?: string; bill_number?: string; bill_date?: string; tax_amount?: string }): Promise<{ expense_id: string; amount: string; deliveries: number; deliveries_total: string; difference: string }> {
+export async function billDeliveries(id: string, body: { receipt_ids: string[]; amount?: string; bill_number?: string; bill_date?: string; tax_amount?: string; lines?: { receipt_id: string; quantity?: string; rate?: string }[] }): Promise<{ expense_id: string; amount: string; deliveries: number; deliveries_total: string; difference: string; flags: string[] }> {
   return (await api.post(`/finance/vendors/${id}/bills`, body)).data
 }
 

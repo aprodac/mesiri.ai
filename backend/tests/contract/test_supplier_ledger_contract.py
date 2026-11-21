@@ -426,3 +426,31 @@ async def test_overdue_bills_are_told_once_a_day_to_who_pays(client, world, test
         note = (await conn.execute(sa.text("SELECT payload->>'message' FROM notifications WHERE rule_key = 'suppliers_waiting'"))).scalar()
     assert (first, again) == (1, 0)                                           # the admin only (engineers not told)
     assert "₹27,000 of supplier bills is overdue (Concrete team ₹27,000)" in note
+
+
+async def test_bill_these_line_by_line_flags_a_rate_above_the_site(client, world):
+    """UX-87: Suppliers > Not billed > Bill these, the bill line by line (episode 4: Malabar's 190 bags at Rs 410 against
+    the site's Rs 400): the same rule flags it, the ledger counts the mismatch, and the bill's deliveries say why. Guard:
+    a bill typed as one amount still says neither (no flags), as before."""
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Malabar Cements UX87")
+    d = await _came(client, w, "cement", "190", "400", days_ago=3, vendor_id=v)
+    led = await _ledger(client, h, v)
+    line = next(x for x in led["lines"] if x["kind"] == "delivery")
+    assert line["delivered"] == {"quantity": "190", "unit": line["delivered"]["unit"], "rate": "400.00"}
+    got = await client.post(f"/finance/vendors/{v}/bills", headers=h, json={
+        "receipt_ids": [d["id"]], "amount": "91922", "tax_amount": "14022", "bill_number": "MCA/INV/2611",
+        "lines": [{"receipt_id": d["id"], "quantity": "190", "rate": "410"}]})
+    assert got.status_code == 201, got.text
+    assert got.json()["flags"] == [f"{line['title']}: rate ₹410 on the bill, ₹400 on site"]
+    on = (await client.get(f"/finance/vendors/{v}/bills/{got.json()['expense_id']}/deliveries", headers=h)).json()
+    assert float(on[0]["billed_rate"]) == 410 and on[0]["flags"] == ["rate ₹410 on the bill, ₹400 on site"]
+    assert (await _ledger(client, h, v))["summary"]["open_bills"][0]["mismatches"] == 1
+    # A line for a delivery not on the bill is refused; a bill typed as one amount says neither.
+    other = await _came(client, w, "cement", "10", "400", days_ago=2, vendor_id=v)
+    bad = await client.post(f"/finance/vendors/{v}/bills", headers=h, json={
+        "receipt_ids": [other["id"]], "lines": [{"receipt_id": d["id"], "rate": "410"}]})
+    assert bad.status_code in (409, 422)
+    plain = await client.post(f"/finance/vendors/{v}/bills", headers=h, json={"receipt_ids": [other["id"]], "amount": "4000"})
+    assert plain.status_code == 201 and plain.json()["flags"] == []
