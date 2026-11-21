@@ -171,6 +171,20 @@ module.exports = {
       await h.wait(1500)
       return pg.locator('main').getByText(/MCA\/INV\/2611/).first().locator('xpath=ancestor::*[3]')
     },
+    async (pg, h) => {
+      // She takes it back (Expenses, the bill's menu, Take back). The plan's own check sees it taken back, so the
+      // corrected bill MCA/INV/2611-R and the return settled come on day 10 as the story has them (the owner sees both).
+      await h.go('/finance/expenses')
+      const row = pg.locator('main tr, main li').filter({ hasText: 'MCA/INV/2611' }).first()
+      await row.getByRole('button', { name: /^More for/ }).click()
+      await h.wait(600)
+      await pg.getByRole('menuitem', { name: /Take back/ }).click()
+      await h.wait(800)
+      const dlg = pg.getByRole('dialog').filter({ hasText: /^Take back/ }).last()
+      await dlg.getByRole('button', { name: /^Take back$/ }).click()
+      await h.wait(2500)
+      return pg.locator('main tr, main li').filter({ hasText: 'MCA/INV/2611' }).first()
+    },
   ],
   // Ravi, day 16 (the month's end): the Main block's store counted; cement 3 bags under the book, wastage. Kept for the owner.
   count: [

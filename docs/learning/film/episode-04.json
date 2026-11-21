@@ -453,13 +453,19 @@
           "mark": "the difference"
         },
         {
+          "at": 1,
+          "do": "Record bill",
+          "show": "the bill in Bills to pay, Rs 91,922",
+          "mark": "the bill"
+        },
+        {
           "at": 2,
-          "do": "take the bill back; the corrected bill MCA/INV/2611-R, 184 bags at Rs 400, Rs 73,600; settle the return against it",
-          "show": "the corrected bill, the return settled",
-          "mark": "the corrected bill"
+          "do": "take the bill back (Expenses, its menu, Take back); the corrected bill and the settled return follow on day 10",
+          "show": "the bill at Rs 410 taken back",
+          "mark": "the bill taken back"
         }
       ],
-      "record": "As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen). The corrected bill (the plan's day 10) is entered on screen the same day, then the day goes back. Read the difference off the screen and say only what it shows.",
+      "record": "As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen), kept for the days after. The corrected bill and the return settled are the plan's day 10, made by the cast once it sees the bill taken back; the owner sees them on day 16.",
       "as": "FINANCE",
       "day": 9,
       "play": "FINANCE",
