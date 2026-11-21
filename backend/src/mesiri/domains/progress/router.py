@@ -27,7 +27,7 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -547,18 +547,60 @@ async def get_issue(
     return item
 
 
+#: The command type an issue's Idempotency-Key is kept under in ``idempotency_keys``.
+_ISSUE_COMMAND = "create_site_issue"
+
+
 @router.post("/issues", response_model=SiteIssueResponse, status_code=201)
 async def create_issue(
     payload: CreateSiteIssueRequest,
+    response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """Create a new site issue / blocker."""
+    """Create a new site issue / blocker.
+
+    MOB-05: send an ``Idempotency-Key`` to make it safe to send twice (a retry, or the same problem saved from the
+    app's form and then from the assistant's Save): 201 recorded, 200 the same key again with the issue it made,
+    as work, deliveries, use, attendance and expenses already do (the shared ``idempotency_keys`` table)."""
     _project_ids, denied = _resolve_project_ids(auth_context, payload.project_id)
     if denied or _site_filter_denied(auth_context, payload.project_id, payload.site_id):
         raise HTTPException(status_code=403, detail="Not authorized for target project or site")
 
     repo = PostgresProgressReadRepository(conn)
+    key = None
+    if idempotency_key:
+        from sqlalchemy import text
+
+        from mesiri.domains.shared.execution import idempotency_uuid
+
+        key = idempotency_uuid(auth_context.organization_id, idempotency_key)
+        claimed = (
+            await conn.execute(
+                text(
+                    "INSERT INTO idempotency_keys (key, command_type, status) VALUES (:key, :type, 'in_progress') "
+                    "ON CONFLICT (key) DO NOTHING RETURNING key"
+                ),
+                {"key": key, "type": _ISSUE_COMMAND},
+            )
+        ).first()
+        if claimed is None:
+            row = (
+                await conn.execute(
+                    text("SELECT status, result FROM idempotency_keys WHERE key = :key"), {"key": key}
+                )
+            ).mappings().first()
+            result = row["result"] if row else None
+            result = json.loads(result) if isinstance(result, str) else result
+            issue_id = (result or {}).get("issue_id") if row and row["status"] == "completed" else None
+            earlier = (
+                await repo.get_issue(auth_context.organization_id, uuid.UUID(issue_id)) if issue_id else None
+            )
+            if earlier is None:
+                raise HTTPException(status_code=409, detail="This problem is already being saved.")
+            response.status_code = 200
+            return earlier
     from mesiri.domains.schedule.store import place_issue
 
     # BOQ-03: on the schedule activity it holds up, when its words make that clear (else on its site).
@@ -572,6 +614,16 @@ async def create_issue(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if key is not None:
+        from sqlalchemy import text
+
+        await conn.execute(
+            text(
+                "UPDATE idempotency_keys SET status = 'completed', result = CAST(:result AS jsonb), "
+                "completed_at = now() WHERE key = :key"
+            ),
+            {"key": key, "result": json.dumps({"issue_id": str(item["id"])})},
+        )
     return item
 
 
