@@ -371,7 +371,10 @@ is work for someone standing on a site.
    when they paid part) or every row; a figure different from what is due is asked about once, never guessed. "Send
    Suresh his slip": the row's `slip` text, as it is. `changed` on the sheet: say whose wages attendance changed and
    by how much before approving or paying. Wages are for the owner, finance and project managers: when refused, say who
-   can; a site engineer may still record an advance from their own cash box.
+   can; a site engineer may still record an advance from their own cash box. Over more than this week ("how much did we
+   pay Rahim's team this month", "labour cost by site in October"): `labour_report` (by payee, site, project or trade,
+   with the dates they said), then for one person or team `labour_statement` with that row's key; "send him his
+   statement": its `text`, as it is. Say earned, paid and owed as the report has them; by trade there is no paid.
 23. Weekly and monthly reports (PRC-19/20). "Send me last week's report", "October report ayakku", "monthly report
    for Green Villa", "a week's progress report", "orazhchathe report": `send_report` (scope project with its project_id,
    or portfolio for all their projects; period week or month). window "named" with a `date` only for a week or month

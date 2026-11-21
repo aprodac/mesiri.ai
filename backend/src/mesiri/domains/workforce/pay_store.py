@@ -398,3 +398,59 @@ async def owed_summary(conn: AsyncConnection, org: uuid.UUID, project_ids: set |
     out = sum((v for v in balances.values() if v > 0), Decimal(0))
     return {"due": pay.money(row["due"]), "due_rows": int(row["due_rows"] or 0), "drafts": int(row["drafts"] or 0),
             "advances_outstanding": pay.money(out), "advance_payees": sum(1 for v in balances.values() if v > 0)}
+
+
+# -- LW-10: reports ----------------------------------------------------------------------------------------------------
+
+async def period_lines(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None, project_id: uuid.UUID | None,
+                       site_id: uuid.UUID | None, date_from: datetime.date, date_to: datetime.date) -> list[dict[str, Any]]:
+    """``attendance_lines`` for a period across the projects a person reaches (one, or every one), with the project's
+    and site's names, for the labour reports. The same counting rule as the wage sheet."""
+    where, params = "", {"org": org, "f": date_from, "t": date_to}
+    if project_ids is not None:
+        where += "AND r.project_id = ANY(:projects) "
+        params["projects"] = list(project_ids)
+    if project_id:
+        where += "AND r.project_id = :p "
+        params["p"] = project_id
+    if site_id:
+        where += "AND r.site_id = :s "
+        params["s"] = site_id
+    return await _rows(conn,
+        "SELECT r.occurred_date AS date, r.project_id, p.name AS project_name, r.site_id, s.name AS site_name, "
+        "l.worker_id, l.worker_name, l.trade, l.headcount, l.daily_wage, l.contractor, l.vendor_id, v.name AS vendor_name, "
+        "l.attendance_status, l.overtime_hours "
+        "FROM labour_attendance_lines l JOIN labour_attendance_reports r ON r.id = l.report_id "
+        "JOIN projects p ON p.id = r.project_id LEFT JOIN sites s ON s.id = r.site_id "
+        "LEFT JOIN vendors v ON v.id = l.vendor_id "
+        "WHERE r.organization_id = :org AND r.occurred_date BETWEEN :f AND :t " + where
+        + f"AND {counted_line_sql('l', 'r')} ORDER BY r.occurred_date", params)
+
+
+async def period_sheet_rows(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
+                            project_id: uuid.UUID | None, site_id: uuid.UUID | None, date_from: datetime.date,
+                            date_to: datetime.date, payee_key: str | None = None) -> list[dict[str, Any]]:
+    """Wage sheet rows of the sheets whose pay week ends in the period (a week is reported where it is paid)."""
+    where, params = "", {"org": org, "f": date_from, "t": date_to}
+    if project_ids is not None:
+        where += " AND w.project_id = ANY(:projects)"
+        params["projects"] = list(project_ids)
+    if project_id:
+        where += " AND w.project_id = :p"
+        params["p"] = project_id
+    if site_id:
+        where += " AND w.site_id = :s"
+        params["s"] = site_id
+    if payee_key:
+        where += " AND r.payee_key = :k"
+        params["k"] = payee_key
+    rows = await _rows(conn,
+        "SELECT r.*, w.project_id, p.name AS project_name, w.site_id, s.name AS site_name, w.period_from, w.period_to, "
+        "w.status FROM wage_sheet_rows r JOIN wage_sheets w ON w.id = r.sheet_id JOIN projects p ON p.id = w.project_id "
+        "LEFT JOIN sites s ON s.id = w.site_id "
+        "WHERE w.organization_id = :org AND w.period_to BETWEEN :f AND :t" + where
+        + " ORDER BY w.period_to, p.name, s.name, r.payee_name", params)
+    for r in rows:
+        if isinstance(r["deductions"], str):
+            r["deductions"] = json.loads(r["deductions"])
+    return rows

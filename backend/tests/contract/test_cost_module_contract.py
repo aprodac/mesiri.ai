@@ -621,3 +621,61 @@ async def test_a_site_engineer_sees_their_sites_colours_and_quantities_never_rup
     assert (await client.get(f"/cost/projects/{p}/variance?site_id={other}", headers=eh)).status_code == 403
     for url in (f"/cost/projects/{p}/budget", f"/cost/projects/{p}/labour", f"/cost/projects/{p}/materials", "/cost/portfolio"):
         assert (await client.get(url, headers=eh)).status_code == 403, url
+
+
+# -- The labour nudge (21 Nov 2026): one trade rule for the split and the suggestion, one tap; LW-10 reports ---------
+
+
+async def test_trade_rule_reaches_lines_by_section_suggests_only_fitting_lines_and_one_tap_puts_them(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    concrete = (await client.post(f"/projects/{p}/boq/sections", json={"name": "B. CONCRETE"}, headers=h)).json()
+    plinth = (await client.post(f"/projects/{p}/boq/sections/{concrete['id']}/lines", headers=h, json={
+        "work": "Plinth beam", "unit": "cum", "planned_quantity": "20", "labour_rate": "4200"})).json()
+    electrical = (await client.post(f"/projects/{p}/boq/sections", json={"name": "F. ELECTRICAL"}, headers=h)).json()
+    conduit = (await client.post(f"/projects/{p}/boq/sections/{electrical['id']}/lines", headers=h, json={
+        "work": "Electrical conduits", "unit": "nos", "planned_quantity": "300", "labour_rate": "90"})).json()
+    # Day 1: the plinth beam poured; the mason's day reaches it through its section (the name says no concrete).
+    await _work(test_engine, ctx, plinth["id"], "cum", "2", days_ago=1)
+    await _attendance(test_engine, ctx, [("Mason", 1, "1050", None)], days_ago=1)
+    # Day 2: only conduits measured; masons and a plumber came too.
+    await _work(test_engine, ctx, conduit["id"], "nos", "20", days_ago=2)
+    await _attendance(test_engine, ctx, [("Mason", 2, "1100", None), ("Plumber", 1, "1150", None)], days_ago=2)
+
+    groups = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"]
+    by = {(g["date"], g["trade_key"]): g for g in groups}
+    day1, day2 = sorted({g["date"] for g in groups}, reverse=True)
+    assert [x["line_id"] for x in by[(day1, "mason")]["on_lines"]] == [plinth["id"]] and by[(day1, "mason")]["auto"]
+    assert by[(day2, "mason")]["on_lines"] == []  # never on the conduits
+    assert by[(day2, "mason")]["suggested_line_id"] == plinth["id"]  # the nearest day's fitting work, not the conduits
+    assert by[(day2, "plumber")]["suggested_line_id"] is None  # nothing a plumber does was measured: a person picks
+
+    r = await client.post(f"/cost/projects/{p}/labour/suggestions", headers=h, json={})
+    assert r.status_code == 200, r.text
+    assert (r.json()["rows"], r.json()["cost"]) == (1, "2200.00")
+    assert r.json()["still_off"] == {"rows": 1, "man_days": "1", "cost": "1150.00"}
+    again = (await client.post(f"/cost/projects/{p}/labour/suggestions", headers=h, json={})).json()
+    assert again["rows"] == 0  # the guard: a second tap changes nothing
+    _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    assert (await client.post(f"/cost/projects/{p}/labour/suggestions", headers=_h(engineer), json={})).status_code == 403
+
+
+async def test_labour_report_by_trade_site_and_payee_and_a_statement(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    await _attendance(test_engine, ctx, [("Mason", 2, "1100", None), ("Helper", 3, "700", None)], days_ago=1)
+    await _attendance(test_engine, ctx, [("Mason", 1, "1100", None)], days_ago=2)
+    rep = (await client.get("/labour/pay/report", headers=h, params={"by": "trade", "project_id": str(p)})).json()
+    trades = {r["label"]: r for r in rep["rows"]}
+    assert float(trades["Mason"]["earned"]) == 3300 and float(trades["Helper"]["earned"]) == 2100
+    assert trades["Mason"]["paid"] is None  # a sheet pays people, not trades
+    site = (await client.get("/labour/pay/report", headers=h, params={"by": "site"})).json()
+    assert [(r["label"], float(r["earned"])) for r in site["rows"]] == [("Villa › Main", 5400.0)]
+    assert float(site["totals"]["owed"]) == 0  # no wage sheet made yet: nothing owed on one
+    payees = (await client.get("/labour/pay/report", headers=h, params={"by": "payee"})).json()["rows"]
+    mason = next(r for r in payees if r["key"] == "headcount:mason")
+    st = await client.get("/labour/pay/statement", headers=h, params={"payee_key": mason["key"]})
+    assert st.status_code == 200, st.text
+    assert st.json()["payee_name"] == "Mason (no names)" and st.json()["weeks"] == []
+    nobody = await client.get("/labour/pay/statement", headers=h, params={"payee_key": "name:nobody"})
+    assert nobody.status_code == 404
+    _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    assert (await client.get("/labour/pay/report", headers=_h(engineer))).status_code == 403

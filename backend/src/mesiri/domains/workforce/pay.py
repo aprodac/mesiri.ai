@@ -144,3 +144,100 @@ def slip_text(row: Mapping[str, Any], period_from: datetime.date, period_to: dat
         lines.append(f"Paid: {r(row['paid'])}" + (f" · still due {r(money(row['net']) - money(row['paid']))}"
                                                   if money(row['net']) > money(row['paid']) else ""))
     return "\n".join(lines)
+
+
+# -- LW-10: labour reports (21 Nov 2026) -------------------------------------------------------------------------------
+
+REPORT_BY = ("project", "site", "trade", "payee")
+_NO_TRADE = "Trade not said"
+
+
+def report_key(line: Mapping[str, Any], by: str, worker_team: Mapping[str, Any], teams: Teams | None) -> tuple[str, str]:
+    """(key, label) a line is reported under: its project, its site, its trade, or who is paid for it (D-W2)."""
+    if by == "project":
+        return str(line.get("project_id")), line.get("project_name") or "Project"
+    if by == "site":
+        return str(line.get("site_id")), " › ".join(x for x in (line.get("project_name"), line.get("site_name")) if x) or "No site"
+    if by == "trade":
+        trade = " ".join(str(line.get("trade") or "").replace("_", " ").split())
+        return trade.lower(), trade.capitalize() if trade else _NO_TRADE
+    key, who = payee_of(line, worker_team, teams)
+    return key, who["payee_name"]
+
+
+def report_rows(lines: Iterable[Mapping[str, Any]], sheet_rows: Iterable[Mapping[str, Any]], by: str,
+                worker_team: Mapping[str, Any], teams: Teams | None = None) -> list[dict[str, Any]]:
+    """Labour for a period, one row per project, site, trade or payee (LW-10).
+
+    Earned from attendance by the wage sheet's own rule (``build_rows``: present 1, half 0.5, overtime hours x wage / 8),
+    so a report and the wage sheets never disagree. Paid from the wage sheets in the period (``sheet_rows``: each with
+    project_id, site_id, payee_key, status, net, paid): ``to_pay`` is what approved sheets say (after advances taken
+    back and deductions), ``paid`` what was paid on them, ``owed`` approved and not yet paid, ``waiting`` the drafts
+    nobody approved yet. By trade there is no pay: a sheet pays a person or a team, not a trade (None, never a guess).
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    for ln in lines:
+        key, label = report_key(ln, by, worker_team, teams)
+        g = groups.setdefault(key, {"key": key, "label": label, "lines": [], "dates": set()})
+        g["lines"].append(ln)
+    out: dict[str, dict[str, Any]] = {}
+    for key, g in groups.items():
+        built = build_rows(g["lines"], worker_team, teams).values()
+        if not built:
+            continue
+        worked = {ln["date"] for ln in g["lines"] if DAY_FACTOR.get(ln.get("attendance_status") or "present", Decimal(1))}
+        out[key] = {
+            "key": key, "label": g["label"],
+            "days": len(worked),
+            "man_days": sum((r["man_days"] for r in built), Decimal(0)),
+            "unpriced_man_days": sum((r["unpriced_man_days"] for r in built), Decimal(0)),
+            "earned": money(sum((r["gross"] + r["overtime_amount"] for r in built), Decimal(0))),
+            "trades": ", ".join(sorted({t for r in built for t in (r["trades"] or "").split(", ") if t})),
+            **({"to_pay": Decimal(0), "paid": Decimal(0), "owed": Decimal(0), "waiting": Decimal(0)} if by != "trade"
+               else {"to_pay": None, "paid": None, "owed": None, "waiting": None}),
+        }
+    if by != "trade":
+        for r in sheet_rows:
+            # A sheet made for the whole project (no site) is its own row by site: its pay cannot be split by site.
+            site_key = str(r["site_id"]) if r.get("site_id") else f"project:{r.get('project_id')}"
+            key = {"project": str(r.get("project_id")), "site": site_key, "payee": r.get("payee_key")}[by]
+            row = out.get(key)
+            if row is None:  # paid for days outside the period's attendance (a carry-forward): still shown
+                row = out[key] = {"key": key, "label": r.get("label") or r.get("payee_name") or "—", "days": 0,
+                                  "man_days": Decimal(0), "unpriced_man_days": Decimal(0), "earned": Decimal(0),
+                                  "trades": r.get("trades") or "", "to_pay": Decimal(0), "paid": Decimal(0),
+                                  "owed": Decimal(0), "waiting": Decimal(0)}
+            net, paid = money(r["net"]), money(r["paid"])
+            if r["status"] == "approved":
+                row["to_pay"] += net
+                row["paid"] += paid
+                row["owed"] += max(net - paid, Decimal(0))
+            else:
+                row["waiting"] += net
+    return sorted(out.values(), key=lambda r: (-r["earned"], r["label"].lower()))
+
+
+def statement_text(st: Mapping[str, Any]) -> str:
+    """A worker's or team's statement as a WhatsApp message (LW-10), in the payment slip's words."""
+    def r(v: Any) -> str:
+        return f"₹{money(v):,.0f}"
+    out = [f"*{st['payee_name']}*", f"{st['date_from']:%d %b} – {st['date_to']:%d %b %Y}"]
+    for w in st["weeks"]:
+        unit = "man-days" if Decimal(w["man_days"]) > Decimal(w.get("days") or 0) else "days"  # a team, or one person
+        line = f"{w['period_from']:%d %b}–{w['period_to']:%d %b}: {Decimal(w['man_days']).normalize():f} {unit}, {r(w['wages'])}"
+        if money(w["advances_recovered"]):
+            line += f", advance −{r(w['advances_recovered'])}"
+        if money(w["deductions"]):
+            line += f", deductions −{r(w['deductions'])}"
+        line += f" → {r(w['net'])}" + (" (not approved yet)" if w["status"] != "approved" else
+                                         f", paid {r(w['paid'])}" if money(w["paid"]) else ", not paid yet")
+        out.append(line)
+    t = st["totals"]
+    if money(t["advances_given"]):
+        out.append(f"Advances given: {r(t['advances_given'])}")
+    out.append(f"*Paid: {r(t['paid'])}*")
+    if money(t["due"]):
+        out.append(f"*Still to pay: {r(t['due'])}*")
+    if money(t["advance_outstanding"]):
+        out.append(f"Advance still to take back: {r(t['advance_outstanding'])}")
+    return "\n".join(out)

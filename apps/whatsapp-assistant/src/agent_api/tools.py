@@ -274,6 +274,15 @@ ALLOWED: tuple[Allowed, ...] = (
             "This week's wages for a site (site_id) or project (project_id); a date for another week. Rows: payee_name, "
             "man_days, gross, overtime_amount, advances_recovered, deductions, net, paid, due, slip (the payment slip text, as it is "
             "them); status draft or approved; totals; changed (attendance changed since approval)."),
+    Allowed("labour_report", "GET", "/labour/pay/report",
+            "Labour for a period, a month or some weeks (date_from, date_to; the last four pay weeks when not said), by='payee' (each worker "
+            "or labour contractor, their teams), 'site', 'project' or 'trade'; project_id or site_id to narrow. Rows: key, label, days, man_days, "
+            "earned (days x wage + overtime, from attendance), to_pay, paid, owed (approved, not paid), waiting (not "
+            "approved yet); none of the pay figures by trade. totals. Owner, finance and project managers only."),
+    Allowed("labour_statement", "GET", "/labour/pay/statement",
+            "One worker's or labour contractor's statement for a period: payee_key (a row's key from labour_report by='payee', or "
+            "from wage_sheet), date_from, date_to. Each pay week (wages, advance taken back, deductions, net, paid, "
+            "due), advances given, totals, and text: the statement as a message, as it is."),
     Allowed("approve_wage_sheet", "POST", "/labour/wage-sheets/{sheet_id}/approve",
             "Prepare approving a week's wage sheet (from wage_sheet) so it can be paid." + _WRITE),
     Allowed("pay_wages", "POST", "/labour/wage-sheets/{sheet_id}/pay",

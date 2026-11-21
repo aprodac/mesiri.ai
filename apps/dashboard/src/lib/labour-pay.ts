@@ -237,3 +237,65 @@ export const emptyRegister = (w?: { phone?: string | null; vendor_id?: string | 
 export function registerPayload(v: RegisterValue) {
   return { phone: v.phone.trim() || null, vendor_id: v.vendorId || null, site_id: v.siteId || null }
 }
+
+// LW-10: labour reports. Earned from attendance by the wage sheet's own rule; to pay, paid, owed and waiting from the
+// wage sheets whose week ends in the period (none by trade: a sheet pays people, not trades).
+export type ReportBy = 'payee' | 'site' | 'project' | 'trade'
+
+export interface LabourReportRow {
+  key: string
+  label: string
+  trades: string
+  days: number
+  man_days: number | string
+  unpriced_man_days: number | string
+  earned: number | string
+  to_pay: number | string | null
+  paid: number | string | null
+  owed: number | string | null
+  waiting: number | string | null
+}
+
+export interface LabourReport {
+  by: ReportBy
+  date_from: string
+  date_to: string
+  rows: LabourReportRow[]
+  totals: Omit<LabourReportRow, 'key' | 'label' | 'trades' | 'days'>
+}
+
+export interface StatementWeek {
+  period_from: string
+  period_to: string
+  project_name: string
+  site_name: string | null
+  status: 'draft' | 'approved'
+  days: number | string
+  man_days: number | string
+  trades: string | null
+  wages: number | string
+  advances_recovered: number | string
+  deductions: number | string
+  net: number | string
+  paid: number | string
+  due: number | string
+}
+
+export interface LabourStatement {
+  payee_key: string
+  payee_name: string
+  date_from: string
+  date_to: string
+  weeks: StatementWeek[]
+  advances: { given_on: string; amount: number | string; project_name: string; site_name: string | null; note: string | null }[]
+  totals: Record<'wages' | 'advances_recovered' | 'deductions' | 'net' | 'paid' | 'due' | 'advances_given' | 'advance_outstanding', number | string>
+  /** The statement as a WhatsApp message. */
+  text: string
+}
+
+export async function fetchLabourReport(params: { by: ReportBy; project_id?: string | null; site_id?: string | null; date_from?: string; date_to?: string }): Promise<LabourReport> {
+  return (await api.get('/labour/pay/report', { params: clean(params) })).data
+}
+export async function fetchPayeeStatement(params: { payee_key: string; project_id?: string | null; date_from?: string; date_to?: string }): Promise<LabourStatement> {
+  return (await api.get('/labour/pay/statement', { params: clean(params) })).data
+}

@@ -64,6 +64,7 @@ import TasksPage from '@/pages/TasksPage'
 import SettingsPage from '@/pages/SettingsPage'
 import WagesPage from '@/pages/WagesPage'
 import AdvancesPage from '@/pages/AdvancesPage'
+import LabourReportsPage from '@/pages/LabourReportsPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -186,6 +187,7 @@ export default function App() {
           <Route path="labour" element={lab(<LabourPage />)} />
           <Route path="labour/wages" element={lab(<WagesPage />)} />
           <Route path="labour/advances" element={lab(<AdvancesPage />)} />
+          <Route path="labour/reports" element={lab(<LabourReportsPage />)} />
           <Route path="labour/workers" element={<Moved to="/labour?view=workers" />} />
           <Route path="labour/*" element={<Moved to="/labour" />} />
 

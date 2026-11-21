@@ -433,6 +433,18 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'app.whatsapp', title: 'On WhatsApp', text: '"Gave Ravi 500 advance".', mood: 'happy' },
     ],
   },
+  '/labour/reports': {
+    key: '/tour/labour-reports',
+    version: 1,
+    introFromPage: true,
+    startWhen: ['labour-reports.table', 'labour-reports.filters'],
+    steps: [
+      { target: 'labour-reports.filters', title: 'Dates and grouping', text: 'A week, four weeks or a month; by who is paid, site, project or trade.', mood: 'look' },
+      { target: 'labour-reports.stats', title: 'Earned, paid, owed', text: 'Earned is days × wage from attendance. Paid and owed come from the approved wage sheets.' },
+      { target: 'labour-reports.table', title: 'Every row', text: '"No wage sheet" means the days were worked but nobody made the week\'s sheet. Tap a worker or team for their statement.' },
+      { target: 'app.whatsapp', title: 'On WhatsApp', text: '"How much did we pay Rahim\'s team this month?"', mood: 'happy' },
+    ],
+  },
   '/subcontract/teams': {
     key: '/tour/subcontractors',
     // UX-64: the page now leads with who needs you (states, next step, rates by work).
