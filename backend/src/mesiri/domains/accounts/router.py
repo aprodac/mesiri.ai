@@ -670,13 +670,23 @@ async def cash_flow(project_id: uuid.UUID | None = None, weeks: int = Query(defa
 
 @router.get("/projects")
 async def projects(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                   since_start: bool = Query(False, description="From the first entry in the books to date_to (the "
+                                                                "page's 'to date' columns), whatever the span"),
                    auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
     """ACC-08: every project's P&L in the period (billed, cost, head-office share, profit, margin) and what it is
     owed and owes today, best first. A project manager sees their projects."""
     from mesiri.domains.accounts import statements
 
     allowed = await _ready_projects(conn, auth)
-    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    if since_start:
+        # The page used to ask from 2000-01-01, which the three-year limit refused (422): its "to date" columns then
+        # fell back to this year's billing (found 21 Nov playing the guided project). The books' own first day instead.
+        _, date_to = await _period(conn, auth, None, date_to)
+        first = (await conn.execute(text("SELECT MIN(entry_date) FROM journal_entries WHERE organization_id = :org"),
+                                    {"org": auth.organization_id})).scalar()
+        date_from = min(first, date_to) if first else date_to
+    else:
+        date_from, date_to = await _period(conn, auth, date_from, date_to)
     rows = await statements.projects_table(conn, auth.organization_id, date_from, date_to, allowed)
     total = {k: sum((Decimal(r[k]) for r in rows), Decimal(0)) for k in ("billed", "cost", "direct", "overheads", "profit",
                                                                          "receivable", "payable")}

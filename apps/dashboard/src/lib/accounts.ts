@@ -538,7 +538,7 @@ export interface OverheadSettings {
   head_office_project_id: string | null
   head_office_project: string | null
 }
-export async function fetchProjectsBooks(period: Partial<Period>): Promise<Period & OverheadSettings & { projects: ProjectRow[]; total: Omit<ProjectRow, 'project_id' | 'name'> }> {
+export async function fetchProjectsBooks(period: Partial<Period> & { since_start?: boolean }): Promise<Period & OverheadSettings & { projects: ProjectRow[]; total: Omit<ProjectRow, 'project_id' | 'name'> }> {
   return (await api.get('/accounts/projects', { params: clean(period) })).data
 }
 
