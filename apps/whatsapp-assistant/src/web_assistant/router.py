@@ -46,6 +46,9 @@ router = APIRouter(prefix="/assistant", tags=["assistant"])
 #: Marks the message as from the dashboard in its log row (normalized
 #: message metadata and raw payload), so the inbox can tell the doors apart.
 SOURCE = "dashboard"
+#: MOB-03: the mobile app uses the same door and says so in this header; any other value is the dashboard.
+CLIENT_HEADER = "X-Mesiri-Client"
+APP_SOURCE = "app"
 MAX_TEXT = 2000
 #: Per person, on top of the trial's daily AI cap (SS-09).
 RATE_LIMIT = 20
@@ -55,6 +58,9 @@ REPLY_TIMEOUT_S = 60
 STILL_WORKING = "Still working on it. It will show on Today when it is saved."
 #: Voice notes from the browser: Ogg/Opus, like WhatsApp's, up to a minute.
 VOICE_MIME = "audio/ogg"
+#: MOB-03: phones (Android and iPhone alike) record AAC in an MP4 file (.m4a); the speech step reads it as it reads
+#: Ogg (Sarvam reads the file itself, checked 21 Nov 2026 with a Malayalam note sent both ways).
+M4A_MIME = "audio/mp4"
 MAX_VOICE_SECONDS = 62
 MAX_VOICE_BYTES = 5 * 1024 * 1024
 
@@ -113,6 +119,67 @@ async def sender_number(user: dict) -> tuple[uuid.UUID, str]:
     return user_id, number
 
 
+def voice_kind(audio: bytes) -> tuple[str, str] | None:
+    """The recording's (mime type, file extension) when it is one the speech step reads, else None."""
+    if audio.startswith(b"OggS"):
+        return VOICE_MIME, "ogg"
+    if audio[4:8] == b"ftyp":
+        return M4A_MIME, "m4a"
+    return None
+
+
+def _boxes(data: bytes, start: int, end: int):
+    """The MP4 boxes between ``start`` and ``end``: (type, body start, body end)."""
+    at = start
+    while at + 8 <= end:
+        size = int.from_bytes(data[at:at + 4], "big")
+        kind = data[at + 4:at + 8]
+        head = 8
+        if size == 1 and at + 16 <= end:
+            size, head = int.from_bytes(data[at + 8:at + 16], "big"), 16
+        elif size == 0:
+            size = end - at
+        if size < head or at + size > end:
+            return
+        yield kind, at + head, at + size
+        at += size
+
+
+def m4a_duration_seconds(audio: bytes) -> float | None:
+    """An MP4 recording's length, from its movie header (moov/mvhd); None when it can't be read."""
+    for kind, start, end in _boxes(audio, 0, len(audio)):
+        if kind != b"moov":
+            continue
+        for inner, body, stop in _boxes(audio, start, end):
+            if inner != b"mvhd" or body + 4 > stop:
+                continue
+            version = audio[body]
+            if version == 1 and body + 32 <= stop:
+                scale = int.from_bytes(audio[body + 20:body + 24], "big")
+                length = int.from_bytes(audio[body + 24:body + 32], "big")
+            elif version == 0 and body + 20 <= stop:
+                scale = int.from_bytes(audio[body + 12:body + 16], "big")
+                length = int.from_bytes(audio[body + 16:body + 20], "big")
+            else:
+                return None
+            return length / scale if scale else None
+    return None
+
+
+def voice_seconds(audio: bytes) -> float | None:
+    kind = voice_kind(audio)
+    if kind is None:
+        return None
+    return ogg_duration_seconds(audio) if kind[0] == VOICE_MIME else m4a_duration_seconds(audio)
+
+
+def client_source(request: Request) -> str:
+    """Which door the message came through: the mobile app, or the dashboard (the default)."""
+    headers = getattr(request, "headers", None) or {}
+    said = next((v for k, v in headers.items() if str(k).lower() == CLIENT_HEADER.lower()), "")
+    return APP_SOURCE if str(said).strip().lower() == APP_SOURCE else SOURCE
+
+
 async def handle(
     container: object,
     wa_id: str,
@@ -120,6 +187,7 @@ async def handle(
     text: str = "",
     tap: str | None = None,
     voice: bytes | None = None,
+    source: str = SOURCE,
 ) -> WebMessageResponse:
     """Run one message as `wa_id` and return Mesiri's replies. A voice note
     is stored where WhatsApp's are and sent as one (the agent transcribes it
@@ -131,19 +199,20 @@ async def handle(
         capture.text(refusal)
         return WebMessageResponse(message_id=message_id, replies=capture.replies)
 
-    metadata: dict[str, object] = {"source": SOURCE}
+    metadata: dict[str, object] = {"source": source}
     if tap:
         metadata["interactive_reply_id"] = tap
     media = None
     modality = InputModality.INTERACTIVE if tap else InputModality.TEXT
     if voice is not None:
-        key = f"media/{message_id}/web-voice.ogg"
-        await container.object_storage.put_object(key, voice, content_type=VOICE_MIME)  # type: ignore[attr-defined]
+        mime, extension = voice_kind(voice) or (VOICE_MIME, "ogg")
+        key = f"media/{message_id}/web-voice.{extension}"
+        await container.object_storage.put_object(key, voice, content_type=mime)  # type: ignore[attr-defined]
         media = MediaReference(
             object_key=key,
-            mime_type=VOICE_MIME,
+            mime_type=mime,
             size_bytes=len(voice),
-            duration_seconds=ogg_duration_seconds(voice),
+            duration_seconds=voice_seconds(voice),
         )
         modality = InputModality.VOICE
     message = NormalizedMessage(
@@ -157,7 +226,7 @@ async def handle(
     )
     try:
         await asyncio.wait_for(
-            run_captured(container, message, capture, {"source": SOURCE}), timeout=REPLY_TIMEOUT_S
+            run_captured(container, message, capture, {"source": source}), timeout=REPLY_TIMEOUT_S
         )
     except TimeoutError:
         capture.text(STILL_WORKING)
@@ -215,15 +284,15 @@ async def send_message(
     if len(text) > MAX_TEXT:
         raise HTTPException(status_code=413, detail=f"Keep it under {MAX_TEXT} characters.")
     container, wa_id = await _ready_sender(request, user)
-    return await handle(container, wa_id, text=text, tap=tap)
+    return await handle(container, wa_id, text=text, tap=tap, source=client_source(request))
 
 
 @router.post("/messages/voice", response_model=WebMessageResponse)
 async def send_voice(
     request: Request, user: dict = Depends(get_current_user)
 ) -> WebMessageResponse:
-    """A voice note: the body is the recording itself, Ogg/Opus (what WhatsApp
-    sends, so the speech step and its billing read it as they read those)."""
+    """A voice note: the body is the recording itself, Ogg/Opus (what WhatsApp and
+    the browser send) or AAC in MP4 (.m4a, what the mobile app's phones record, MOB-03)."""
     audio = await request.body()
     if not audio:
         raise HTTPException(status_code=400, detail="Nothing was recorded. Try again.")
@@ -231,14 +300,14 @@ async def send_voice(
         raise HTTPException(
             status_code=413, detail="That recording is too long. Keep it under a minute."
         )
-    if not audio.startswith(b"OggS"):
+    if voice_kind(audio) is None:
         raise HTTPException(
             status_code=415, detail="The recording didn't come through. Record it again."
         )
-    seconds = ogg_duration_seconds(audio)
+    seconds = voice_seconds(audio)
     if seconds is not None and seconds > MAX_VOICE_SECONDS:
         raise HTTPException(
             status_code=413, detail="That recording is too long. Keep it under a minute."
         )
     container, wa_id = await _ready_sender(request, user)
-    return await handle(container, wa_id, voice=audio)
+    return await handle(container, wa_id, voice=audio, source=client_source(request))

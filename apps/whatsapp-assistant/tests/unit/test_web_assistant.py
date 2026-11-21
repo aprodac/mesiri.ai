@@ -301,12 +301,29 @@ class _Database:
         return _Tx()
 
 
-def _voice_request(container: Any, audio: bytes) -> Any:
+def _voice_request(container: Any, audio: bytes, headers: dict | None = None) -> Any:
     async def body() -> bytes:
         return audio
 
     return SimpleNamespace(
-        app=SimpleNamespace(state=SimpleNamespace(container=container)), body=body
+        app=SimpleNamespace(state=SimpleNamespace(container=container)), body=body, headers=headers or {}
+    )
+
+
+def _box(kind: bytes, body: bytes) -> bytes:
+    return (8 + len(body)).to_bytes(4, "big") + kind + body
+
+
+def _m4a(*, seconds: float, version: int = 0) -> bytes:
+    """A phone's AAC recording as the door sees it: ftyp, the sound (mdat), then the movie header (moov/mvhd)."""
+    scale = 1000
+    length = int(seconds * scale)
+    if version == 1:
+        mvhd = bytes([1, 0, 0, 0]) + b"\x00" * 16 + scale.to_bytes(4, "big") + length.to_bytes(8, "big")
+    else:
+        mvhd = bytes([0, 0, 0, 0]) + b"\x00" * 8 + scale.to_bytes(4, "big") + length.to_bytes(4, "big")
+    return _box(b"ftyp", b"M4A \x00\x00\x02\x00isomiso2") + _box(b"mdat", b"\x21" * 300) + _box(
+        b"moov", _box(b"mvhd", mvhd + b"\x00" * 80)
     )
 
 
@@ -342,7 +359,8 @@ async def test_a_voice_note_is_stored_and_sent_as_one_and_its_words_come_back(mo
     ("audio", "status"),
     [
         (b"", 400),
-        (b"RIFF....WAVEfmt ", 415),  # not Ogg: the speech step reads Ogg only
+        (b"RIFF....WAVEfmt ", 415),  # neither Ogg nor MP4: the door takes only what the phones and browsers record
+        (_m4a(seconds=75), 413),  # MOB-03: an app recording over a minute, read from its own header
         (b"OggS" + b"\x00" * (web.MAX_VOICE_BYTES), 413),
     ],
 )
@@ -376,3 +394,67 @@ async def test_typing_has_no_transcript(monkeypatch) -> None:
 def test_the_rate_limit_uses_what_the_apps_redis_client_has() -> None:
     """The class guard: the limiter calls only what the real client and its stand-in both offer."""
     assert callable(getattr(RedisClient, "count", None)) and callable(getattr(FakeRedis, "count", None))
+
+
+# --- The mobile app (MOB-03) -------------------------------------------------
+
+
+async def test_a_phone_recording_m4a_is_stored_and_sent_as_a_voice_note_from_the_app(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    handler = _Handler()
+    storage = _Storage()
+    container = SimpleNamespace(
+        simulate_handler=handler, redis_client=None, object_storage=storage, material_db=_Database("innu 6 mason")
+    )
+    audio = _m4a(seconds=12.5)
+
+    response = await web.send_voice(_voice_request(container, audio, {"X-Mesiri-Client": "app"}), _token())
+
+    [message] = handler.messages
+    assert message.modality is InputModality.VOICE
+    assert message.metadata["source"] == "app"
+    [(key, (data, content_type))] = storage.objects.items()
+    assert key == f"media/{message.message_id}/web-voice.m4a"
+    assert (data, content_type) == (audio, "audio/mp4")
+    assert message.media.mime_type == "audio/mp4" and message.media.duration_seconds == 12.5
+    assert response.transcript == "innu 6 mason"
+
+
+async def test_the_dashboards_ogg_note_is_unchanged_and_an_unknown_client_is_the_dashboard(monkeypatch) -> None:
+    """The guard: the dashboard's Tell Mesiri sends no header (or anything else) and stays the dashboard, as Ogg."""
+    _numbers(monkeypatch)
+    handler = _Handler()
+    storage = _Storage()
+    container = SimpleNamespace(
+        simulate_handler=handler, redis_client=None, object_storage=storage, material_db=None
+    )
+
+    await web.send_voice(_voice_request(container, OGG, {"X-Mesiri-Client": "something"}), _token())
+
+    [message] = handler.messages
+    assert message.metadata["source"] == "dashboard"
+    assert message.media.mime_type == "audio/ogg"
+
+
+async def test_typing_from_the_app_is_marked_as_the_app(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    handler = _Handler()
+    request = _request(_container(handler))
+    request.headers = {"x-mesiri-client": "App"}
+
+    await web.send_message(web.WebMessageRequest(text="innu 4 helper"), request, _token())
+
+    [message] = handler.messages
+    assert message.metadata["source"] == "app"
+
+
+@pytest.mark.parametrize("version", [0, 1])
+def test_an_m4a_recordings_length_is_read_from_its_movie_header(version) -> None:
+    assert web.m4a_duration_seconds(_m4a(seconds=42.0, version=version)) == 42.0
+    assert web.voice_seconds(_m4a(seconds=3.5, version=version)) == 3.5
+
+
+def test_a_broken_m4a_has_no_length_and_never_raises() -> None:
+    assert web.m4a_duration_seconds(b"\x00\x00\x00\x18ftypM4A ") is None
+    assert web.m4a_duration_seconds(_m4a(seconds=5)[:-40]) is None
+    assert web.m4a_duration_seconds(b"\xff\xff\xff\xffmoov") is None
