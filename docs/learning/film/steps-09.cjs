@@ -10,10 +10,25 @@ const row = (pg, text) => visible(pg.locator('main').getByText(text, { exact: tr
 const card = (pg, text) => visible(pg.locator('main').getByText(text))
   .locator('xpath=ancestor::*[contains(@class,"rounded-xl") or self::section][1]')
 const panel = (pg, part) => pg.locator(`[data-guide="line.${part}"]`)
+/** The sample's date of a plan day, read off the day banner ("Day 19 of 62 · Thu, 10 Dec"), as YYYY-MM-DD. */
+async function dateOf(pg, n) {
+  const text = await pg.getByText(/Day \d+ of \d+ · /).first().innerText()
+  const [, d, dd, mon] = text.match(/Day (\d+) of \d+ · \w+, (\d+) (\w+)/)
+  const today = new Date(`${dd} ${mon} ${new Date().getFullYear()} 12:00`)
+  const at = new Date(today.getTime() - (Number(d) - n) * 86400000)
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+}
 
 module.exports = {
   noticed: [
-    async (pg, h) => { await h.go('/cost/green-red?project={Green Villa}'); return 'main section:has([data-guide]) >> nth=0' },
+    async (pg, h) => {
+      // This week so far, Monday to Wednesday: the three days the plastering was redone (green_villa.REWORK).
+      await h.go('/cost/green-red?project={Green Villa}')
+      const from = await dateOf(pg, 16)
+      const to = await dateOf(pg, 18)
+      await h.go(`/cost/green-red?project={Green Villa}&from=${from}&to=${to}`)
+      return 'main section:has([data-guide]) >> nth=0'
+    },
     async (pg) => row(pg, 'Plastering'),
     async (pg, h) => {
       await visible(pg.locator('main').getByText('Plastering', { exact: true })).click()
@@ -28,28 +43,12 @@ module.exports = {
     async (pg) => visible(pg.locator('main table')),
   ],
   acted: [
-    async (pg, h) => { await h.go('/tasks?view=all&project={Green Villa}'); return visible(pg.locator('[data-guide="tasks.add"]')) },
+    async (pg, h) => { await h.go('/tasks?view=all&project={Green Villa}'); return '[data-guide="tasks.list"]' },
+    async (pg) => row(pg, TASK),
     async (pg, h) => {
-      await visible(pg.locator('[data-guide="tasks.add"]')).click()
-      await h.wait(1000)
-      const dlg = dialog(pg)
-      await dlg.locator('#task-title').fill(TASK)
-      const project = dlg.getByRole('combobox').filter({ hasText: /Pick a project/ })
-      if (await project.count()) {
-        await project.first().click()
-        await pg.getByRole('option', { name: 'Green Villa' }).first().click()
-        await h.wait(800)
-      }
-      await dlg.getByRole('combobox').filter({ hasText: /Who does it|Nobody yet/ }).first().click()
-      await pg.getByRole('option', { name: /Ravi/ }).first().click()
-      await dlg.getByRole('button', { name: 'Tomorrow', exact: true }).click()
-      await h.wait(400)
-      return dlg
-    },
-    async (pg, h) => {
-      await dialog(pg).getByRole('button', { name: 'Give task' }).click()
-      await h.wait(2500)
-      return row(pg, TASK)
+      await visible(pg.getByText(TASK)).click()
+      await h.wait(1500)
+      return 'aside[aria-label="Task detail"]'
     },
   ],
   back: [

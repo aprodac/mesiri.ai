@@ -78,6 +78,15 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
       WA-316 (5): as a project manager the assistant put names in `worker_id` and Save was refused.
 - [x] Built: `node docs/learning/film/build.mjs 03` → `out/episode-03.mp4` (about 7 minutes).
 
+### Episode 9, 21 Nov
+
+- [x] Needed first: Cost control telling one story (UX-93, UX-94, UX-96, UX-97), a line opening its entries (UX-95), cost
+      reads that never race (labour split), and the sample company calibrated to its estimate (LRN-F30).
+- [x] `node docs/learning/film/record.cjs 09 <token>`: the owner on day 19 (Anil counts each day's work the next morning,
+      so Wednesday's rework is on its line only on Thursday; Green / red opened on Monday to Wednesday by `from`/`to`),
+      day 25, day 31 (the day after Green Villa's running bill, which is the owner's own entry on day 30).
+- [x] Built: `node docs/learning/film/build.mjs 09` → `out/episode-09.mp4`.
+
 ### Episode 6, 21 Nov
 
 - [x] Story first (LRN-F25): the Annex mixer on hire, logged days 2 to 7, broken down on day 5, fixed day 6, billed day 9.

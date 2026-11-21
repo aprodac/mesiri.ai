@@ -38,7 +38,7 @@ Green Villa's story.
 | 6 | **Ep 6: Problems and machines** | none yet | follow a problem from WhatsApp to closed; a machine's day | recorded 21 Nov ([plan](film/EPISODE_06_PLAN.md)); waits for review | **missing** (see 3.3) |
 | 7 | **Ep 7: The subcontractor** | ch. 7 "A subcontractor" (Anil, Meera) | pay a subcontractor only for measured work | recorded 21 Nov ([plan](film/EPISODE_07_PLAN.md)); waits for review | general |
 | 8 | **Ep 8: Billing the client** | ch. 9 "Billing the client" (Owner) | explain how money comes in, variations included | to script | general |
-| 9 | **Ep 9: Is it making money?** | ch. 10 "Is it making money?" (Owner, Anil) | read a project's health halfway and act on a red line | to script | general |
+| 9 | **Ep 9: Is it making money?** ("Where every entry goes") | ch. 10 "Is it making money?" (Owner, Anil) | read a project's health halfway and act on a red line | recorded 21 Nov ([plan](film/EPISODE_09_PLAN.md)); waits for review | general |
 | 10 | **Ep 10: Month end** | ch. 11 "Month end" (Meera) | close a month: GST, TDS, cash and bank, the books, Tally | to script; needs story batch 1 | general |
 | 11 | **Ep 11: Handover, and after** | none yet (the 62-day plan's last days, played with Next day) | close a project: snags, final bill, handover, defects period, retention | to script | **missing** (see 3.3) |
 

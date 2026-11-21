@@ -37,7 +37,7 @@
         "The BOQ is the yardstick. Each line says what a unit of work should cost: labour, material, and what the client pays for it.",
         "So every piece of work done earns its share of the budget. Plaster forty square metres, and the line has earned forty times its rates.",
         "Against that, what was really spent: the crew that day, the cement that went into it. Earned against spent, line by line, is the real margin.",
-        "The books are different. They count bills: what was billed to the client against what was paid out. Work done and not billed yet shows as a loss in the books. Both are true; they answer different questions."
+        "The books are different. They count bills: what was billed to the client against what was paid out. Work done and not billed yet makes the books look worse than the job. Both are true; they answer different questions."
       ],
       "steps": [
         {
@@ -112,8 +112,8 @@
       "eyebrow": "In Mesiri · Green / red · Thursday",
       "title": "A line goes red",
       "beats": [
-        "Thursday. Anil opens Green / red for Green Villa's last seven days.",
-        "Plastering at the Main block is red: the labour spent this week is more than the work it did has earned.",
+        "Thursday morning. Anil has counted yesterday's work on the BOQ. He opens Green / red for Green Villa, this week so far: Monday to Wednesday.",
+        "Plastering at the Main block is red: ten thousand rupees of work earned, fifteen thousand of labour spent. Five thousand over in three days.",
         "One tap on the line, and the figures open into their entries: three days of sixteen square metres each, with a full crew every day.",
         "The site's notes say why: walls chased for conduits missed on the first pass, plastered again. The crew was busy. Most of it was rework."
       ],
@@ -121,7 +121,7 @@
         {
           "at": 0,
           "url": "/cost/green-red?project={Green Villa}",
-          "show": "Green / red, the last seven days",
+          "show": "Green / red, Monday to Wednesday",
           "mark": "the week"
         },
         {
@@ -141,11 +141,11 @@
           "mark": "the labour"
         }
       ],
-      "record": "As Anil (PROJECT_MANAGER) on day 18, the rework's last day.",
-      "as": "PROJECT_MANAGER",
-      "day": 18,
+      "record": "As the owner on day 19 (Thursday): Anil counted Wednesday's work on the BOQ this morning, so the three rework days are on the line.",
+      "as": "ADMIN",
+      "day": 19,
       "keep": true,
-      "play": "PROJECT_MANAGER"
+      "play": "ADMIN"
     },
     {
       "id": "materials",
@@ -156,7 +156,7 @@
       "beats": [
         "The cement tells the same story from the other side.",
         "Materials vs BOQ sets what was used against what the work done should have used, from the BOQ's materials per unit.",
-        "Blocks, sand, steel: within what the work needed. Cement: a little more. A full day's cement on days that did less than half a day's new work."
+        "Blocks, steel, aggregate: within what the work needed. Cement and sand: more. A hundred and ninety-four bags used where the work done needed a hundred and twenty-eight: a full day's mortar on days that did less than half a day's new work."
       ],
       "frames": [
         {
@@ -176,9 +176,9 @@
           "mark": "the list"
         }
       ],
-      "record": "As Anil on day 18.",
-      "as": "PROJECT_MANAGER",
-      "day": 18,
+      "record": "As the owner on day 19.",
+      "as": "ADMIN",
+      "day": 19,
       "keep": true
     },
     {
@@ -188,33 +188,31 @@
       "eyebrow": "In Mesiri · Tasks",
       "title": "What Anil does about it",
       "beats": [
-        "Seeing it is half of it. Anil acts the same day.",
-        "A task for Ravi: mark every conduit point before the next room is plastered. Due tomorrow.",
+        "Seeing it is half of it. Anil acted the same day it went red.",
+        "A task for Ravi: mark every conduit point before the next room is plastered. Ravi has it on his list, due today.",
         "And Rahim's helpers at the Main block cut from four to two for the rest of the plastering: the work left does not need a full gang."
       ],
       "frames": [
         {
           "at": 0,
           "url": "/tasks?view=all&project={Green Villa}",
-          "show": "Tasks",
-          "mark": "New task"
+          "show": "Tasks, Green Villa",
+          "mark": "the list"
         },
         {
           "at": 1,
-          "do": "New task: Mark every conduit point before the next room is plastered · For Ravi · Tomorrow",
-          "show": "the task form",
-          "mark": "the form"
+          "show": "Anil's task for Ravi",
+          "mark": "the task"
         },
         {
           "at": 2,
-          "do": "Give task",
-          "show": "the task, Ravi, due tomorrow",
-          "mark": "the task"
+          "show": "who has it, and by when",
+          "mark": "the task's detail"
         }
       ],
-      "record": "As Anil on day 18: the task is his entry that day.",
-      "as": "PROJECT_MANAGER",
-      "day": 18,
+      "record": "As the owner on day 19: Anil's task of day 18 (the plan's entry, played by the cast).",
+      "as": "ADMIN",
+      "day": 19,
       "keep": true
     },
     {
@@ -261,8 +259,8 @@
       "title": "Is it making money?",
       "beats": [
         "Day thirty-one. Green Villa's running bill went to Dr. Anand Krishnan yesterday. Ramesh opens the project's P&L.",
-        "The books: what was billed against what was paid out. Work done and not billed yet makes the books look worse than the job is.",
-        "The real margin: the work done at its rates against what it cost. And at finish: where the budget says the job will end, with everything spent counted.",
+        "The books: billed against what was paid out, eight percent. They lag, because twenty-three lakh rupees of work is done and not billed yet.",
+        "The real margin: the work done at its rates against what it cost, fourteen and a half percent. And at finish: sixty-three lakh against a budget of sixty-two, seventy-two thousand over. The plastering rework is in it, and it stopped growing.",
         "From any of these figures he can go down: to Budget vs actual, to the line, to the entries, to Ravi's message. That is what entering everything buys him."
       ],
       "frames": [
@@ -349,7 +347,7 @@
       "beats": [
         "Three questions. Pause, and answer them before you go on.",
         "One: what does a piece of work earn? Its quantity times its BOQ line's rates.",
-        "Two: the books show a loss, the real margin a profit. Which is wrong? Neither: the work done has not been billed yet.",
+        "Two: the books say eight percent, the real margin fourteen and a half. Which is right? Both: the books count bills, and twenty-three lakh of work is not billed yet.",
         "Three: plastering went red. How did Anil know why? He tapped the line: the work on it, the crew on it, and the site's notes.",
         "Next: billing the client. Turning the work done into money in the bank."
       ],
@@ -360,7 +358,7 @@
         },
         {
           "at": 2,
-          "text": "Books say loss, real margin says profit: which is wrong?"
+          "text": "Books 8%, real margin 14.5%: which is right?"
         },
         {
           "at": 3,
