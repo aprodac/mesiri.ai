@@ -404,7 +404,7 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
   day: number
   date: string
   moments: Moment[]
-  summary: { who: string; kind: string; count: number }[]
+  summary: { who: string; kind: string; count: number; said?: string; short?: string }[]
   forYou: ForYou[]
   waiting: number
   onClose: () => void
@@ -477,16 +477,8 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
   )
 }
 
-const DID_SHORT: Record<string, string> = {
-  attendance: 'attendance', work: 'work entries', use: 'material used', conditions: 'site notes', issue: 'problems',
-  request: 'requests', delivery: 'deliveries', order: 'orders', boq_count: 'BOQ counts', issue_resolve: 'fixed',
-  supplier_bill: 'bills booked', supplier_payment: 'payments', wage_pay: 'wages paid', wage_approve: 'wages approved',
-  client_receipt: 'client payments', ra_bill: 'running bills', expense: 'expenses', advance: 'advances',
-  measurement: 'measurements', work_order: 'work orders', sub_bill: 'subcontract bills', sub_payment: 'subcontract paid',
-  stage: 'stage moved',
-}
 
-function PersonCard({ who, index, moments, counts }: { who: string; index: number; moments: Moment[]; counts: { kind: string; count: number }[] }) {
+function PersonCard({ who, index, moments, counts }: { who: string; index: number; moments: Moment[]; counts: { kind: string; count: number; short?: string }[] }) {
   const show = useOpen(400 + index * 220)
   const cast = CAST[who]
   return (
@@ -506,7 +498,7 @@ function PersonCard({ who, index, moments, counts }: { who: string; index: numbe
             {didIt(m.kind, m.what)}
           </p>
         ))}
-        <p className="m-0 mt-0.5 truncate text-[11px] text-white/45">{counts.map((c) => `${c.count} ${DID_SHORT[c.kind] ?? c.kind}`).join(' · ')}</p>
+        <p className="m-0 mt-0.5 truncate text-[11px] text-white/45">{counts.map((c) => `${c.count} ${c.short ?? c.kind.replace(/_/g, ' ')}`).join(' · ')}</p>
       </div>
     </li>
   )

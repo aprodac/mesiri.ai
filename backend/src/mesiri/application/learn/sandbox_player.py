@@ -54,6 +54,13 @@ BANK_ACCOUNT, _BANK_NAME, OPENING_BALANCE = sp.story.DEMO_BANK  # the seed opens
 # --- Where the sample is -----------------------------------------------------------------------------------------
 
 
+
+def _words(kind: str) -> dict[str, str]:
+    """A kind's words for the person ("work recorded", "work entries"): never its code name (21 Nov play-through)."""
+    k = sp.KINDS.get(kind)
+    return {"said": k.said, "short": k.short} if k else {"said": kind.replace("_", " "), "short": kind.replace("_", " ")}
+
+
 @dataclass
 class ForYou:
     id: str
@@ -1035,5 +1042,6 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
     token, expires = sandbox_token(user_id=user_id, org_id=org, role=role, name=name, real_org=person.organization_id,
                                    now=dt.datetime.now(dt.UTC), today=date)
     return Moved(day=target, date=date, token=token, expires_at=expires,
-                 summary=[{"who": who, "kind": kind, "count": n} for (who, kind), n in sorted(summary.items())],
+                 summary=[{"who": who, "kind": kind, "count": n, **_words(kind)}
+                          for (who, kind), n in sorted(summary.items())],
                  for_you=for_you, waiting=waiting, failed=failed, highlights=pick_highlights(played_now), finale=finale)

@@ -20,15 +20,6 @@ import { findPage } from '@/lib/module-map'
 const SKIPS = [2, 3, 7] as const
 
 /** The words for what the cast did, by kind of entry (the plan's kinds, sample_plan.py KINDS). */
-const DID: Record<string, string> = {
-  conditions: 'site days written up', attendance: 'attendance', work: 'work recorded', use: 'material used',
-  expense: 'expenses', issue: 'problems reported', request: 'material asked for', delivery: 'deliveries received',
-  order: 'orders placed', boq_count: 'work put on the BOQ', issue_resolve: 'problems closed', work_order: 'work orders',
-  measurement: 'measurements', supplier_bill: 'supplier bills booked', supplier_payment: 'suppliers paid',
-  sub_bill: 'subcontract bills', sub_payment: 'subcontractor paid', advance: 'advances given', wage_pay: 'wages paid',
-  client_receipt: 'client payments in', wage_approve: 'wage sheets approved', ra_bill: 'running bills sent',
-  stage: 'project stage moved',
-}
 
 function dayName(iso: string): string {
   const d = new Date(`${iso}T12:00:00`)
@@ -313,7 +304,7 @@ function ForYouMenu({ items, late }: { items: ForYou[]; late: number }) {
 
 function Away({ away, onClose }: { away: NonNullable<ReturnType<typeof takeDaysPassed>>; onClose: () => void }) {
   const byWho = new Map<string, string[]>()
-  for (const s of away.summary) byWho.set(s.who, [...(byWho.get(s.who) ?? []), `${DID[s.kind] ?? s.kind} ${s.count}`])
+  for (const s of away.summary) byWho.set(s.who, [...(byWho.get(s.who) ?? []), `${s.said ?? s.kind.replace(/_/g, ' ')} ${s.count}`])
   const days = away.day - away.from
   return (
     <div className="rounded-lg border border-info/20 bg-background/70 p-2.5 text-sm text-foreground" role="status" data-guide="sandbox.away">

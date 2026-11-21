@@ -329,7 +329,8 @@ export interface DaysPassed {
   date: string
   token: string
   expires_at: string
-  summary: { who: string; kind: string; count: number }[]
+  /** `said` / `short`: the kind in words (backend sample_plan.KINDS), never its code name. */
+  summary: { who: string; kind: string; count: number; said?: string; short?: string }[]
   for_you: ForYou[]
   waiting: { id: string; day: number; who: string; what: string }[]
   failed: { id: string; what: string; error: string }[]
