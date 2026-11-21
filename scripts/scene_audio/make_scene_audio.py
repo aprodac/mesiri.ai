@@ -39,19 +39,19 @@ NUMBERS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine
 
 # The narrator's lines. The opening's cast names each role's own part last ("And you, ...").
 LINES: dict[str, str] = {
-    "open-title": "Green Villa Builders. One project, from the first brick to the handover.",
+    "open-title": "Green Villa Builders. Two projects on site, and Green Villa's last two months, to the handover.",
     "open-cast-ADMIN": "Meet the team. Anil, the project manager. Ravi, on site. Meera, in accounts. And you, the owner.",
     "open-cast-PROJECT_MANAGER": "Meet the team. The owner. Ravi, on site. Meera, in accounts. And you, Anil, the project manager.",
     "open-cast-SITE_ENGINEER": "Meet the team. The owner. Anil, the project manager. Meera, in accounts. And you, Ravi, on site.",
     "open-cast-FINANCE": "Meet the team. The owner. Anil, the project manager. Ravi, on site. And you, Meera, in accounts.",
-    "open-day": "Before day one. Let's begin.",
+    "open-day": "Two weeks on Mesiri so far. Let's begin.",
     "open-back": "Welcome back on site.",
     "pass-dusk": "The sun goes down on site. The team works through the day.",
     "pass-dawn": "Good morning.",
     "pass-skip": "Skipping ahead.",
     "pass-back": "Going back.",
     "briefing": "Here's what everyone did, and your part today.",
-    "credits": "Green Villa, handed over. Every day of it, kept by Mesiri.",
+    "credits": "Green Villa, handed over. Kept by Mesiri, day by day.",
 }
 
 

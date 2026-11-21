@@ -25,7 +25,19 @@ sys.path.insert(0, str(ROOT / "backend" / "src"))
 from mesiri.application.learn import green_villa  # noqa: E402, I001  (after the path)
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import datetime as _dt  # noqa: E402
+
 import gv_drawings  # noqa: E402
+
+from mesiri.application.learn.sandbox import day_zero  # noqa: E402
+
+
+def on(day: int, iso: bool = False) -> str:
+    """A paper's date on the sample company's calendar (its day 0 is the contract's, 21 Nov 2026), so a quote, a
+    challan or a bill carries the date of the day the story has it: "1 June 2027"."""
+    d = day_zero() + _dt.timedelta(days=day)
+    return d.isoformat() if iso else f"{d.day} {d:%B %Y}"
+
 
 OUT = ROOT / "apps" / "dashboard" / "public" / "learn" / "kit"
 
@@ -71,7 +83,7 @@ ITEMS = (
 )
 VENDORS = (
     ("Malabar Cements Agency", None, None, "Palakkad", None, None),
-    ("Colour World Paints", None, None, "Round North, Thrissur", 12500, "2026-11-01"),
+    ("Colour World Paints", None, None, "Round North, Thrissur", 12500, on(-13, iso=True)),
     ("Kerala Tiles and Sanitary", None, None, "Chalakudy", None, None),
     ("Joy Tiling Works", None, None, "Angamaly", None, None),
 )
@@ -337,7 +349,7 @@ def quote_bytes(vendor: str) -> bytes:
         total += qty * rate
     rows.append(["Total, before GST", "", "", "", _rupees(total)[3:]])
     return _doc(f"Quotation: {vendor}", [("From", f"{vendor}, {place}"), ("Quotation no.", ref), ("To", "Green Villa Builders"),
-                                        ("For", "Green Villa, Main block, Puthur Road, Thrissur"), ("Date", "18 November 2026")],
+                                        ("For", "Green Villa, Main block, Puthur Road, Thrissur"), ("Date", on(4))],
                 rows, ["Rates include unloading at site. GST extra at 18% on cement and steel.", "Valid for 7 days. Delivery in 2 days from the order."])
 
 
@@ -345,7 +357,7 @@ def challan_bytes() -> bytes:
     rows = [["Item", "Unit", "Ordered", "Sent", ""], ["Cement (OPC 53)", "bags", f"{ORDERED}", f"{DELIVERED}", ""]]
     return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", _CS["challan"]),
                                      ("To", "Green Villa, Main block, Puthur Road, Thrissur"), ("Against", "Your order for cement"),
-                                     ("Date", "20 November 2026"), ("Vehicle", "Lorry (sample)")],
+                                     ("Date", on(6)), ("Vehicle", "Lorry (sample)")],
                 rows, [f"{ORDERED - DELIVERED} bags to follow with the next load.", "Received by: ____________   Site seal: ____________"],
                 note="What came on the lorry, signed at the gate.")
 
@@ -357,8 +369,8 @@ def bill_bytes() -> bytes:
             ["Cement (OPC 53)", "bags", f"{DELIVERED}", f"{BILL_RATE}", _rupees(amount)[3:]],
             [f"GST {CEMENT_GST}%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
     return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", _CS["bill"]),
-                                ("To", "Green Villa Builders"), ("Delivery", f"Challan {_CS['challan']}, 20 November 2026"),
-                                ("Date", "22 November 2026")],
+                                ("To", "Green Villa Builders"), ("Delivery", f"Challan {_CS['challan']}, {on(6)}"),
+                                ("Date", on(8))],
                 rows, ["Payment within 15 days. Bank details on request."])
 
 
@@ -379,7 +391,7 @@ def measurement_bytes() -> bytes:
     rows, _total = _tiled_rows()
     return _doc("Measurement sheet: vitrified tile flooring", [("Work", "Vitrified tile flooring, ground floor"),
                                                                ("Subcontractor", "Joy Tiling Works, Angamaly"),
-                                                               ("Site", "Green Villa, Main block"), ("Measured", "28 November 2026, by Ravi (site engineer) with Joy")],
+                                                               ("Site", "Green Villa, Main block"), ("Measured", f"{on(14)}, by Ravi (site engineer) with Joy")],
                 rows, ["Measured on the finished floor, wall to wall, from drawing A-101 rev B."])
 
 
@@ -389,7 +401,7 @@ def sub_bill_bytes() -> bytes:
             ["Vitrified tile flooring, laying", "sqm", f"{TILING_BILLED:.2f}", f"{TILING_RATE}", _rupees(amount)[3:]]]
     return _doc("Bill: Joy Tiling Works", [("From", "Joy Tiling Works, Angamaly"), ("Bill no.", green_villa.TILING["bill"]),
                                           ("To", "Green Villa Builders"), ("Work", "Ground floor flooring, Green Villa"),
-                                          ("Date", "29 November 2026")],
+                                          ("Date", on(15))],
                 rows, ["Labour only; tiles and adhesive supplied by the contractor."])
 
 

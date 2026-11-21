@@ -82,10 +82,15 @@ def test_company_today_asks_the_clock_first():
 
 
 def test_a_sample_company_starts_on_a_saturday_and_its_token_carries_the_date():
-    for offset in range(14):
-        day = dt.date(2026, 11, 2) + dt.timedelta(days=offset)
-        zero = sandbox.day_zero(day)
-        assert zero.weekday() == 5 and 0 <= (day - zero).days < 7
+    # On the contract's calendar (21 Nov 2026): the same Saturday whenever it is opened, the plan's day 62 the eve of
+    # the contract's handover (31 Jul 2027).
+    from mesiri.application.learn.green_villa import CONTRACT
+
+    for offset in range(0, 400, 37):
+        zero = sandbox.day_zero(dt.date(2026, 11, 2) + dt.timedelta(days=offset))
+        assert zero == dt.date(2027, 5, 29) and zero.weekday() == 5
+    last = zero + dt.timedelta(days=sandbox.HANDOVER_DAY)
+    assert 0 <= (dt.date.fromisoformat(CONTRACT["handover_on"]) - last).days < 7
     token, _exp = sandbox.sandbox_token(user_id=uuid.uuid4(), org_id=uuid.uuid4(), role="ADMIN", name="Asha",
                                         real_org=uuid.uuid4(), now=dt.datetime.now(dt.UTC), today=GAME)
     claims = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

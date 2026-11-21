@@ -873,19 +873,21 @@ export const ROLE_PATHS: Walkthrough[] = [
  *  Each chapter names the walkthroughs it runs; the bubble lists the chapters and jumps between them. Until the
  *  chapters' own walkthroughs are written (SS-69..SS-71) a chapter runs the workflow that already covers it, so the
  *  journey works end to end from day one; a chapter with nothing to run yet (handover and closing) is left out. */
-export const JOURNEY_CHAPTERS: { title: string; walks: string[] }[] = [
-  { title: 'Your sample company', walks: [] },
+/** `film`: the film episode watched before the chapter (docs/learning/LEARNING_PATH.md), named on its card (21 Nov:
+ *  "Chapter 4" and "Episode 3" are the same day on site). */
+export const JOURNEY_CHAPTERS: { title: string; walks: string[]; film?: string }[] = [
+  { title: 'Your sample company', walks: [], film: 'Prologue' },
   // SS-69 part 1 (17 Nov: "our focus is till BOQ, the role play working"): the person does it, Mesiri checks it.
-  { title: 'Set up Green Villa', walks: ['gv-setup'] },
-  { title: 'The BOQ', walks: ['gv-boq'] },
-  { title: 'A day on site', walks: ['site-to-report'] },
-  { title: 'Material', walks: ['material'] },
-  { title: 'Labour and wages', walks: ['labour-to-wages'] },
-  { title: 'A subcontractor', walks: ['subcontract'] },
-  { title: 'Money out', walks: ['supplier-bill'] },
-  { title: 'Billing the client', walks: ['billing'] },
-  { title: 'Is it making money?', walks: ['cost-control'] },
-  { title: 'Month end', walks: ['month-end'] },
+  { title: 'Set up Green Villa', walks: ['gv-setup'], film: 'Episode 1' },
+  { title: 'The BOQ', walks: ['gv-boq'], film: 'Episode 1' },
+  { title: 'A day on site', walks: ['site-to-report'], film: 'Episode 3' },
+  { title: 'Material', walks: ['material'], film: 'Episode 4' },
+  { title: 'Labour and wages', walks: ['labour-to-wages'], film: 'Episode 5' },
+  { title: 'A subcontractor', walks: ['subcontract'], film: 'Episode 7' },
+  { title: 'Money out', walks: ['supplier-bill'], film: 'Episode 4' },
+  { title: 'Billing the client', walks: ['billing'], film: 'Episode 8' },
+  { title: 'Is it making money?', walks: ['cost-control'], film: 'Episode 9' },
+  { title: 'Month end', walks: ['month-end'], film: 'Episode 10' },
 ]
 
 /** Chapter 0: where the person is, said before anything else (the plan's "Your sample company"). */
@@ -900,9 +902,9 @@ const JOURNEY_HELLO: WalkStep[] = [
   {
     page: '/today',
     mood: 'look',
-    title: 'One project, start to finish',
-    text: 'We follow Green Villa from the day it is won to the day it is billed. Jump to any chapter from the list in this box.',
-    say: 'We will follow Green Villa from the day it is won to the day it is billed. You can jump to any chapter from the list in this box.',
+    title: 'Green Villa, to the handover',
+    text: 'We follow Green Villa through its last two months: set up on Mesiri, a day on site, material, wages, bills and money, to the handover. Jump to any chapter from the list in this box.',
+    say: 'We will follow Green Villa through its last two months. Set up on Mesiri, a day on site, material, wages, bills and money, all the way to the handover. You can jump to any chapter from the list in this box.',
   },
 ]
 

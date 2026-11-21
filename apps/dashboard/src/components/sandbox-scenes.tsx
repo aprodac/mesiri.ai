@@ -580,7 +580,7 @@ function CreditRow({ left, right }: { left: string; right: string }) {
 }
 
 /** A chapter's title card in the guided project: its number, its name, its first line. */
-export function EpisodeCard({ number, of, title, line, onDone }: { number: number; of: number; title: string; line?: string; onDone: () => void }) {
+export function EpisodeCard({ number, of, title, line, film, onDone }: { number: number; of: number; title: string; line?: string; film?: string; onDone: () => void }) {
   const open = useOpen()
   const said = `chapter-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
   useSounds([{ id: 'sfx-boom', volume: 0.5 }, { id: said, delay: 250 }], `chapter-${number}`)
@@ -598,7 +598,7 @@ export function EpisodeCard({ number, of, title, line, onDone }: { number: numbe
       aria-live="assertive"
     >
       <div className="grid max-w-[90vw] justify-items-start gap-4 px-6">
-        <span className="font-mono text-[12px] tracking-[0.14em] text-white/55 uppercase">Chapter {number} of {of}</span>
+        <span className="font-mono text-[12px] tracking-[0.14em] text-white/55 uppercase">Chapter {number} of {of}{film ? ` · ${film}` : ''}</span>
         <RisingTitle text={title} show={open} delay={250} className="text-[clamp(44px,9vw,120px)]" />
         {line && open && <Ink text={line} writing delay={700} className="text-[clamp(16px,2vw,22px)] text-white/75" />}
         <span className="h-[3px] bg-primary transition-[width] duration-[2200ms] ease-in-out" style={{ width: open ? '100%' : '0%' }} aria-hidden />
@@ -672,7 +672,7 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
             <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">{kind === 'new' ? 'Your sample company' : 'Back on site'}</span>
             <RisingTitle text={name} show={open} delay={200} className="text-[clamp(44px,9vw,120px)]" />
             {kind === 'new' && open && (
-              <Ink text="One project, Green Villa, from the first brick to the handover." writing delay={1100} className="text-[clamp(16px,2vw,22px)] text-white/75" />
+              <Ink text="Two projects on site, and Green Villa's last two months, to the handover." writing delay={1100} className="text-[clamp(16px,2vw,22px)] text-white/75" />
             )}
           </>
         )}
