@@ -281,11 +281,20 @@ async def test_confirm_the_whole_day_in_one_go(conn) -> None:
     a member of another site can't confirm it."""
     created, ids = await _day(conn, "9876500049")
     auth = _auth(created)
-    before = await dpr_router.get_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
-    assert before["drafts"] == 2
+    reviews = PostgresFactReviewRepository(conn)
+    # The day's labour, sent on WhatsApp, is a draft too: the inbox counts it, so Confirm all must confirm it.
+    await reviews.mark_draft(organization_id=created.organization_id, fact_type=fact_review.LABOUR_REPORT,
+                             fact_id=ids["labour"])
+
+    async def inbox_count() -> int:
+        counts = await reviews.draft_counts_by_site(organization_id=created.organization_id, report_date=DAY)
+        return counts.get(created.site_id, 0)
+
+    assert await inbox_count() == 3
 
     done = await dpr_router.confirm_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
-    assert done == {"status": "confirmed", "confirmed": 2}
+    assert done == {"status": "confirmed", "confirmed": 3}
+    assert await inbox_count() == 0
     after = await dpr_router.get_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
     assert after["drafts"] == 0
     again = await dpr_router.confirm_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)

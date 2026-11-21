@@ -193,8 +193,11 @@ function BulkBar({ items, selected, setSelected }: { items: WaitingItem[] } & Se
       const failed: string[] = []
       for (const item of rows) {
         try {
-          if (item.kind === 'site_report') entries += (await confirmSiteDay(item.site_id!, item.date!)).confirmed
-          else await approveWageSheet(item.id)
+          if (item.kind === 'site_report') {
+            const n = (await confirmSiteDay(item.site_id!, item.date!)).confirmed
+            if (n === 0) { failed.push(`${item.title}: nothing was left to confirm`); continue }
+            entries += n
+          } else await approveWageSheet(item.id)
           ok += 1
         } catch (e) {
           failed.push(`${item.title}: ${apiErrorMessage(e)}`)
