@@ -458,3 +458,67 @@ def test_a_broken_m4a_has_no_length_and_never_raises() -> None:
     assert web.m4a_duration_seconds(b"\x00\x00\x00\x18ftypM4A ") is None
     assert web.m4a_duration_seconds(_m4a(seconds=5)[:-40]) is None
     assert web.m4a_duration_seconds(b"\xff\xff\xff\xffmoov") is None
+
+
+# --- The list waiting for Save, as data (MOB-05) ---------------------------------
+
+
+def _pending(tool: str, key: str, summary: str, body: dict) -> dict:
+    return {"tool": tool, "method": "POST", "path": "/materials/inflows", "params": {}, "body": body,
+            "summary": summary, "idempotency_key": key}
+
+
+async def test_the_reply_carries_the_list_waiting_for_save_as_the_assistant_keeps_it(monkeypatch) -> None:
+    from agent_api.whatsapp import state_key
+
+    _numbers(monkeypatch)
+    redis = FakeRedis()
+    material = str(uuid.uuid4())
+    body = {"material_id": material, "unit_id": str(uuid.uuid4()), "quantity": 50, "supplier": "Malabar Traders"}
+    state = {"batch": "b7", "pending": [_pending("record_receipt", "k-1", f"50 bags cement ({material}), Annex", body)]}
+    await redis.set_json(state_key(ORG, USR), state)
+    handler = _Handler()
+
+    response = await web.send_message(
+        web.WebMessageRequest(text="50 chaakku cement vannu"), _request(_container(handler, redis)), _token()
+    )
+
+    [entry] = response.ready
+    assert (entry.line, entry.tool, entry.path, entry.key) == (1, "record_receipt", "/materials/inflows", "k-1")
+    assert entry.body == body and entry.remove_id == "apiag:remove:b7:1"
+    assert material not in entry.summary and entry.summary.startswith("50 bags cement")  # never an id in words
+    # Read only: the assistant's list is exactly as it was.
+    assert await redis.get_json(state_key(ORG, USR)) == state
+
+
+async def test_nothing_waiting_is_an_empty_list_and_no_redis_is_none(monkeypatch) -> None:
+    _numbers(monkeypatch)
+
+    with_redis = await web.send_message(
+        web.WebMessageRequest(text="hi"), _request(_container(redis=FakeRedis())), _token()
+    )
+    without = await web.send_message(web.WebMessageRequest(text="hi"), _request(_container()), _token())
+
+    assert with_redis.ready == [] and without.ready is None
+
+
+async def test_an_unreadable_or_odd_list_never_breaks_the_reply(monkeypatch) -> None:
+    from agent_api.whatsapp import state_key
+
+    _numbers(monkeypatch)
+
+    class _Broken(FakeRedis):
+        async def get_json(self, key: str) -> Any:
+            raise RuntimeError("redis down")
+
+    broken = await web.send_message(
+        web.WebMessageRequest(text="hi"), _request(_container(redis=_Broken())), _token()
+    )
+    redis = FakeRedis()
+    await redis.set_json(state_key(ORG, USR), {"batch": None, "pending": ["junk", {"tool": "x"},
+                                                                          _pending("record_usage", "k-2", "3 bags", {})]})
+    odd = await web.send_message(web.WebMessageRequest(text="hi"), _request(_container(redis=redis)), _token())
+
+    assert broken.ready is None and [r.text for r in broken.replies]
+    [entry] = odd.ready
+    assert entry.line == 3 and entry.key == "k-2" and entry.remove_id is None  # no card, no Remove tap

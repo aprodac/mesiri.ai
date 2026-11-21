@@ -71,11 +71,32 @@ class WebMessageRequest(BaseModel):
     interactive_reply_id: str | None = None
 
 
+class ReadyEntry(BaseModel):
+    """MOB-05: one entry on the person's list waiting for Save, as data (what the TO SAVE card shows in words)."""
+
+    #: Its number on the card (1-based), as the assistant's Edit and Remove taps count it.
+    line: int
+    tool: str
+    method: str
+    path: str
+    params: dict
+    body: dict
+    summary: str
+    #: Its idempotency key: a client that saves it itself sends this as Idempotency-Key, so the assistant's own
+    #: Save of the same entry later answers "already saved" instead of recording it twice.
+    key: str
+    #: The assistant's own tap that takes this line off the list (its Remove button).
+    remove_id: str | None = None
+
+
 class WebMessageResponse(BaseModel):
     message_id: str
     replies: list[CapturedReply]
     #: A voice note's words, as Mesiri heard them; None for typing.
     transcript: str | None = None
+    #: MOB-05: the person's list waiting for Save after this message, read from the assistant's own state (never
+    #: changed here). None when it can't be read; [] when nothing is waiting.
+    ready: list[ReadyEntry] | None = None
 
 
 async def within_rate_limit(redis: object | None, user_id: str) -> bool:
@@ -188,6 +209,7 @@ async def handle(
     tap: str | None = None,
     voice: bytes | None = None,
     source: str = SOURCE,
+    who: tuple[uuid.UUID, uuid.UUID] | None = None,
 ) -> WebMessageResponse:
     """Run one message as `wa_id` and return Mesiri's replies. A voice note
     is stored where WhatsApp's are and sent as one (the agent transcribes it
@@ -233,7 +255,51 @@ async def handle(
     transcript = (
         await read_transcript(container, message.correlation_id) if voice is not None else None
     )
-    return WebMessageResponse(message_id=message_id, replies=capture.replies, transcript=transcript)
+    ready = await read_ready(container, *who) if who is not None else None
+    return WebMessageResponse(
+        message_id=message_id, replies=capture.replies, transcript=transcript, ready=ready
+    )
+
+
+async def read_ready(
+    container: object, organization_id: uuid.UUID, user_id: uuid.UUID
+) -> list[ReadyEntry] | None:
+    """MOB-05: the entries waiting for this person's Save, from the v3 assistant's own state (the list its TO SAVE
+    card shows), so the app can put one in a form. Read only: the list is the assistant's, changed only by its taps.
+    None when there is no Redis or the state can't be read."""
+    redis = getattr(container, "redis_client", None)
+    if redis is None:
+        return None
+    from agent_api.reply_guard import without_ids
+    from agent_api.whatsapp import REMOVE_PREFIX, state_key
+
+    try:
+        state = await redis.get_json(state_key(organization_id, user_id))  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 -- the replies already came; the list is a nicety for forms
+        return None
+    state = state if isinstance(state, dict) else {}
+    batch = state.get("batch")
+    entries: list[ReadyEntry] = []
+    for line, raw in enumerate(state.get("pending") or [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            entries.append(
+                ReadyEntry(
+                    line=line,
+                    tool=str(raw["tool"]),
+                    method=str(raw["method"]),
+                    path=str(raw["path"]),
+                    params=dict(raw.get("params") or {}),
+                    body=dict(raw.get("body") or {}),
+                    summary=without_ids(str(raw.get("summary") or "")),
+                    key=str(raw["idempotency_key"]),
+                    remove_id=f"{REMOVE_PREFIX}{batch}:{line}" if batch else None,
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return entries
 
 
 async def read_transcript(container: object, correlation_id: str) -> str | None:
@@ -254,6 +320,11 @@ async def read_transcript(container: object, correlation_id: str) -> str | None:
     except Exception:  # noqa: BLE001 -- the words are a nicety; the replies already came
         return None
     return (row.body_text or None) if row is not None else None
+
+
+def _who(user: dict) -> tuple[uuid.UUID, uuid.UUID]:
+    """The signed-in person's company and user id (already checked by ``sender_number``)."""
+    return uuid.UUID(str(user.get("org"))), uuid.UUID(str(user.get("sub")))
 
 
 async def _ready_sender(request: Request, user: dict) -> tuple[object, str]:
@@ -284,7 +355,9 @@ async def send_message(
     if len(text) > MAX_TEXT:
         raise HTTPException(status_code=413, detail=f"Keep it under {MAX_TEXT} characters.")
     container, wa_id = await _ready_sender(request, user)
-    return await handle(container, wa_id, text=text, tap=tap, source=client_source(request))
+    return await handle(
+        container, wa_id, text=text, tap=tap, source=client_source(request), who=_who(user)
+    )
 
 
 @router.post("/messages/voice", response_model=WebMessageResponse)
@@ -310,4 +383,6 @@ async def send_voice(
             status_code=413, detail="That recording is too long. Keep it under a minute."
         )
     container, wa_id = await _ready_sender(request, user)
-    return await handle(container, wa_id, voice=audio, source=client_source(request))
+    return await handle(
+        container, wa_id, voice=audio, source=client_source(request), who=_who(user)
+    )
