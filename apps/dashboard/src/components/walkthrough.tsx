@@ -461,6 +461,8 @@ export function WalkthroughRunner() {
   // page and wait for its target. A target that never shows (no data yet, a button this role doesn't have) is never
   // pointed at: a page-tour step is skipped, a workflow step is told in the middle of the screen.
   const navigated = React.useRef<string | null>(null)
+  /** The step whose named project is being opened (once per step). */
+  const picking = React.useRef<string | null>(null)
   const goRef = React.useRef(go)
   goRef.current = go
   // useNavigate changes with the address; the step must not start over when it does.
@@ -469,10 +471,12 @@ export function WalkthroughRunner() {
   // The project picked (on a picker step or in the top bar) goes with every page the walkthrough opens, or each
   // project page would ask for it again (SS-52). The top bar knows the project on a project's own pages too
   // (/projects/<id>/boq, lib/ScopeContext.tsx). A ref: picking one must not start the step over.
-  const { scope, setPortfolioScope } = useScope()
+  const { scope, setPortfolioScope, setProjectScope } = useScope()
   scopeNow.current = scope
   const portfolioRef = React.useRef(setPortfolioScope)
   portfolioRef.current = setPortfolioScope
+  const projectRef = React.useRef(setProjectScope)
+  projectRef.current = setProjectScope
   const scopeRef = React.useRef(scope)
   if (scope.mode !== 'portfolio') scopeRef.current = scope
   /** The page that last lit up a step's element, and since when: its later steps don't wait the full WAIT_MS. */
@@ -509,9 +513,19 @@ export function WalkthroughRunner() {
       return
     }
     // A step about every project (21 Nov: "handling multiple projects"): the top bar goes to All projects first.
-    if (step.allProjects && scopeNow.current.mode !== 'portfolio') {
-      scopeRef.current = { mode: 'portfolio' }
-      portfolioRef.current()
+    // Only for that page: the project picked before stays the walkthrough's, for the chapters after (21 Nov).
+    if (step.allProjects && scopeNow.current.mode !== 'portfolio') portfolioRef.current()
+    // Inside the sample company a step that names its project opens on it by itself (the guided project after an
+    // all-projects chapter, or a chapter jumped to from the list): never a "pick a project" page to get past.
+    if (step.pick && inSandbox() && !step.allProjects && scopeNow.current.mode === 'portfolio' && picking.current !== here) {
+      picking.current = here
+      void api.get<{ id: string; name: string }[]>('/projects').then((res) => {
+        const found = (Array.isArray(res.data) ? res.data : []).find((p) => p.name === step.pick)
+        if (!found) return
+        scopeRef.current = { mode: 'project', projectId: found.id } as typeof scopeRef.current
+        projectRef.current(found as Parameters<typeof setProjectScope>[0])
+        if (step.page) navigateRef.current(urlWithScope(step.page, scopeRef.current))
+      }).catch(() => undefined)
     }
     const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
     if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
