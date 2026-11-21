@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nProvider } from '../src/lib/i18n'
 import { SessionProvider, SiteProvider, useSession } from '../src/lib/session'
+import { OutboxProvider } from '../src/lib/outbox'
 import { colors } from '../src/theme'
 
 const queryClient = new QueryClient({
@@ -41,8 +42,10 @@ export default function RootLayout() {
         <I18nProvider>
           <SessionProvider>
             <SiteProvider>
-              <StatusBar style="dark" />
-              <Gate />
+              <OutboxProvider>
+                <StatusBar style="dark" />
+                <Gate />
+              </OutboxProvider>
             </SiteProvider>
           </SessionProvider>
         </I18nProvider>

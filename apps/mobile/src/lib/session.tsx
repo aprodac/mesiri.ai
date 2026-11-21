@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { loadToken, saveToken, whenSignedOut } from './api'
 import { fetchMe, fetchProjects, fetchSites, type Me, type Project, type Site } from './mesiri'
 import { getValue, setValue } from './storage'
+import { forgetKept, kept } from './kept'
 
 // Who is signed in, and which site they are reporting for. The site is always on screen; the app
 // picks it (the one they chose last, else their first site) and they change it from the site button.
@@ -35,7 +36,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     void loadToken().then((token) => setState(token ? 'signed_in' : 'signed_out'))
   }, [client])
 
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe, enabled: state === 'signed_in', staleTime: 5 * 60_000 })
+  // MOB-07: kept, so a phone opened on site with no signal still knows who it is (and its sites, and its outbox).
+  const me = useQuery({ queryKey: ['me'], queryFn: kept('me', fetchMe), enabled: state === 'signed_in', staleTime: 5 * 60_000 })
 
   const value = React.useMemo<Session>(
     () => ({
@@ -47,6 +49,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       },
       signOut: async () => {
         await saveToken(null)
+        await forgetKept()
         client.clear()
         setState('signed_out')
       },
@@ -98,8 +101,9 @@ async function loadPlaces(): Promise<Place[]> {
 }
 
 export function SiteProvider({ children }: { children: React.ReactNode }) {
-  const { state } = useSession()
-  const query = useQuery({ queryKey: ['places'], queryFn: loadPlaces, enabled: state === 'signed_in', staleTime: 10 * 60_000 })
+  const { state, me } = useSession()
+  const userKey = me?.user_id ?? ''
+  const query = useQuery({ queryKey: ['places', userKey], queryFn: kept(`places:${userKey}`, loadPlaces), enabled: state === 'signed_in' && !!userKey, staleTime: 10 * 60_000 })
   const [chosen, setChosen] = React.useState<string | null>(null)
 
   React.useEffect(() => {

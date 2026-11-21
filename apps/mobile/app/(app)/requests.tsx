@@ -7,6 +7,7 @@ import { useWords } from '../../src/lib/i18n'
 import { fetchRequests, type MaterialRequest } from '../../src/lib/mesiri'
 import { useSite } from '../../src/lib/session'
 import { ApiError } from '../../src/lib/api'
+import { kept } from '../../src/lib/kept'
 import { Button, Card, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
 import { colors, font, space } from '../../src/theme'
 
@@ -32,7 +33,7 @@ export default function Requests() {
   const { current } = useSite()
   const siteId = current?.site.id
   const projectId = current?.project.id
-  const list = useQuery({ queryKey: ['requests', siteId], queryFn: () => fetchRequests(projectId as string, siteId as string), enabled: !!siteId })
+  const list = useQuery({ queryKey: ['requests', siteId], queryFn: kept(`requests:${siteId}`, () => fetchRequests(projectId as string, siteId as string)), enabled: !!siteId })
   const items = list.data?.items ?? []
 
   const date = (d: string) => new Date(d.length === 10 ? `${d}T12:00:00` : d).toLocaleDateString(lang === 'ml' ? 'ml-IN' : 'en-IN', { day: 'numeric', month: 'short' })

@@ -219,17 +219,26 @@ export interface AssistantResponse {
 /** A voice note plus the model usually answers in 5–20 s; the door waits up to a minute. */
 const ASSISTANT_TIMEOUT_MS = 90_000
 
-export const sendText = (text: string) => post<AssistantResponse>('/assistant/messages', { text }, ASSISTANT_TIMEOUT_MS)
+/** MOB-07: the message's own id, so the same message sent again from the phone's queue is answered once. */
+const once = (messageId?: string) => (messageId ? { 'X-Mesiri-Message-Id': messageId } : undefined)
+
+export const sendText = (text: string, messageId?: string) =>
+  request<AssistantResponse>('POST', '/assistant/messages', {
+    json: { text },
+    timeoutMs: ASSISTANT_TIMEOUT_MS,
+    headers: once(messageId),
+  })
 
 export const sendTap = (id: string) =>
   post<AssistantResponse>('/assistant/messages', { interactive_reply_id: id }, ASSISTANT_TIMEOUT_MS)
 
 /** A recording from the phone: AAC in MP4 (.m4a) on Android and iPhone; Ogg from a browser. */
-export const sendVoice = (audio: Blob, contentType: string) =>
+export const sendVoice = (audio: Blob, contentType: string, messageId?: string) =>
   request<AssistantResponse>('POST', '/assistant/messages/voice', {
     body: audio,
     contentType,
     timeoutMs: ASSISTANT_TIMEOUT_MS,
+    headers: once(messageId),
   })
 
 // ── Forms (MOB-05): the routes the dashboard's own forms post to ─────────
