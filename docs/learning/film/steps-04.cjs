@@ -190,6 +190,14 @@ module.exports = {
       return pg.locator('main').getByText('We owe', { exact: true }).first().locator('xpath=ancestor::*[3]')
     },
   ],
+  // The owner, day 9 after the bill: the Main block's stock, and what is still to come on the orders.
+  stock: [
+    async (pg, h) => {
+      await h.go('/materials?project={Green Villa}&site={Green Villa › Main block}')
+      return pg.locator('main').getByText('Cement', { exact: true }).first().locator('xpath=ancestor::*[3]')
+    },
+    async (pg) => pg.locator('main').getByText('Coming', { exact: true }).first().locator('xpath=ancestor::*[2]'),
+  ],
   // Ravi, day 16 (the month's end): the Main block's store counted; cement 3 bags under the book, wastage. Kept for the owner.
   count: [
     async (pg, h) => {
