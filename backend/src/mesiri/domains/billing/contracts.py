@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 CLIENT_FIELDS = ("name", "contact_person", "phone", "email", "gstin", "address", "notes")
 TERM_FIELDS = ("contract_no", "contract_value", "signed_on", "retention_pct", "mobilisation_advance",
-               "advance_recovery_pct", "gst_pct", "tds_pct", "defect_liability_months", "payment_terms", "notes")
+               "advance_recovery_pct", "gst_pct", "tds_pct", "defect_liability_months", "payment_terms", "notes",
+               "contract_type")
 
 
 async def list_clients(conn: AsyncConnection, org: uuid.UUID) -> list[dict[str, Any]]:
@@ -80,6 +81,7 @@ async def put_contract(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
                        terms: dict[str, Any], user_id: uuid.UUID) -> None:
     """Create or replace the project's contract terms (every term field is written: one not sent becomes empty)."""
     values = {f: terms.get(f) for f in TERM_FIELDS}
+    values["contract_type"] = values["contract_type"] or "measured"  # FB-01: never empty; today's kind by default
     await conn.execute(text(
         f"INSERT INTO project_contracts (project_id, organization_id, client_id, updated_by, {', '.join(TERM_FIELDS)}) "  # noqa: S608
         f"VALUES (:p, :org, :client, :by, {', '.join(':' + f for f in TERM_FIELDS)}) "

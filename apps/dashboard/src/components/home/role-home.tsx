@@ -6,6 +6,7 @@ import { useModuleEnabled } from '@/lib/modules'
 import { MONEY_ROLES } from '@/lib/module-map'
 import { fetchHome, fetchMonths, mayReadBooks, short } from '@/lib/accounts'
 import { fetchReceivables } from '@/lib/receivables'
+import { fetchPaymentAlerts } from '@/lib/billing'
 import { fetchPayables } from '@/lib/vendors'
 import { fetchRequests } from '@/lib/requests'
 import { fetchOrders } from '@/lib/orders'
@@ -105,6 +106,8 @@ export function RoleHome({ rail = false, list = false }: { rail?: boolean; list?
   const opts = { retry: false, staleTime: 60_000 } as const
   const home = useQuery({ queryKey: ['home', 'accounts', projectId], queryFn: () => fetchHome(projectId), enabled: wants.home, ...opts })
   const receivables = useQuery({ queryKey: ['home', 'receivables'], queryFn: fetchReceivables, enabled: wants.receivables, ...opts })
+  // FB-01: a milestone reached and the client's stage payment not in. The same people as Receivables.
+  const stagePay = useQuery({ queryKey: ['payment-alerts', projectId ?? null], queryFn: () => fetchPaymentAlerts(projectId), enabled: wants.receivables, ...opts })
   const payables = useQuery({ queryKey: ['home', 'payables', projectId], queryFn: () => fetchPayables({ project_id: projectId }), enabled: wants.payables, ...opts })
   const months = useQuery({ queryKey: ['home', 'months'], queryFn: fetchMonths, enabled: wants.months, ...opts })
   const requests = useQuery({ queryKey: ['home', 'requests', projectId, siteId], queryFn: () => fetchRequests({ project_id: projectId, site_id: siteId }), enabled: wants.requests, ...opts })
@@ -140,6 +143,12 @@ export function RoleHome({ rail = false, list = false }: { rail?: boolean; list?
     <T key="receivable" label="Clients owe you" tag={wider('project')} to="/accounts/receivables" loading={receivables.isLoading} tone={old > 0 ? 'attention' : 'default'}
       value={owedToUs ? short(owedToUs.outstanding) : undefined}
       hint={owedToUs ? (old > 0 ? `${short(old)} over 60 days` : `${plural(owedToUs.clients, 'client')}`) : undefined} />
+  )
+  const stagesLate = stagePay.data?.projects ?? []
+  const stageTile = show(stagePay, wants.receivables) && stagesLate.length > 0 && (
+    <T key="stages" label="Stage payments late" tag={wider('project')} to={projectId ? `/billing/ra-bills?project=${projectId}` : '/accounts/receivables'} tone="attention"
+      value={short(stagePay.data!.short)}
+      hint={stagesLate.length === 1 && stagesLate[0].behind_since ? `${stagesLate[0].project}: ${stagesLate[0].behind_since.name} reached, follow up` : `${plural(stagesLate.length, 'project')} to follow up`} />
   )
   const owe = payables.data?.totals
   const payableTile = show(payables, wants.payables) && (
@@ -212,10 +221,10 @@ export function RoleHome({ rail = false, list = false }: { rail?: boolean; list?
   )
   const order: Record<Role, (React.ReactNode | false | null | undefined | 0)[]> = {
     // Sites reported and open issues are the strip right under these tiles, so they are not repeated here.
-    ADMIN: [cashTile, profitTile, receivableTile, payableTile, wagesTile, costTile, requestTile],
+    ADMIN: [cashTile, profitTile, stageTile, receivableTile, payableTile, wagesTile, costTile, requestTile],
     PROJECT_MANAGER: [requestTile, deliveryTile, wagesTile, costTile, machineTile],
     SITE_ENGINEER: [requestTile, deliveryTile, machineTile],
-    FINANCE: [cashTile, payableTile, wagesTile, receivableTile, unbilledTile, gstTile, tdsTile, closeTile],
+    FINANCE: [cashTile, stageTile, payableTile, wagesTile, receivableTile, unbilledTile, gstTile, tdsTile, closeTile],
   }
   for (const tile of order[role]) if (tile) tiles.push(tile)
   if (tiles.length === 0) return null

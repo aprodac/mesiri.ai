@@ -31,7 +31,11 @@ export interface Contract {
   defect_liability_months: number | null
   payment_terms: string | null
   notes: string | null
+  /** FB-01: measured (bills from the BOQ's measured work) or lump_sum (bills from the payment stages reached). */
+  contract_type: ContractType
 }
+
+export type ContractType = 'measured' | 'lump_sum'
 
 export type ContractInput = Partial<Omit<Contract, 'client_name'>> & { new_client?: ClientInput | null }
 
@@ -72,7 +76,9 @@ export type BillStatus = 'draft' | 'submitted' | 'certified' | 'cancelled'
 
 export interface RaBillLine {
   id: string
-  planned_item_id: string
+  /** The BOQ line billed; empty on a lump-sum bill's stage line (FB-01). */
+  planned_item_id: string | null
+  payment_stage_id?: string | null
   boq_code: string | null
   work: string
   unit: string
@@ -177,4 +183,67 @@ export interface ToBill {
 }
 export async function fetchToBill(): Promise<ToBill> {
   return (await api.get<ToBill>('/billing/to-bill')).data
+}
+
+// FB-01: payment stages. The client's payment schedule, each stage reached when its schedule activity is done.
+export interface PaymentStage {
+  id: string
+  project_id: string
+  name: string
+  amount: string
+  work_package_id: string | null
+  activity_name: string | null
+  reached: boolean
+  reached_on: string | null
+  /** Covered by the money received so far (stages in the order they were reached). */
+  paid: boolean
+  bill_ref: string | null
+  sort_order: number
+  notes: string | null
+}
+
+export interface StageRef { id: string; name: string; reached_on: string }
+
+export interface PaymentStages {
+  project: { id: string; name: string }
+  contract_type: ContractType | null
+  stages: PaymentStage[]
+  total: string
+  due: string
+  received: string
+  short: string
+  behind_since: StageRef | null
+  latest_reached: StageRef | null
+}
+
+export interface PaymentAlert {
+  project_id: string
+  project: string
+  due: string
+  received: string
+  short: string
+  behind_since: StageRef | null
+  latest_reached: StageRef | null
+}
+
+export type StageInput = Partial<Pick<PaymentStage, 'name' | 'amount' | 'work_package_id' | 'reached_on' | 'notes' | 'sort_order'>>
+
+export async function fetchPaymentStages(projectId: string): Promise<PaymentStages> {
+  return (await api.get<PaymentStages>(`/projects/${projectId}/payment-stages`)).data
+}
+
+export async function createPaymentStage(projectId: string, body: StageInput): Promise<PaymentStage> {
+  return (await api.post<PaymentStage>(`/projects/${projectId}/payment-stages`, body)).data
+}
+
+export async function updatePaymentStage(id: string, body: StageInput): Promise<PaymentStage> {
+  return (await api.patch<PaymentStage>(`/billing/payment-stages/${id}`, body)).data
+}
+
+export async function deletePaymentStage(id: string): Promise<void> {
+  await api.delete(`/billing/payment-stages/${id}`)
+}
+
+export async function fetchPaymentAlerts(projectId?: string | null): Promise<{ short: string; projects: PaymentAlert[] }> {
+  return (await api.get('/billing/payment-alerts', { params: { project_id: projectId || undefined } })).data
 }

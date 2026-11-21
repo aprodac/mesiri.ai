@@ -1147,6 +1147,22 @@ day's work; push straight to `main`. Explainer: [boq-connections.md](../architec
 | BOQ-04 | **Standard material norms:** materials per unit suggested for common BOQ work (brickwork, plastering, concrete…), applied by the office in one tap, so the material plan works without typing every line | M | Must | MP-01 | done (`e46701f`) | Claude (session 15 Nov) | Dashboard only: WhatsApp stays read-only on the BOQ (CC-11 guard). Figures are nominal-mix textbook values: a civil engineer should look over `standard_norms.py`. |
 | BOQ-05 | **BOQ Excel sent on WhatsApp:** imported through the same preview + import as Planning › BOQ, after a confirm card | M | Should | ST-03 | blocked | | Needs Ilan: it is a BOQ write from WhatsApp, which the CC-11 guard (`test_guard_rates_centres_and_categories_are_not_changed_on_whatsapp`) forbids. Options: lift the guard for import only, or keep the file as a project document with an Import button on the BOQ page. |
 
+## FB — Contractor discovery session: what they asked for that was not built (21 Nov 2026)
+
+From the product discovery session with a contractor (summary shared by Ilan, 21 Nov 2026; asked: "lets create
+everything that is not yet build but they said to"). Most asks were already built (books, P&L with head-office share,
+balance sheet, receivables, purchase cycle, returnables, variations, role-scoped approvals); these are the gaps.
+
+| ID | Item | Size | Priority | Depends | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| FB-01 | **Payment stages tied to milestones, and lump-sum contracts** ("Lintel completed but only ₹20,000 of the ₹4 lakh came in: alert to follow up"; "lump sum vs re-measurable"). A project's client payment schedule (stage, amount, the schedule activity that reaches it, or marked by hand); what should have come in vs received; alert on Home (owner, finance), Receivables and the RA bills page. Contract type `measured` / `lump_sum`: a lump-sum RA bill takes the stages reached and not billed (1 LS each), the contract's GST / retention / TDS on top. | M | Must | NXT-01, NXT-02, ST-04 | in-progress | Claude (session 21 Nov) | Migration 0564, additive. |
+| FB-02 | **Approve in bulk** ("100 labour entries across 10 sites take ~300 clicks: select all and approve"). Reverses UX-62's "never in bulk" at Ilan's request (21 Nov). | S | Must | UX-62 | todo | | |
+| FB-03 | **Bank statement import and auto-match** = ACC-13 ("bank sync so the accountant only enters petty cash"). A live bank feed needs a bank aggregator (Account Aggregator / partner): not in scope; statement import first. | L | Must | ACC-07 | todo | | Tracked as ACC-13. |
+| FB-04 | **LS / month / job units** = UX-79 (a lump-sum BOQ line). | S | Should | | todo | | Tracked as UX-79; Ilan's "create everything" (21 Nov) is the approval it waited on. |
+| FB-05 | **GST and non-GST projects** ("90% of home owners won't pay 18% GST"). A contract's GST % is already per project (0% allowed) and the books follow what is billed. **Not built: a second, unrecorded set of books**: that would be tax evasion, so Mesiri won't do it. | — | — | | decision | Ilan | What to offer legitimately (e.g. GST-exempt / composition-scheme registration guidance per client) is a product decision. |
+| FB-06 | **Per-seat / tiered pricing** (entry tier ~3-4 users, 10-20 projects; upsell later). | — | — | | decision | Ilan | Pricing decision, not code; no plan limits exist in the product yet. |
+| FB-07 | **Crane operations, hourly equipment allocation across sites** (large builders' module). Hourly hire already exists (NXT-11/13/15). | L | Later | | todo | | The contractor called it an add-on for high-rise builders. |
+
 ## Done log
 
 | Date | ID / work | Commit |

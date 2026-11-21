@@ -20,6 +20,13 @@
   POST  /billing/receipts                      record money received: against a bill, on account, or an advance
   POST  /billing/receipts/{receipt_id}/cancel  take a receipt back (kept, marked cancelled)
 
+  GET   /projects/{project_id}/payment-stages  FB-01: the client's payment schedule, each stage reached or not, and
+                                               what should have come in against what did
+  POST  /projects/{project_id}/payment-stages  add a stage (name, amount, the schedule activity that reaches it)
+  PATCH /billing/payment-stages/{stage_id}     change a stage, or mark one tied to no activity reached (reached_on)
+  DELETE /billing/payment-stages/{stage_id}    remove a stage that is on no bill
+  GET   /billing/payment-alerts?project_id=    every project behind on payment: the stage reached, the money short
+
 Who: the owner, an admin and finance (``may_manage_money``), within the projects they can reach: the plan's default
 for decision D-N3 (docs/plans/next-modules-plan.md), the narrowest existing money rule, until Ilan decides otherwise.
 """
@@ -29,7 +36,7 @@ from __future__ import annotations
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -92,6 +99,9 @@ class ContractIn(BaseModel):
     defect_liability_months: int | None = Field(default=None, ge=0, le=120)
     payment_terms: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=1000)
+    contract_type: Literal["measured", "lump_sum"] = Field(
+        default="measured", description="FB-01: measured (bills from the BOQ's measured work) or lump_sum (bills "
+                                        "from the payment stages reached)")
 
     _clean_text = field_validator("contract_no", "payment_terms", "notes")(_clean)
 
@@ -291,6 +301,12 @@ async def create_ra_bill(project_id: uuid.UUID, body: BillCreate,
     bill_id, added = await bills.create_draft(conn, org, project_id, body.bill_date or today,
                                               body.period_to or today, auth.user_id)
     if added == 0:
+        from mesiri.domains.billing import stages
+
+        if await stages.contract_type(conn, org, project_id) == "lump_sum":
+            raise HTTPException(status_code=422, detail="No payment stage to bill: a lump-sum contract is billed by "
+                                                        "stage, and every stage reached is already on a bill (or "
+                                                        "none is reached yet)")
         raise HTTPException(status_code=422, detail="No measured work to bill: every priced BOQ line's measured "
                                                     "quantity is already on a bill (or no line has a client rate)")
     return _out(await bills.get(conn, org, bill_id))
@@ -413,17 +429,12 @@ async def work_to_bill(project_id: uuid.UUID | None = None, auth: AuthorizationC
     """WEB-91: measured work that is on no client bill yet, at the client rate, per project (most first) and in
     total: what a new RA bill would start from (``bills.unbilled_lines``, the same working). Before retention,
     advance recovery and GST. Read-only; the same people as the bills themselves."""
-    from sqlalchemy import text
 
     from mesiri.domains.billing import bills, ra
 
     _require(auth, project_id)
     scope = _scope_ids(auth, project_id)
-    rows = (await conn.execute(text(
-        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND COALESCE(p.status, '') <> 'archived' "
-        "AND EXISTS (SELECT 1 FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
-        "WHERE w.project_id = p.id AND i.superseded_by_id IS NULL AND i.client_rate IS NOT NULL) ORDER BY p.name"),
-        {"org": auth.organization_id})).all()
+    rows = await bills.billable_projects(conn, auth.organization_id)
     projects = []
     for p in rows:
         if scope is not None and p.id not in scope:
@@ -530,3 +541,121 @@ async def cancel_client_receipt(receipt_id: uuid.UUID, auth: AuthorizationContex
         raise HTTPException(status_code=409, detail="Already cancelled")
     await receipts.cancel(conn, receipt_id, auth.user_id)
     return _out(await receipts.get_receipt(conn, auth.organization_id, receipt_id))
+
+
+# -- Payment stages (FB-01) ----------------------------------------------------------------------------------------
+
+class StageIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = _Money
+    work_package_id: uuid.UUID | None = Field(default=None, description="The schedule activity whose completion "
+                                                                        "reaches the stage (usually a milestone)")
+    reached_on: datetime.date | None = Field(default=None, description="For a stage tied to no activity: the day "
+                                                                       "it was reached (null: not reached)")
+    sort_order: int | None = Field(default=None, ge=0, le=10_000)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    _clean_text = field_validator("name", "notes")(_clean)
+
+
+async def _stage(conn: AsyncConnection, auth: AuthorizationContext, stage_id: uuid.UUID) -> dict[str, Any]:
+    from mesiri.domains.billing import stages
+
+    _require(auth)
+    stage = await stages.get_stage(conn, auth.organization_id, stage_id)
+    if stage is None:
+        raise HTTPException(status_code=404, detail="Payment stage not found")
+    _require(auth, stage["project_id"])
+    return stage
+
+
+async def _check_activity(conn: AsyncConnection, org: uuid.UUID, project_id: Any, activity_id: Any) -> None:
+    from mesiri.domains.billing import stages
+
+    if activity_id is not None and not await stages.activity_in_project(conn, org, project_id, activity_id):
+        raise HTTPException(status_code=422, detail="That schedule activity is not in this project")
+
+
+@router.get("/projects/{project_id}/payment-stages")
+async def list_payment_stages(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                              conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import stages
+
+    _require(auth, project_id)
+    name = await _project_name(conn, auth.organization_id, project_id)
+    state = await stages.project_state(conn, auth.organization_id, project_id)
+    for s in state["stages"]:
+        s["bill_ref"] = f"RA-{s['bill_number']:02d}" if s.get("bill_number") else None
+    return _out({"project": {"id": project_id, "name": name}, **state})
+
+
+@router.post("/projects/{project_id}/payment-stages", status_code=201)
+async def create_payment_stage(project_id: uuid.UUID, body: StageIn,
+                               auth: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import stages
+
+    _require(auth, project_id)
+    org = auth.organization_id
+    await _project_name(conn, org, project_id)
+    if not body.name or body.amount is None:
+        raise HTTPException(status_code=422, detail="A stage needs a name and the amount the client pays at it")
+    await _check_activity(conn, org, project_id, body.work_package_id)
+    values = body.model_dump(exclude_unset=True)
+    if body.work_package_id is not None:
+        values["reached_on"] = None  # reached when its activity is completed, never by hand as well
+    stage_id = await stages.create_stage(conn, org, project_id, values, auth.user_id)
+    return _out(await stages.get_stage(conn, org, stage_id))
+
+
+@router.patch("/billing/payment-stages/{stage_id}")
+async def update_payment_stage(stage_id: uuid.UUID, body: StageIn,
+                               auth: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import stages
+
+    stage = await _stage(conn, auth, stage_id)
+    org = auth.organization_id
+    values = body.model_dump(exclude_unset=True)
+    if "name" in values and not values["name"]:
+        raise HTTPException(status_code=422, detail="A stage needs a name")
+    if "amount" in values and values["amount"] is None:
+        raise HTTPException(status_code=422, detail="A stage needs an amount (0 if none)")
+    if stage["bill_number"] is not None and ("amount" in values or "work_package_id" in values):
+        raise HTTPException(status_code=409, detail=f"The stage is on RA-{stage['bill_number']:02d}: cancel that bill "
+                                                    "before changing its amount or what reaches it")
+    if "work_package_id" in values:
+        await _check_activity(conn, org, stage["project_id"], values["work_package_id"])
+    activity = values.get("work_package_id", stage["work_package_id"])
+    if activity is not None and values.get("reached_on") is not None:
+        raise HTTPException(status_code=422, detail="The stage is reached when its schedule activity is completed: "
+                                                    "mark the activity done on the schedule")
+    if activity is not None:
+        values["reached_on"] = None
+    await stages.update_stage(conn, org, stage_id, values)
+    return _out(await stages.get_stage(conn, org, stage_id))
+
+
+@router.delete("/billing/payment-stages/{stage_id}", status_code=204)
+async def delete_payment_stage(stage_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import stages
+
+    stage = await _stage(conn, auth, stage_id)
+    if stage["bill_number"] is not None:
+        raise HTTPException(status_code=409, detail=f"The stage is on RA-{stage['bill_number']:02d}: cancel that "
+                                                    "bill first")
+    await stages.delete_stage(conn, auth.organization_id, stage_id)
+
+
+@router.get("/billing/payment-alerts")
+async def payment_alerts(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    """FB-01: every project whose client has paid less than the stages reached so far ask for, most short first:
+    the follow-up for finance the day a milestone is marked done."""
+    from mesiri.domains.billing import stages
+
+    _require(auth, project_id)
+    found = await stages.alerts(conn, auth.organization_id, _scope_ids(auth, project_id))
+    total = sum((a["short"] for a in found), Decimal(0))
+    return _out({"short": total, "projects": found})

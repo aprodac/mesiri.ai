@@ -43,6 +43,7 @@ async def previous_by_line(conn: AsyncConnection, org: uuid.UUID, project_id: uu
     rows = (await conn.execute(text(
         "SELECT l.planned_item_id, SUM(l.quantity) AS q FROM ra_bill_lines l JOIN ra_bills b ON b.id = l.ra_bill_id "
         "WHERE b.organization_id = :org AND b.project_id = :p AND b.status <> 'cancelled' "
+        "AND l.planned_item_id IS NOT NULL "
         "AND (CAST(:x AS uuid) IS NULL OR b.id <> CAST(:x AS uuid)) GROUP BY l.planned_item_id"),
         {"org": org, "p": project_id, "x": exclude_bill})).all()
     current = await _current_of(conn, org, project_id)
@@ -67,8 +68,15 @@ async def advance_left(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
 async def unbilled_lines(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict[str, Any]]:
     """Each BOQ line with a client rate and measured work that is on no bill yet (a cancelled bill gives its
     quantities back): the line, its place in the BOQ, what is measured to date, what earlier bills took, and what
-    is left to bill. The one place this is worked out: a new draft is made from it, and "can be billed now" reads it."""
+    is left to bill. The one place this is worked out: a new draft is made from it, and "can be billed now" reads it.
+
+    A lump-sum contract (FB-01) bills its payment stages instead: each reached stage on no bill yet, as one line
+    (``stages.unbilled``, same row shape, ``line["payment_stage_id"]`` set and ``line["id"]`` empty)."""
+    from mesiri.domains.billing import stages
     from mesiri.domains.progress.boq_router import done_by_line
+
+    if await stages.contract_type(conn, org, project_id) == "lump_sum":
+        return await stages.unbilled(conn, org, project_id)
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
     repo = PostgresBoqRepository(conn)
@@ -86,6 +94,17 @@ async def unbilled_lines(conn: AsyncConnection, org: uuid.UUID, project_id: uuid
             continue
         out.append({"line": ln, "sort_order": i, "measured": measured, "previous": before, "quantity": qty})
     return out
+
+
+async def billable_projects(conn: AsyncConnection, org: uuid.UUID) -> list[Any]:
+    """The company's live projects that can have something to bill: a priced BOQ line, or (FB-01) a payment stage.
+    The one list "to bill" and the cash forecast walk with ``unbilled_lines``. Rows: ``id``, ``name``."""
+    return list((await conn.execute(text(
+        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND COALESCE(p.status, '') <> 'archived' "
+        "AND (EXISTS (SELECT 1 FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+        "WHERE w.project_id = p.id AND i.superseded_by_id IS NULL AND i.client_rate IS NOT NULL) "
+        "OR EXISTS (SELECT 1 FROM payment_stages s WHERE s.project_id = p.id)) ORDER BY p.name"),
+        {"org": org})).all())
 
 
 async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, bill_date: datetime.date,
@@ -108,10 +127,10 @@ async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
     for row in to_bill:
         ln = row["line"]
         await conn.execute(text(
-            "INSERT INTO ra_bill_lines (organization_id, ra_bill_id, planned_item_id, boq_code, work, unit, client_rate, "
-            "measured_to_date, previous_quantity, suggested_quantity, quantity, sort_order) VALUES (:org, :b, :item, "
-            ":code, :work, :unit, :rate, :m, :prev, :q, :q, :i)"),
-            {"org": org, "b": bill_id, "item": ln["id"], "code": ln["boq_code"], "work": ln["work_type"],
+            "INSERT INTO ra_bill_lines (organization_id, ra_bill_id, planned_item_id, payment_stage_id, boq_code, work, "
+            "unit, client_rate, measured_to_date, previous_quantity, suggested_quantity, quantity, sort_order) VALUES "
+            "(:org, :b, :item, :stage, :code, :work, :unit, :rate, :m, :prev, :q, :q, :i)"),
+            {"org": org, "b": bill_id, "item": ln["id"], "stage": ln.get("payment_stage_id"), "code": ln["boq_code"], "work": ln["work_type"],
              "unit": ln["unit"], "rate": ln["client_rate"], "m": row["measured"], "prev": row["previous"],
              "q": row["quantity"], "i": row["sort_order"]})
     return bill_id, len(to_bill)
@@ -128,7 +147,7 @@ async def get(conn: AsyncConnection, org: uuid.UUID, bill_id: uuid.UUID) -> dict
     bill = dict(row)
     bill["ref"] = ref(bill["number"])
     bill["lines"] = [dict(r) for r in (await conn.execute(text(
-        "SELECT id, planned_item_id, boq_code, work, unit, client_rate, measured_to_date, previous_quantity, "
+        "SELECT id, planned_item_id, payment_stage_id, boq_code, work, unit, client_rate, measured_to_date, previous_quantity, "
         "suggested_quantity, quantity FROM ra_bill_lines WHERE ra_bill_id = :b ORDER BY sort_order, work"),
         {"b": bill_id})).mappings()]
     for ln in bill["lines"]:
@@ -154,9 +173,12 @@ async def gaps(conn: AsyncConnection, org: uuid.UUID, project_id: Any, bill_id: 
     - **overbilled**: the bills (this one included, withdrawn ones not) hold more than is measured now, e.g. a site
       update was removed after a bill went out.
     """
+    from mesiri.domains.billing import stages
     from mesiri.domains.progress.boq_router import done_by_line
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
+    if await stages.contract_type(conn, org, project_id) == "lump_sum":
+        return []  # billed by stage: measurement against the BOQ is not what the client pays on
     repo = PostgresBoqRepository(conn)
     lines = await repo.list_lines(org, project_id)
     done = await done_by_line(repo, org, project_id, lines)
