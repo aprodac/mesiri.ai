@@ -10,6 +10,7 @@ Mounted at /cost:
   GET   /projects/{project_id}/labour  a period's attendance per site, day and trade, and the BOQ lines each is
                                        on (CC-05), with a suggested line for what is on none
   PUT   /projects/{project_id}/labour  put a site's day of one trade on BOQ lines by man-days (empty: take it off)
+  POST  /projects/{project_id}/labour/suggestions  put every day with a suggested line on it, in one tap
   GET   /projects/{project_id}/variance  green / amber / red per BOQ line over a period (a day: the site's day),
                                        labour earned against labour put on the line, with each day of the period
                                        (CC-07)
@@ -35,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.costing.centres import CENTRES, cost_centres
-from mesiri.domains.costing.labour import group_key, labour_by_line, share_group
+from mesiri.domains.costing.labour import group_key, labour_by_line, share_group, suggest_for
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -275,7 +276,8 @@ async def _allocations(conn: AsyncConnection, repo, org: uuid.UUID, project_id: 
            for m in await store.on_no_line(org, project_id, date_from, date_to)]
     lines = await repo.list_lines(org, project_id)
     work = [w for w in await counted_work(repo, org, project_id, lines) if date_from <= w["work_date"] <= date_to]
-    worked = worked_lines(work, {ln["id"]: ln for ln in lines})
+    sections = {sec["id"]: sec["name"] for sec in await repo.list_sections(org, project_id)}
+    worked = worked_lines(work, {ln["id"]: {**ln, "section": sections.get(ln["work_package_id"])} for ln in lines})
     auto = auto_split(groups, kept, worked, off)
     today = await _today(conn, org)
     week_start = today - datetime.timedelta(days=today.weekday())
@@ -336,13 +338,19 @@ async def _labour_groups(conn: AsyncConnection, repo, org: uuid.UUID, project_id
             {"line_id": current.get(a["planned_item_id"], a["planned_item_id"]), "man_days": a["man_days"]})
         if a.get("auto"):
             auto.add(key)
-    # The lines that got measured work on a site and day: when only one did, that day's labour most likely
-    # went into it (a suggestion only; a person confirms).
-    worked: dict[tuple, set] = {}
+    # The lines that got measured work on each site and day, for the line offered to a person (``suggest_for``: the
+    # same trade rule as the automatic split; a suggestion only, a person confirms).
+    sections = {sec["id"]: sec["name"] for sec in await repo.list_sections(org, project_id)}
+
+    def line_name(line_id) -> str:
+        ln = line_by_id.get(line_id) or {}
+        return " ".join(x for x in (ln.get("work_type"), sections.get(ln.get("work_package_id"))) if x)
+
+    worked: dict[tuple, dict] = {}
     for w in await repo.work_updates(org, project_id, unlinked_only=False, limit=500):
         if w["line_id"]:
-            worked.setdefault((str(w["site_id"]) if w["site_id"] else None, str(w["activity_date"])), set()).add(
-                current.get(w["line_id"], w["line_id"]))
+            line_id = current.get(w["line_id"], w["line_id"])
+            worked.setdefault(group_key(w["site_id"], w["activity_date"], None)[:2], {})[line_id] = line_name(line_id)
     sites = {r["id"]: r["name"] for r in (await conn.execute(
         text("SELECT id, name FROM sites WHERE project_id = :p"), {"p": project_id})).mappings().all()}
     out = []
@@ -353,9 +361,8 @@ async def _labour_groups(conn: AsyncConnection, repo, org: uuid.UUID, project_id
         if shared["not_on_a_line"]["man_days"] > 0:
             said = " ".join(g["activities"] or [])
             suggestion = suggest_line(said, None, None, lines, any_unit=True) if said else None
-            same_day = worked.get(key[:2], set())
-            if suggestion is None and len(same_day) == 1:
-                suggestion = next(iter(same_day))
+            if suggestion is None:
+                suggestion = suggest_for(g, worked)
         out.append({
             "site_id": g["site_id"], "site_name": sites.get(g["site_id"]), "date": g["work_date"],
             "trade": g["trade"] or None, "trade_key": g["trade_key"], "activities": g["activities"] or [],
@@ -416,6 +423,52 @@ async def project_labour(
                     "suggested_line_id": str(g["suggested_line_id"]) if g["suggested_line_id"] else None,
                     "on_lines": [{**p, "line_id": str(p["line_id"])} for p in g["on_lines"]]} for g in groups],
     }
+
+
+class LabourPeriod(BaseModel):
+    date_from: datetime.date | None = None
+    date_to: datetime.date | None = None
+
+
+@router.post("/projects/{project_id}/labour/suggestions")
+async def put_labour_on_suggestions(
+    project_id: uuid.UUID,
+    body: LabourPeriod,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The nudge's one tap (21 Nov 2026): every site-day of a trade in the period (the last 30 days by default) with
+    man-days on no line and a suggested line gets them put on that line, keeping the lines it was already on: what a
+    person does row by row with Put on line, at once. Rows with no suggestion stay for a person to pick. Returns how
+    many rows, man-days and rupees went on lines, and what is still on none."""
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+
+    repo = await _project_repo(auth, conn, project_id)
+    date_to = body.date_to or await _today(conn, auth.organization_id)
+    date_from = body.date_from or date_to - datetime.timedelta(days=29)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    store = PostgresLabourAllocationRepository(conn)
+    put = {"rows": 0, "man_days": Decimal(0), "cost": Decimal(0)}
+    for g in await _labour_groups(conn, repo, auth.organization_id, project_id, date_from, date_to):
+        left = Decimal(g["not_on_a_line"]["man_days"])
+        line_id = g["suggested_line_id"]
+        if left <= 0 or line_id is None or g["over_allocated"]:
+            continue
+        parts: dict = {p["line_id"]: Decimal(p["man_days"]) for p in g["on_lines"]}
+        parts[line_id] = parts.get(line_id, Decimal(0)) + left
+        await store.replace_group(auth.organization_id, project_id, g["site_id"], g["date"], g["trade_key"],
+                                  list(parts.items()), auth.user_id)
+        put["rows"] += 1
+        put["man_days"] += left
+        put["cost"] += Decimal(g["not_on_a_line"]["cost"] or 0)
+    still = [g for g in await _labour_groups(conn, repo, auth.organization_id, project_id, date_from, date_to)
+             if Decimal(g["not_on_a_line"]["man_days"]) > 0]
+    return {"rows": put["rows"], "man_days": _q(put["man_days"]), "cost": _m(put["cost"]),
+            "still_off": {"rows": len(still), "man_days": _q(sum((Decimal(g["not_on_a_line"]["man_days"]) for g in still), Decimal(0))),
+                          "cost": _m(sum((Decimal(g["not_on_a_line"]["cost"] or 0) for g in still), Decimal(0)))}}
 
 
 class LabourPart(BaseModel):

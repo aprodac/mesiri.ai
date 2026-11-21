@@ -159,3 +159,52 @@ def test_auto_rows_cost_through_the_same_share_rule():
     out = labour_by_line(groups, auto_split(groups, [], _worked(plaster=("Plastering", 400, None))))
     assert out["lines"]["plaster"]["cost"] == Decimal("4000.00")
     assert out["not_on_a_line"]["man_days"] == 0
+
+
+# -- A line named for the element, its work said by its section (LW nudge, 21 Nov 2026) ------------------------------
+
+def _worked_in(**lines):
+    """name -> (work_type, section, quantity done that day)."""
+    work = [{"site_id": "s1", "work_date": _DAY, "line_id": k, "quantity": Decimal(v[2])} for k, v in lines.items()]
+    by_id = {k: {"work_type": v[0], "section": v[1], "labour_rate": None} for k, v in lines.items()}
+    return worked_lines(work, by_id)
+
+
+def test_a_mason_reaches_a_line_named_for_the_element_through_its_section():
+    # The sample company's week: "Plinth beam" under "B. CONCRETE"; the masons' days were left on no line.
+    worked = _worked_in(plinth=("Plinth beam", "B. CONCRETE", 12))
+    assert _md(auto_split([_g("mason", "1")], [], worked)) == [("plinth", Decimal(1))]
+
+
+def test_siblings_lintel_and_columns_and_a_carpenter_on_shuttering_by_section():
+    worked = _worked_in(lintel=("Lintel and sunshade", "RCC work", 3), cols=("Columns, ground floor", "RCC work", 2))
+    assert _md(auto_split([_g("mason", "2")], [], worked)) == [("cols", Decimal(1)), ("lintel", Decimal(1))]
+    worked = _worked_in(form=("Slab, first floor", "Shuttering and centering", 40))
+    assert _md(auto_split([_g("carpenter", "3")], [], worked)) == [("form", Decimal(3))]
+
+
+def test_guard_a_section_naming_no_trade_work_still_keeps_masons_off_the_steel():
+    worked = _worked_in(steel=("Reinforcement steel for slab", "C. STRUCTURE", 600))
+    assert auto_split([_g("mason", "6")], [], worked) == []
+    worked = _worked_in(conduit=("Electrical conduits", "F. ELECTRICAL", 20))
+    assert auto_split([_g("mason", "2")], [], worked) == []  # the masons waiting at the Main block stay off
+    # A line without a section reads as before.
+    assert _md(auto_split([_g("mason", "4")], [], _worked(plaster=("Internal plastering", 400, None)))) == [("plaster", Decimal(4))]
+
+
+# -- The line offered to a person follows the same trade rule (suggest_for) -----------------------------------------
+
+def test_the_suggestion_never_offers_masons_the_conduits_and_looks_to_the_nearest_day_they_fit():
+    from mesiri.domains.costing.labour import suggest_for
+
+    worked_on = {("s1", "2026-11-16"): {"conduit": "Electrical conduits F. ELECTRICAL"},
+                 ("s1", "2026-11-20"): {"plaster": "Ceiling plastering D. PLASTERING"},
+                 ("s1", "2026-11-14"): {"brick": "Brickwork C. MASONRY"}}
+    mason = {"site_id": "s1", "work_date": "2026-11-16", "trade_key": "mason", "activities": []}
+    assert suggest_for(mason, worked_on) == "brick"  # 2 days away beats 4; never the conduits
+    assert suggest_for({**mason, "work_date": "2026-11-19"}, worked_on) == "plaster"
+    helper = {**mason, "trade_key": "helper"}
+    assert suggest_for(helper, worked_on) == "conduit"  # a helper shares that day's work, as the split does
+    plumber = {**mason, "trade_key": "plumber"}
+    assert suggest_for(plumber, worked_on) is None  # no plumbing anywhere: a person picks
+    assert suggest_for({**mason, "site_id": "s2"}, worked_on) is None  # never another site's work
