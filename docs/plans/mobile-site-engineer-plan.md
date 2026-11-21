@@ -7,7 +7,10 @@
 > Tracker: **MOB** section of [V1_TRACKER.md](V1_TRACKER.md). Screen mockups (six phone screens, clickable):
 > the "Mesiri Site Engineer App" design canvas shared in session.
 >
-> Status: **design, waiting for review.** No app code changed yet.
+> Status: **building (21 Nov).** Done: MOB-01 design, MOB-02 shell, MOB-03 say anything, MOB-04 Today, MOB-08 sign-in,
+> MOB-10 site and requests. Next: MOB-05 forms (needs the ready entries in the response), MOB-07 no signal, MOB-06.
+> §9's defaults were taken (asked to "go implement" 21 Nov): Android first, phone + WhatsApp code sign-in, replies in
+> the app only, English and Malayalam.
 
 ## 1. What the app is for
 
@@ -44,7 +47,7 @@ What exists, and what it means for the design.
 | The reply is text + buttons (`AssistantReply`: text, buttons, list rows) and the transcript. **The prepared entries are not in the response as data** | `WebMessageResponse`, dashboard `lib/api.ts` | Enough for the Save card as buttons. To fill a **form** from voice (§5.3) the response must also carry the ready entries (tool + fields), additive |
 | Entries record how they came (`whatsapp_text`, `whatsapp_voice`, `whatsapp_image`); the dashboard door marks `source = dashboard` | `agent.py` `CHANNELS`, `web_assistant` `SOURCE` | Add `app` as a door so the inbox and the DPR can tell where an entry came from |
 | Every form the app needs already has its API route (the dashboard uses them): attendance, work done, receipts, usage, machines, issues, photos, site conditions, material requests, the site's day, stock | the tools list: `record_attendance`, `record_work`, `record_receipt`, `record_usage`, `log_machines`, `report_issue`, `set_site_conditions`, `ask_for_material`, `site_day`, `day_summary`, `stock_summary`, `material_requests` … | **No new backend modules.** Forms post to the same routes, with the same checks |
-| Sign-in is **email + password only** (`POST /auth/login`). Many site engineers only have a WhatsApp number on their account | `domains/identity/router.py`, `packages/auth` | V1 of the app can ship with email + password; **phone number + a code on WhatsApp** is the real need and is security work: **needs Ilan's approval** (CLAUDE.md rule 5) |
+| Sign-in: email + password, **and a code on WhatsApp** (found while building: the dashboard already has `/auth/code/request` + `/auth/code/login`, SS-06) | `apps/whatsapp-assistant/src/auth/code_login.py` | The app uses both as they are; no auth change, so no approval needed (MOB-08) |
 | Brand: hazard yellow `#facc15` with dark ink, charcoal `#3E3C3D`, warm ground `#f6f3ed` (WEB-76). The mobile app was left on its old colours | [DESIGN.md](../DESIGN.md), `apps/mobile/src/theme` | The app takes the dashboard's brand tokens |
 | SS-76b (the playground's site engineer part) waits for the app's shape | [V1_TRACKER.md](V1_TRACKER.md) | This plan gives it: the playground can show the app's Today and mic |
 
@@ -209,7 +212,7 @@ returns; all of it shows on the dashboard's day page and in the DPR.
 | MOB-06 | Speak into one field | no |
 | MOB-07 | No signal: the queue, "waiting" count, sent by itself, never twice | no |
 | MOB-10 | Site: stock, requests, coming; ask for material | no |
-| MOB-08 | Sign in with phone number and a code on WhatsApp | **yes: security (auth)** |
+| MOB-08 | Sign in with phone number and a code on WhatsApp | no (the existing /auth/code routes) |
 | MOB-09 | Notifications (a question waiting, a request answered, report reminder) | **yes: ops (push keys) + a new table** |
 | MOB-11 | Android build and the Play Store testing track | **yes: ops (store account)** |
 
@@ -221,3 +224,15 @@ returns; all of it shows on the dashboard's day page and in the DPR.
 3. Does an app user also get Mesiri's replies on WhatsApp? **No** (as Tell Mesiri on the dashboard: the
    reply comes back in the app only).
 4. The app's languages at launch: **English and Malayalam**, Hindi and Tamil next.
+
+## 10. Found while building (21 Nov 2026)
+
+- **Phones can't record Ogg.** expo-audio offers AAC in MP4 only (Android and iPhone). Sarvam reads m4a by its
+  content (checked: a Malayalam clip sent as m4a and as Ogg gave the same English), so only the assistant's web
+  door changed (it refused anything but Ogg). The shared speech adapter is untouched. Gemini's speech path also
+  labels audio as Ogg and was not checked with m4a.
+- **A site-scoped person's site filter needs the project.** `stock-summary` and `procurement/requests` answer
+  `[]` to a site engineer who sends `site_id` alone; the app always sends `project_id` with it.
+- **The prototype could not have run.** It mixed React 19.2.7 with react-dom 19.1.0 (a blank screen); React is
+  now pinned to Expo 54's versions.
+- **Machines** are not in the site day's data, so Today has 7 rows, not 8; machine hours are taken by voice.
