@@ -63,6 +63,8 @@ function ForecastPill({ p }: { p: PortfolioRow }) {
     <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap tabular-nums', look.pill)}>
       <look.icon className="size-3" aria-hidden />
       {diff === null ? look.word : `${compact(Math.abs(diff))} ${diff < 0 ? 'over' : 'under'}`}
+      {/* UX-93: a kind heading over inside a project that is under overall is said, never hidden. */}
+      {diff !== null && diff >= 0 && p.kinds_over?.length ? <span className="font-normal">· {p.kinds_over.join(', ').toLowerCase()} over</span> : null}
     </span>
   )
 }
@@ -192,7 +194,8 @@ export default function CostHomePage() {
   const spent = sum((r) => r.spent)
   const committed = sum((r) => r.committed)
   const count = (c: VarianceColour) => rows.filter((r) => r.colour === c).length
-  const over = count('red')
+  // UX-93: every project whose forecast is over its budget, whatever its colour (amber "Watch" is still over).
+  const over = rows.filter((r) => (num(r.forecast_difference) ?? 0) < 0).length
   const overBy = rows.reduce((t, r) => t + Math.max(0, -(num(r.forecast_difference) ?? 0)), 0)
   const labourLeft = sum((r) => r.labour_not_on_a_line)
   const workLeft = rows.reduce((t, r) => t + r.work_not_on_a_line, 0)

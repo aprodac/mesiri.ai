@@ -63,13 +63,39 @@ def committed_subcontract(work_orders: Iterable[Mapping[str, Any]]) -> dict[str,
     return {"amount": _money(amount), "work_orders": count}
 
 
+#: UX-94: no forecast until this share of the budget is earned. Before it, the rate so far comes from a few days of work
+#: and projects nonsense (Green Villa's sample, day 5: "655% over budget, Rs 4.0 cr"); every page says "too early".
+MIN_EARNED_SHARE = Decimal("0.10")
+
+
 def forecast(budget: Decimal | None, earned: Decimal | None, actual: Decimal) -> dict[str, Any]:
     """Forecast at completion and the gap to the budget (below zero: over), or None with the reason."""
     if budget is None:
         return {"forecast": None, "forecast_difference": None, "forecast_basis": "no_budget"}
-    if not earned or earned <= 0 or actual <= 0:
+    if not earned or earned <= 0 or actual <= 0 or earned < budget * MIN_EARNED_SHARE:
         return {"forecast": None, "forecast_difference": None, "forecast_basis": "too_early"}
     left = max(budget - earned, _ZERO)
     at_completion = _money(actual + left * actual / earned)
     return {"forecast": at_completion, "forecast_difference": _money(budget - at_completion),
+            "forecast_basis": "rate_so_far"}
+
+
+def project_forecast(kinds: list[Mapping[str, Any]], total_spent: Decimal) -> dict[str, Any]:
+    """UX-93: one answer for "where will this project finish", read by every page (Cost overview, Budget vs actual,
+    the Project P&L, Home, the owner's board). Each kind with a forecast counts at its forecast; a kind without one
+    (too early, no rate) and the spending on no kind (no cost centre, equipment, fuel, overheads) count at what was
+    spent, never left out: half a project's cost on no line used to make it look within budget while the books said
+    it was losing money. ``over``: the kinds heading over, so a project is never green with a red kind inside."""
+    budget = sum((Decimal(k["budget"]) for k in kinds if k.get("budget") is not None), _ZERO)
+    with_forecast = [k for k in kinds if k.get("forecast") is not None]
+    on_kinds = sum((Decimal(k["actual"]) for k in kinds), _ZERO)
+    outside = max(Decimal(total_spent) - on_kinds, _ZERO)
+    if not budget or not with_forecast:
+        return {"budget": _money(budget) if budget else None, "forecast": None, "forecast_difference": None,
+                "not_on_a_kind": _money(outside), "over": [], "forecast_basis": "too_early" if budget else "no_budget"}
+    at_finish = sum((Decimal(k["forecast"]) if k.get("forecast") is not None else Decimal(k["actual"]) for k in kinds),
+                    _ZERO) + outside
+    return {"budget": _money(budget), "forecast": _money(at_finish), "forecast_difference": _money(budget - at_finish),
+            "not_on_a_kind": _money(outside),
+            "over": [k["label"] for k in with_forecast if Decimal(k["forecast_difference"]) < 0],
             "forecast_basis": "rate_so_far"}

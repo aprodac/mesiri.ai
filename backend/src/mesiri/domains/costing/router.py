@@ -158,7 +158,12 @@ async def project_budget(
 
 async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, scope: dict) -> dict:
     """The budget read itself, for the route and the portfolio (CC-19): one answer for both."""
-    from mesiri.domains.costing.forecast import committed_materials, committed_subcontract, forecast
+    from mesiri.domains.costing.forecast import (
+        committed_materials,
+        committed_subcontract,
+        forecast,
+        project_forecast,
+    )
     from mesiri.domains.procurement.orders import fetch_orders
     from mesiri.domains.progress.boq_router import _boq
     from mesiri.domains.subcontracts.store import fetch as fetch_work_orders
@@ -209,7 +214,10 @@ async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUI
         for ln in section["lines"]:
             ln.update(_line_labour(ln, labour["lines"].get(uuid.UUID(str(ln["id"])))))
     other = [c for c in centres["centres"] if c["key"] not in _CENTRE_OF.values() and Decimal(c["amount"])]
+    whole = project_forecast(kinds, Decimal(centres["total"]))
     return {
+        # UX-93: the project's one forecast (every page reads this, none adds the kinds up itself).
+        "project": {k: (_m(v) if isinstance(v, Decimal) else v) for k, v in whole.items()},
         "project_id": str(project_id),
         "date_from": centres["date_from"],
         "date_to": centres["date_to"],
@@ -753,10 +761,13 @@ async def portfolio(
             return sum(values, Decimal(0)) if values else None
 
         kinds = b["kinds"]
-        with_forecast = [k for k in kinds if k["forecast"] is not None]
+        whole = b["project"]
         budget, earned = total("budget", kinds), total("earned", kinds)
-        fc_budget, fc = total("budget", with_forecast), total("forecast", with_forecast)
-        colour, _ = colour_of(fc_budget, fc) if with_forecast else ("grey", None)
+        fc_budget = Decimal(whole["budget"]) if whole["budget"] is not None else None
+        fc = Decimal(whole["forecast"]) if whole["forecast"] is not None else None
+        colour, _ = colour_of(fc_budget, fc) if fc is not None else ("grey", None)
+        if colour == "green" and whole["over"]:
+            colour = "amber"  # UX-93: never green while a kind inside it is heading over
         spent = Decimal(b["total_spent"])
         out.append({
             "project_id": str(p["id"]), "name": p["name"],
@@ -766,7 +777,8 @@ async def portfolio(
             "percent_spent": str((spent * 100 / budget).quantize(Decimal("0.1"))) if budget else None,
             "forecast": _money_or_none(fc), "forecast_budget": _money_or_none(fc_budget),
             "forecast_difference": _money_or_none(fc_budget - fc) if fc is not None else None,
-            "forecast_kinds": [k["kind"] for k in with_forecast],
+            "forecast_kinds": [k["kind"] for k in kinds if k["forecast"] is not None],
+            "kinds_over": whole["over"], "not_on_a_kind": whole["not_on_a_kind"],
             "colour": colour,
             "week": {"colour": week["summary"]["colour"], "difference": week["summary"]["difference"],
                      "red_lines": week["summary"]["lines"]["red"]},

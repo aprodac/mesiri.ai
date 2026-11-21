@@ -188,14 +188,20 @@ def _row_to_payment(row) -> ExpensePayment:
 # rename/deactivate/add freely afterward via the Categories page; this only
 # exists so day-one AI extraction and the dashboard's category dropdown
 # aren't staring at an empty list.
-_DEFAULT_CATEGORIES: tuple[tuple[str, str], ...] = (
-    ("Materials", "MAT"),
-    ("Labour", "LAB"),
-    ("Fuel & Transport", "FUEL"),
-    ("Equipment Rental", "EQUIP"),
-    ("Site Utilities", "UTIL"),
-    ("Miscellaneous", "MISC"),
+# Each comes with the cost centre its spending counts in (CC-01; the same mapping migration 0521 gave the
+# categories that existed then): without it a new company's every expense was "not set" in Cost control (UX-93).
+_DEFAULT_CATEGORIES: tuple[tuple[str, str, str], ...] = (
+    ("Materials", "MAT", "materials"),
+    ("Labour", "LAB", "labour"),
+    # The category a subcontractor's bill asks for (subcontracts/router.py); without it every such bill was Uncategorized.
+    ("Subcontract work", "SUB", "subcontract"),
+    ("Fuel & Transport", "FUEL", "fuel"),
+    ("Equipment Rental", "EQUIP", "equipment"),
+    ("Site Utilities", "UTIL", "overhead"),
+    ("Miscellaneous", "MISC", "other"),
 )
+#: The bucket an unmatched expense falls into; a list holding only it is still an empty list (UX-93).
+UNCATEGORIZED = "Uncategorized"
 
 
 class PostgresExpenseCategoryRepository:
@@ -282,13 +288,15 @@ class PostgresExpenseCategoryRepository:
         untouched -- this only ever fires once, for a genuinely empty list.
         """
         existing = await self.list_active(organization_id)
-        if existing:
+        # UX-93: the "Uncategorized" bucket alone does not count. It is made by the first expense that matched no
+        # category, and used to stop the starter set for good: every later expense was Uncategorized.
+        if any(c.name != UNCATEGORIZED for c in existing):
             return existing
-        for name, code in _DEFAULT_CATEGORIES:
+        for name, code, centre in _DEFAULT_CATEGORIES:
             await self.conn.execute(
                 sa.text(
-                    "INSERT INTO expense_categories (id, organization_id, name, code, status, created_by) "
-                    "VALUES (:id, :organization_id, :name, :code, 'active', :created_by) "
+                    "INSERT INTO expense_categories (id, organization_id, name, code, cost_centre, status, created_by) "
+                    "VALUES (:id, :organization_id, :name, :code, :centre, 'active', :created_by) "
                     "ON CONFLICT (organization_id, name) DO NOTHING"
                 ),
                 {
@@ -296,6 +304,7 @@ class PostgresExpenseCategoryRepository:
                     "organization_id": organization_id,
                     "name": name,
                     "code": code,
+                    "centre": centre,
                     "created_by": created_by,
                 },
             )

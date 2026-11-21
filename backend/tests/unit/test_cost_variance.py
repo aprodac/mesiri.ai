@@ -66,14 +66,45 @@ def test_quantities_are_never_written_with_an_exponent():
 def test_the_forecast_is_the_rate_so_far_applied_to_the_work_left():
     from mesiri.domains.costing.forecast import forecast
 
-    # Plastering labour: 2,52,000 budget, 8,960 earned for 8,800 spent.
-    f = forecast(Decimal("252000"), Decimal("8960"), Decimal("8800"))
+    # Plastering labour: 2,52,000 budget, 28,000 earned for 27,500 spent.
+    f = forecast(Decimal("252000"), Decimal("28000"), Decimal("27500"))
     assert (f["forecast"], f["forecast_difference"], f["forecast_basis"]) == (
         Decimal("247500.00"), Decimal("4500.00"), "rate_so_far")
     assert forecast(Decimal("1000"), Decimal("1200"), Decimal("900"))["forecast"] == Decimal("900.00")  # all earned
     assert forecast(Decimal("1000"), None, Decimal("500"))["forecast_basis"] == "too_early"
     assert forecast(Decimal("1000"), Decimal("100"), Decimal("0"))["forecast"] is None
     assert forecast(None, Decimal("100"), Decimal("50"))["forecast_basis"] == "no_budget"
+
+
+
+def test_no_forecast_until_a_tenth_of_the_budget_is_earned():
+    """UX-94: Green Villa's sample on day 5 had a few days' work on lines, and the rate so far projected Rs 4 crore
+    ("655% over budget"). Below 10% of the budget earned it is too early to tell; at 10% it forecasts."""
+    from mesiri.domains.costing.forecast import forecast
+
+    early = forecast(Decimal("6132000"), Decimal("38000"), Decimal("250000"))
+    assert (early["forecast"], early["forecast_basis"]) == (None, "too_early")
+    assert forecast(Decimal("1000"), Decimal("100"), Decimal("120"))["forecast_basis"] == "rate_so_far"
+
+
+def test_the_project_forecast_counts_all_its_cost_and_names_the_kinds_over():
+    """UX-93: half of Green Villa's cost was on no kind (no cost centre) and left out of "at finish", so Cost control
+    said within budget while the P&L said losing money. The project's one forecast counts it, and a kind heading over
+    is named (the guard: a project with every kind under is not marked)."""
+    from mesiri.domains.costing.forecast import project_forecast
+
+    kinds = [
+        {"label": "Labour", "budget": "1975000", "actual": "682000", "forecast": "2451000", "forecast_difference": "-476000"},
+        {"label": "Materials", "budget": "4157000", "actual": "386000", "forecast": "3105000", "forecast_difference": "1052000"},
+        {"label": "Subcontract", "budget": None, "actual": "76800", "forecast": None, "forecast_difference": None},
+    ]
+    p = project_forecast(kinds, Decimal("2291000"))  # 11.45 L on kinds, 11.46 L outside
+    assert p["not_on_a_kind"] == Decimal("1146200.00")
+    assert p["forecast"] == Decimal("2451000") + Decimal("3105000") + Decimal("76800") + Decimal("1146200")
+    assert p["forecast_difference"] < 0 and p["over"] == ["Labour"]
+    under = [dict(kinds[1])]
+    assert project_forecast(under, Decimal("386000"))["over"] == []
+    assert project_forecast([{**kinds[0], "forecast": None, "forecast_difference": None}], Decimal("682000"))["forecast"] is None
 
 
 def test_committed_is_what_is_ordered_or_agreed_and_not_yet_delivered_or_billed():

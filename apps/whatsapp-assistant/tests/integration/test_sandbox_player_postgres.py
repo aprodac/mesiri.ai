@@ -69,6 +69,12 @@ async def test_the_whole_plan_plays_to_handover(world):
         played = (await conn.execute(text("SELECT count(*) FROM sandbox_played WHERE organization_id = :o "
                                           "AND status = 'played' AND entry_id NOT LIKE 'day:%'"),
                                      {"o": opened.organization_id})).scalar()
+        # UX-93: every rupee in its category and so in a cost centre: none "Uncategorized" (it hid half the cost).
+        lost = (await conn.execute(text(
+            "SELECT count(*) FROM expenses e JOIN expense_categories c ON c.id = e.category_id "
+            "WHERE e.organization_id = :o AND (c.name = 'Uncategorized' OR c.cost_centre IS NULL)"),
+            {"o": opened.organization_id})).scalar()
+    assert lost == 0
     assert today == opened.today + dt.timedelta(days=moved.day)
     assert played == len(sample_plan.plan().entries) - len(moved.for_you)
     assert jwt.decode(moved.token, SECRET_KEY, algorithms=[ALGORITHM])["today"] == today.isoformat()

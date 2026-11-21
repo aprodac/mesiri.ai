@@ -118,6 +118,10 @@ DEMO_SPENDS = (
     ("Sri Hardwares", "Hardware", 1250, "Shuttering oil and hand tools"), ("Hi-Tech Electricals", "Electrical", 3400, "Conduit pipes and boxes"),
     ("City Plywood", "Shuttering", 5600, "Plywood sheets for shuttering"), ("Tea stall", "Food", 720, "Tea and snacks for the crew"),
 )
+#: LRN-F30: the categories the story's spending uses, with the cost centre each counts in (Cost control, CC-01), so no
+#: rupee of the sample company is "not set". The starter set (Materials for suppliers' bills, Labour, ...) comes too.
+DEMO_CATEGORIES = (("Hardware", "materials"), ("Electrical", "materials"), ("Shuttering", "materials"),
+                   ("Food", "overhead"), ("Transport", "other"), ("Fuel", "fuel"))
 #: (site index, type, severity, narrative, what happens to it: open / acknowledge / resolve + note). The API dates an
 #: issue when it is reported, so these all show as reported on the reset day.
 DEMO_ISSUES = (
@@ -206,6 +210,13 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                                                                 "notes": notes})
         if made and made.get("id"):
             vendors[name] = str(made["id"])
+    # LRN-F30: the story's expense categories, each in its cost centre (the list read first, so the starter set is
+    # made with them).
+    await call("expense categories", "GET", "/expenses/categories")
+    for name, centre in DEMO_CATEGORIES:
+        made = await post("expense category", "/expenses/categories", {"name": name})
+        if made and made.get("id"):
+            await call("cost centre", "PATCH", f"/cost/categories/{made['id']}", {"cost_centre": centre})
     # LRN-F28: TDS on subcontractors' bills (1%, a proprietor's firm), so Joy Tiling's bills show it (episode 7).
     await call("finance settings", "PATCH", "/finance/settings", {"tds_enabled": True, "tds_default_pct": 1})
     # D5: the bank account and each site's petty cash, before anything is paid.

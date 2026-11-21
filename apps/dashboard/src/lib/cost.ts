@@ -64,10 +64,24 @@ export interface BudgetLine extends BoqLine {
   labour_difference: string | null
 }
 
+/** UX-93: the project's one forecast, all its cost counted (the kinds' forecasts, a kind with none at what it spent, and
+ *  the spending on no kind). Every page reads this; none adds the kinds up itself. */
+export interface ProjectForecast {
+  budget: string | null
+  forecast: string | null
+  forecast_difference: string | null
+  /** Spent on no kind (no cost centre, equipment, fuel, overheads): counted in the forecast as spent. */
+  not_on_a_kind: string
+  /** The kinds heading over (a project is never green with one inside). */
+  over: string[]
+  forecast_basis: 'rate_so_far' | 'too_early' | 'no_budget'
+}
+
 export interface ProjectBudget {
   project_id: string
   date_from: string
   date_to: string
+  project: ProjectForecast
   kinds: BudgetKind[]
   other_spending: { key: CentreKey; label: string; amount: string }[]
   not_set: string
@@ -249,6 +263,9 @@ export interface PortfolioRow {
   forecast_budget: string | null
   forecast_difference: string | null
   forecast_kinds: string[]
+  /** UX-93: the kinds heading over, and the spending on no kind (in the forecast as spent). */
+  kinds_over: string[]
+  not_on_a_kind: string
   colour: VarianceColour
   week: { colour: VarianceColour; difference: string | null; red_lines: number }
   work_not_on_a_line: number

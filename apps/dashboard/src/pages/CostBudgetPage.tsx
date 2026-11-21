@@ -535,8 +535,10 @@ export default function CostBudgetPage() {
   const earned = sumOf(kinds.map((k) => num(k.earned)))
   const spent = kinds.reduce((n, k) => n + Number(k.actual), 0)
   const gap = sumOf(kinds.map((k) => num(k.difference)))
-  const forecast = sumOf(kinds.map((k) => num(k.forecast)))
-  const forecastGap = sumOf(kinds.map((k) => num(k.forecast_difference)))
+  // UX-93: the project's one forecast (all its cost, the part on no line included), as every page shows it.
+  const forecast = num(b?.project.forecast ?? null)
+  const forecastGap = num(b?.project.forecast_difference ?? null)
+  const outside = num(b?.project.not_on_a_kind ?? null)
   const ratio = (a: number | null, z: number | null) => (a !== null && z ? a / z : undefined)
   const totals = [
     { label: 'Budget', kind: 'money' as const, value: budget === null ? '—' : compact(budget) },
@@ -555,7 +557,8 @@ export default function CostBudgetPage() {
       label: 'At finish', icon: forecastGap !== null && forecastGap < 0 ? TrendingUp : TrendingDown,
       tone: forecastGap === null ? ('default' as const) : forecastGap < 0 ? ('bad' as const) : ('good' as const),
       value: forecast === null ? '—' : compact(forecast),
-      hint: forecastGap === null ? 'too early' : `${compact(Math.abs(forecastGap))} ${forecastGap < 0 ? 'over' : 'under'} budget`,
+      hint: forecastGap === null ? 'too early to tell'
+        : `${compact(Math.abs(forecastGap))} ${forecastGap < 0 ? 'over' : 'under'} budget${outside ? ` · with ${compact(outside)} not on a line` : ''}`,
     },
   ]
 

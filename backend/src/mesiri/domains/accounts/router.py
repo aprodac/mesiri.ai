@@ -700,7 +700,11 @@ async def _budget(conn: AsyncConnection, auth: AuthorizationContext, project_id:
     def total(key: str) -> Decimal | None:
         vals = [Decimal(str(k[key])) for k in kinds if k.get(key) not in (None, "")]
         return sum(vals, Decimal(0)) if vals else None
-    return {"budget": total("budget"), "forecast": total("forecast"), "spent": Decimal(str(b.get("total_spent") or 0)),
+    whole = b.get("project") or {}
+    # UX-93: the project's one forecast from Cost control (all its cost), never the kinds added up here.
+    return {"budget": total("budget"),
+            "forecast": Decimal(str(whole["forecast"])) if whole.get("forecast") is not None else None,
+            "spent": Decimal(str(b.get("total_spent") or 0)),
             "kinds": [{"label": k["label"], "budget": k.get("budget"), "actual": k.get("actual"),
                        "forecast": k.get("forecast")} for k in kinds]}
 

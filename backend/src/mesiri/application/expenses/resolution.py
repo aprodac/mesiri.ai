@@ -59,6 +59,9 @@ class PostgresExpenseCategoryResolver(ExpenseCategoryResolver):
                 )
             return ResolutionResult(category_id=category.id, reasons=[])
 
+        # UX-93: a company's first expense can come before anyone opened its category list; the starter set (with
+        # cost centres) is made here too, so "Materials" on a supplier's bill finds its category from day one.
+        await repo.seed_defaults_if_empty(organization_id, created_by=uuid.UUID(cmd.created_by))
         if cmd.category_text:
             category = await repo.find_by_name_exact_active(organization_id, cmd.category_text)
             if category is not None:
