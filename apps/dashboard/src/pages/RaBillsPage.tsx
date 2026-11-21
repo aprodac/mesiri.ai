@@ -191,7 +191,7 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild className="gap-1.5"><Link to={`/billing/ra-bills/${b.id}/document`}><Printer className="size-4" /> {draft ? 'Preview' : 'Print / PDF'}</Link></Button>
-          {draft && <Button size="sm" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('submit')}><Send className="size-4" /> Submit</Button>}
+          {draft && <Button size="sm" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('submit')} data-guide="ra.submit"><Send className="size-4" /> Submit</Button>}
           {draft && <Button size="sm" variant="ghost" className="gap-1.5 text-destructive" disabled={remove.isPending} onClick={() => remove.mutate()}><ActionIcon kind="delete" className="size-4" /> Remove</Button>}
           {(b.status === 'submitted' || b.status === 'certified') && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCertifying(true)}><BadgeCheck className="size-4" /> {b.status === 'certified' ? 'Change certified' : 'Certified by client'}</Button>}
           {b.status === 'submitted' && <Button size="sm" variant="ghost" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('cancel')}><ActionIcon kind="undo" className="size-4" /> Withdraw</Button>}

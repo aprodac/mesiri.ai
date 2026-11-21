@@ -69,13 +69,14 @@ function checkPath(check: WalkCheck, project: string | null): string | null {
   return project ? check.path.replaceAll('{project}', project) : null
 }
 
-/** SS-72: a dotted path into an answer. In a list, a part names a row by its `key` or `id`; `length` counts rows. */
+/** SS-72: a dotted path into an answer. In a list, a part names a row by its `key` or `id`, or by place (`first`,
+ *  `last`: the newest of a list newest first); `length` counts rows. */
 function pick(value: unknown, path: string): unknown {
   let at: unknown = value
   for (const part of path.split('.')) {
     if (at == null) return undefined
     if (Array.isArray(at)) {
-      at = part === 'length' ? at.length : at.find((r) => r && typeof r === 'object' && ((r as Record<string, unknown>).key === part || String((r as Record<string, unknown>).id) === part))
+      at = part === 'length' ? at.length : part === 'first' ? at[0] : part === 'last' ? at[at.length - 1] : at.find((r) => r && typeof r === 'object' && ((r as Record<string, unknown>).key === part || String((r as Record<string, unknown>).id) === part))
     } else if (typeof at === 'object') {
       at = (at as Record<string, unknown>)[part]
     } else {
@@ -468,8 +469,10 @@ export function WalkthroughRunner() {
   // The project picked (on a picker step or in the top bar) goes with every page the walkthrough opens, or each
   // project page would ask for it again (SS-52). The top bar knows the project on a project's own pages too
   // (/projects/<id>/boq, lib/ScopeContext.tsx). A ref: picking one must not start the step over.
-  const { scope } = useScope()
+  const { scope, setPortfolioScope } = useScope()
   scopeNow.current = scope
+  const portfolioRef = React.useRef(setPortfolioScope)
+  portfolioRef.current = setPortfolioScope
   const scopeRef = React.useRef(scope)
   if (scope.mode !== 'portfolio') scopeRef.current = scope
   /** The page that last lit up a step's element, and since when: its later steps don't wait the full WAIT_MS. */
@@ -505,9 +508,15 @@ export function WalkthroughRunner() {
       playToDay(step.day)
       return
     }
+    // A step about every project (21 Nov: "handling multiple projects"): the top bar goes to All projects first.
+    if (step.allProjects && scopeNow.current.mode !== 'portfolio') {
+      scopeRef.current = { mode: 'portfolio' }
+      portfolioRef.current()
+    }
+    const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
     if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
       navigated.current = here
-      navigateRef.current(urlWithScope(step.page, scopeRef.current))
+      navigateRef.current(urlWithScope(step.page, scopeFor))
     }
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
