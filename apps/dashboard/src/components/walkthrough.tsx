@@ -523,9 +523,10 @@ export function WalkthroughRunner() {
     // A step about every project (21 Nov: "handling multiple projects"): the top bar goes to All projects first.
     // Only for that page: the project picked before stays the walkthrough's, for the chapters after (21 Nov).
     if (step.allProjects && scopeNow.current.mode !== 'portfolio') portfolioRef.current()
-    // Inside the sample company a step that names its project opens on it by itself (the guided project after an
-    // all-projects chapter, or a chapter jumped to from the list): never a "pick a project" page to get past.
-    if (step.pick && inSandbox() && !step.allProjects && scopeNow.current.mode === 'portfolio' && picking.current !== here) {
+    // Inside the sample company a story chapter's step (one with a day) that names its project opens on it by itself
+    // (after an all-projects chapter, or a chapter jumped to from the list). Chapter 2's "open Green Villa" stays the
+    // person's own pick: it is part of the lesson.
+    if (step.pick && step.day && inSandbox() && !step.allProjects && scopeNow.current.mode === 'portfolio' && picking.current !== here) {
       picking.current = here
       void api.get<{ id: string; name: string }[]>('/projects').then((res) => {
         const found = (Array.isArray(res.data) ? res.data : []).find((p) => p.name === step.pick)
