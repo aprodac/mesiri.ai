@@ -1,0 +1,404 @@
+{
+  "episode": 7,
+  "title": "The subcontractor",
+  "status": "DRAFT for Ilan's review (21 Nov 2026). Recorded from real entries in the sample company (days 33 to 49); the words follow the screens.",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 7's objective); EPISODE_07_PLAN.md; the 62-day plan's tiling subcontract (green_villa.TILING, LRN-F28); the kit's measurement sheet and bill JTW-014.",
+  "objective": "By the end you can pay a subcontractor only for measured work: work order, measurement, bill checked against it, retention and TDS held back, payment.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 7",
+      "title": "The subcontractor",
+      "beats": [
+        "Tuesday morning. A bill from Joy Tiling Works is on Meera's desk: ninety-two square metres of floor tiles laid at Green Villa.",
+        "Joy's crew is good, and they were quick. The question is not whether they worked. It is whether they laid ninety-two.",
+        "A subcontractor is paid for what was measured, not for what was claimed, and not all of it at once. This episode is how."
+      ],
+      "lines": [
+        {
+          "at": 0,
+          "text": "Joy Tiling · bill JTW-014 · 92 sqm"
+        },
+        {
+          "at": 2,
+          "text": "Work order → measured → bill checked → retention, TDS → paid"
+        }
+      ]
+    },
+    {
+      "id": "how",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "Paying for measured work",
+      "beats": [
+        "A builder does not lay every tile with its own people. Tiling, waterproofing, painting, often go to a specialist crew: a subcontractor.",
+        "First comes a work order: what they will do, how much, at what rate. Here, two hundred and forty square metres of vitrified floor at three hundred and twenty rupees, labour only.",
+        "Then the work is measured, by our side, on the finished floor, with their person present. That number, not their bill, is what we owe for.",
+        "And from each bill two things are held back. Retention, five percent, kept until the defects period ends, in case the tiles crack. And TDS, one percent, which the law says we pay to the tax department on their behalf."
+      ],
+      "steps": [
+        {
+          "at": 0,
+          "module": "Subcontractor",
+          "text": "A specialist crew, paid for the work, not the days"
+        },
+        {
+          "at": 1,
+          "module": "Work order",
+          "text": "What, how much, at what rate: signed before they start"
+        },
+        {
+          "at": 2,
+          "module": "Measurement",
+          "text": "Our tape, on the finished work, with them present"
+        },
+        {
+          "at": 3,
+          "module": "Held back",
+          "text": "Retention 5% till the defects period; TDS 1% to the tax department"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "Measured, not claimed. Held back, not forgotten."
+      }
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "One subcontract, five people",
+      "title": "Who does what",
+      "beats": [
+        "Who does what?",
+        "Anil gives the work order, and records each measurement.",
+        "Ravi measures on site with Joy's foreman, room by room.",
+        "Meera enters Joy's bills and pays them. And Ramesh sees what was stopped, paid and held."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Anil, project manager",
+          "worry": "The work order; the measurement on record",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 2,
+          "who": "Ravi, site engineer",
+          "worry": "The tape on the finished floor",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Joy Tiling Works",
+          "worry": "Paid for every square metre laid",
+          "tone": "#93c5fd"
+        },
+        {
+          "at": 3,
+          "who": "Meera, accounts",
+          "worry": "The bill against the measurement",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 3,
+          "who": "Ramesh Nair, owner",
+          "worry": "What was stopped, paid and held",
+          "tone": "#facc15"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "Their bill, our measurement: Mesiri puts them side by side."
+      }
+    },
+    {
+      "id": "order",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Work orders",
+      "title": "The work order",
+      "beats": [
+        "Before Joy's crew started, Anil gave them a work order in Mesiri.",
+        "One line: vitrified tile flooring, two hundred and forty square metres, at three hundred and twenty rupees. Retention five percent.",
+        "Everything that follows is checked against this line: what is measured, what is billed, at what rate."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/subcontract/work-orders",
+          "show": "Work orders: Joy Tiling Works, Green Villa",
+          "mark": "Joy's work order"
+        },
+        {
+          "at": 1,
+          "show": "the work order: 240 sqm at Rs 320, retention 5%",
+          "mark": "the line"
+        },
+        {
+          "at": 2,
+          "show": "what is measured and billed against it, so far",
+          "mark": "the totals"
+        }
+      ],
+      "record": "As the owner on day 33, the day after the cast gave it.",
+      "as": "ADMIN",
+      "day": 33,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "measure",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Measurement",
+      "title": "Measured, room by room",
+      "beats": [
+        "The ground floor is finished. Ravi and Joy's foreman measure it with a tape, room by room, against the drawing: living, dining, kitchen, two bedrooms, the sit-out.",
+        "Eighty-one point eight eight square metres. Anil records it on the work order, with what was measured.",
+        "That is now the number Joy can be paid for. The work order says thirty-four percent done: twenty-six thousand two hundred rupees of work."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "show": "the work order, before the measurement",
+          "mark": "Measure"
+        },
+        {
+          "at": 1,
+          "do": "Measure: 81.88 sqm · Ground floor, room by room (A-101 rev B)",
+          "show": "the measurement form",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Save measurement",
+          "show": "the line: 81.88 sqm done",
+          "mark": "the measurement"
+        }
+      ],
+      "record": "As Anil (PROJECT_MANAGER) on day 38: the measurement is his entry.",
+      "as": "PROJECT_MANAGER",
+      "day": 38,
+      "keep": true,
+      "play": "PROJECT_MANAGER"
+    },
+    {
+      "id": "bill",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Bills & checks",
+      "title": "The bill meets the measurement",
+      "beats": [
+        "Joy's bill comes: J T W zero one four, ninety-two square metres. Meera enters it as it is.",
+        "Before saving, Mesiri puts it beside what was measured: billed ten point one two square metres more than measured. Flagged: it waits for approval.",
+        "Meera records it anyway. It is held: nothing is owed for it until someone decides."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "do": "Record bill: 92 sqm · their bill JTW-014",
+          "show": "the bill form",
+          "mark": "the form"
+        },
+        {
+          "at": 1,
+          "show": "the check: billed above measured",
+          "mark": "the check"
+        },
+        {
+          "at": 2,
+          "do": "Record (flagged)",
+          "show": "the bill, flagged and held",
+          "mark": "the bill"
+        }
+      ],
+      "record": "As Meera (FINANCE) on day 39.",
+      "as": "FINANCE",
+      "day": 39,
+      "keep": true,
+      "play": "FINANCE"
+    },
+    {
+      "id": "reject",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Bills & checks",
+      "title": "Turned down, with the reason",
+      "beats": [
+        "Anil looks at it. The tape says eighty-one point eight eight. He does not approve the difference.",
+        "He turns it down, and says why: measured eighty-one point eight eight with Joy on the finished floor; send a bill for what was measured.",
+        "Mesiri shows what that stopped: three thousand two hundred and thirty-eight rupees, for tiles nobody laid."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "show": "the flagged bill",
+          "mark": "the bill"
+        },
+        {
+          "at": 1,
+          "do": "Reject: Measured 81.88 sqm with Joy on the finished ground floor; the bill says 92.",
+          "show": "the reason",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Reject",
+          "show": "stopped before payment",
+          "mark": "the bill"
+        }
+      ],
+      "record": "As Anil on day 39, after Meera's bill (kept).",
+      "as": "PROJECT_MANAGER",
+      "day": 39,
+      "keep": true
+    },
+    {
+      "id": "corrected",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Bills & checks",
+      "title": "Paid for what was measured",
+      "beats": [
+        "Wednesday, Joy sends a corrected bill: J T W zero one four A, eighty-one point eight eight square metres.",
+        "It passes the check. Twenty-six thousand two hundred rupees, and now the deductions: thirteen hundred and ten held as retention, two hundred and sixty-two as TDS.",
+        "Twenty-four thousand six hundred and thirty is payable. The retention is not lost to Joy: it is theirs when the defects period ends, if the floor holds."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "do": "Record bill: 81.88 sqm · their bill JTW-014A",
+          "show": "the bill form, passing",
+          "mark": "the form"
+        },
+        {
+          "at": 1,
+          "do": "Record bill",
+          "show": "passed",
+          "mark": "the bill"
+        },
+        {
+          "at": 2,
+          "show": "retention, TDS, net payable",
+          "mark": "the deductions"
+        }
+      ],
+      "record": "As Meera on day 40.",
+      "as": "FINANCE",
+      "day": 40,
+      "keep": true,
+      "play": "FINANCE"
+    },
+    {
+      "id": "owner",
+      "kind": "steps",
+      "part": "What the owner sees",
+      "eyebrow": "What the owner sees · a week later",
+      "title": "Stopped, paid, held",
+      "beats": [
+        "A week later, Ramesh opens Joy's work order.",
+        "The whole floor is done and billed: one bill turned down, with the three thousand two hundred rupees it stopped; the ground floor's paid, twenty-four thousand six hundred and thirty.",
+        "And three thousand eight hundred and forty rupees of retention held, against the day the defects period ends. Am I paying only for what was measured? Here, yes, and he can see it."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "show": "Joy's work order as the owner",
+          "mark": "the totals"
+        },
+        {
+          "at": 1,
+          "show": "the bills: turned down, paid",
+          "mark": "the bills"
+        },
+        {
+          "at": 2,
+          "show": "retention held",
+          "mark": "the retention"
+        }
+      ],
+      "record": "As the owner on day 49, after Meera's Saturday payment.",
+      "as": "ADMIN",
+      "day": 49,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a subcontract leaks",
+      "beats": [
+        "Five ways a subcontract leaks.",
+        "Paying the bill as it comes, because the crew did work hard.",
+        "Measuring from their bill, or from the drawing, instead of the finished floor.",
+        "Paying a rate that is not the work order's.",
+        "And forgetting what was held: retention never released, or released before the defects period ends; TDS deducted and never paid to the tax department."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "Bill paid as sent",
+          "eg": "92 billed, 81.88 laid"
+        },
+        {
+          "at": 2,
+          "title": "Measured from paper",
+          "eg": "Their bill, not our tape"
+        },
+        {
+          "at": 3,
+          "title": "Rate creep",
+          "eg": "Rs 340 on the bill, Rs 320 agreed"
+        },
+        {
+          "at": 4,
+          "title": "Retention forgotten",
+          "eg": "Released early, or never"
+        },
+        {
+          "at": 4,
+          "title": "TDS not paid on",
+          "eg": "Deducted, never deposited"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Our measurement, their rate, held back by the rule."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: Joy bills ninety-two square metres; eighty-one point eight eight were measured. What do you do? Turn it down with the reason, and ask for a bill for what was measured.",
+        "Two: on a bill of a hundred thousand rupees, retention five percent and TDS one percent: what is paid now? Ninety-four thousand.",
+        "Three: when does Joy get the retention? When the defects period ends and the floor has held.",
+        "Next: billing the client. How the money comes in."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "Billed 92, measured 81.88: what do you do?"
+        },
+        {
+          "at": 2,
+          "text": "Rs 1,00,000 bill, 5% retention, 1% TDS: paid now?"
+        },
+        {
+          "at": 3,
+          "text": "When is retention released?"
+        }
+      ]
+    }
+  ]
+}

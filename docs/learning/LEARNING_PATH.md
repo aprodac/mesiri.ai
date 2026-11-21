@@ -36,7 +36,7 @@ Green Villa's story.
 | 4 | **Ep 4: Cement runs short** (request, quote, order, delivery, short load, stock, supplier bill, payment) | ch. 5 "Material" (Ravi, Anil) and ch. 8 "Money out" (Meera) | walk the material chain across all four people | **scripted, ready to record** ([film/scripts/episode-04.md](film/scripts/episode-04.md)); its story is in the sample company (LRN-F18) | general |
 | 5 | **Ep 5: Wages week** | ch. 6 "Labour and wages" (Ravi, Owner, Meera) | run the weekly labour cycle, advances included | **built, for review** (5.6 min, recorded from real entries, 20 Nov; [film/scripts/episode-05.md](film/scripts/episode-05.md)) | general |
 | 6 | **Ep 6: Problems and machines** | none yet | follow a problem from WhatsApp to closed; a machine's day | recorded 21 Nov ([plan](film/EPISODE_06_PLAN.md)); waits for review | **missing** (see 3.3) |
-| 7 | **Ep 7: The subcontractor** | ch. 7 "A subcontractor" (Anil, Meera) | pay a subcontractor only for measured work | to script | general |
+| 7 | **Ep 7: The subcontractor** | ch. 7 "A subcontractor" (Anil, Meera) | pay a subcontractor only for measured work | recorded 21 Nov ([plan](film/EPISODE_07_PLAN.md)); waits for review | general |
 | 8 | **Ep 8: Billing the client** | ch. 9 "Billing the client" (Owner) | explain how money comes in, variations included | to script | general |
 | 9 | **Ep 9: Is it making money?** | ch. 10 "Is it making money?" (Owner, Anil) | read a project's health halfway and act on a red line | to script | general |
 | 10 | **Ep 10: Month end** | ch. 11 "Month end" (Meera) | close a month: GST, TDS, cash and bank, the books, Tally | to script; needs story batch 1 | general |

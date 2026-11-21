@@ -310,3 +310,20 @@ HIRE = {"vendor": "Kerala Earthmovers & Equipments", "bill": "KEE/2027/0118", "m
 #: The handover certificate (Documents, handover), signed on handover day.
 HANDOVER = {"date": "31 July 2027", "defects_until": "31 July 2028", "keys": 3,
             "note": "Handed over complete, with the snag list closed; retention to be released after the defects period."}
+
+
+#: The tiling subcontract (episode 7, LRN-F28; docs/learning/film/EPISODE_07_PLAN.md): Joy Tiling Works lays the
+#: vitrified floor of the Main block, labour only, at the agreed rate a square metre, 5% retention held until the
+#: defects period ends, TDS 1% (a proprietor's firm). The ground floor is measured when it is finished, room by room
+#: from A-101 rev B (the kit's measurement sheet); Joy's bill JTW-014 asks for more than was measured and is turned
+#: down; the corrected bill passes. The first floor is measured and billed when the tiling is done.
+TILED_ROOMS = ("LIVING", "DINING", "KITCHEN", "BEDROOM-1", "BEDROOM-2", "SIT OUT")
+TILING = {"vendor": "Joy Tiling Works", "work": "Vitrified tile flooring", "rate": 320, "retention_pct": 5, "tds_pct": 1,
+          "bill": "JTW-014", "billed": 92.0, "corrected": "JTW-014A", "last_bill": "JTW-019",
+          "reject": "Measured 81.88 sqm with Joy on the finished ground floor; the bill says 92. "
+                    "Send a bill for what was measured."}
+
+
+def ground_floor_tiled() -> float:
+    """The ground floor's tiled area, room by room as the measurement sheet adds it (each room to 2 places)."""
+    return round(sum(round(w * d / 10000, 2) for label, _x, _y, w, d, _sqft in GROUND_FLOOR_ROOMS if label in TILED_ROOMS), 2)

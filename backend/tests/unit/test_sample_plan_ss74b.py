@@ -188,7 +188,27 @@ def test_the_subcontract_runs_from_work_order_to_payment(plan):
     bills = [e for e in plan.entries if e.kind == "sub_bill"]
     assert {by_id[b.needs[0]].id for b in bills} == {m.id for m in measured}
     paid = {e.needs[0] for e in plan.entries if e.kind == "sub_payment"}
-    assert paid == {b.id for b in bills}
+    # LRN-F28: every bill is paid except the one above the measurement, which is turned down.
+    assert paid == {b.id for b in bills if not b.data.get("flagged")}
+
+
+def test_the_tiling_subcontract_plays_the_kits_papers(plan):
+    """LRN-F28 (episode 7): the ground floor measured as the kit's sheet adds it; Joy's bill JTW-014 above it is turned
+    down the same day, the corrected bill passes; the first floor measured and billed when the tiling is done."""
+    t = gv.TILING
+    measured = [e for e in plan.entries if e.kind == "measurement"]
+    assert [m.data["quantity"] for m in measured][0] == gv.ground_floor_tiled() == 81.88
+    bills = [e for e in plan.entries if e.kind == "sub_bill"]
+    assert [b.data["their_bill_no"] for b in bills] == [t["bill"], t["corrected"], t["last_bill"]]
+    flagged, corrected, last = bills
+    assert flagged.data["quantity"] == t["billed"] > measured[0].data["quantity"] and flagged.data["flagged"]
+    (reject,) = [e for e in plan.entries if e.kind == "sub_bill_reject"]
+    assert reject.day == flagged.day and reject.needs == (flagged.id,) and reject.data["bill"] == t["bill"]
+    assert corrected.data["quantity"] == measured[0].data["quantity"] and corrected.day == sp._working_after(flagged.day, 1)
+    assert last.data["quantity"] == measured[1].data["quantity"]
+    assert all(b.data["rate"] == t["rate"] for b in bills)
+    # The kit draws the same rooms and figures.
+    assert {"LIVING", "SIT OUT"} <= set(gv.TILED_ROOMS)
 
 
 def test_issues_use_real_types_and_are_closed(plan):
