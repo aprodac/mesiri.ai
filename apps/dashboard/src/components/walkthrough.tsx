@@ -19,7 +19,7 @@ import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { inSandbox, peekSandboxStart, takeSandboxStart, whenOpeningDone } from '@/lib/sandbox'
+import { SCENE_BUSY_EVENT, inSandbox, peekSandboxStart, playToDay, sandboxSceneBusy, takeSandboxStart, useSandboxClock, whenOpeningDone } from '@/lib/sandbox'
 import {
   JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
@@ -298,6 +298,9 @@ function Finished({ walk, next, onClose }: { walk: Walkthrough; next?: Walkthrou
   )
 }
 
+/** Where the guided project is (walk id, step), kept in this tab across reloads (21 Nov 2026). */
+const RUN_KEY = 'mesiri_walk_run'
+
 export function WalkthroughRunner() {
   const { me } = useAuth()
   const trial = useTrial()
@@ -323,6 +326,8 @@ export function WalkthroughRunner() {
   const readyRef = React.useRef(guide.ready)
   readyRef.current = guide.ready
   const pendingStart = React.useRef<string | null>(null)
+  /** The chapter a resumed guided project picked up in: its title card is not shown again. */
+  const resumed = React.useRef<string | undefined>(undefined)
   const next = React.useRef<HTMLButtonElement>(null)
   /** The top bar's scope as it is now; a walkthrough starts from it. */
   const scopeNow = React.useRef<ReturnType<typeof useScope>['scope']>({ mode: 'portfolio' })
@@ -332,6 +337,21 @@ export function WalkthroughRunner() {
   const stop = React.useCallback(() => {
     setRun(null)
     setWalkthroughRunning(false)
+    try { sessionStorage.removeItem(RUN_KEY) } catch { /* storage off: nothing kept */ }
+  }, [])
+  // The guided project keeps its place (walk and step) in this tab: days passing reload the page (21 Nov).
+  React.useEffect(() => {
+    if (!run?.walk.sandbox) return
+    try { sessionStorage.setItem(RUN_KEY, JSON.stringify({ id: run.walk.id, index: run.index })) } catch { /* nothing kept */ }
+  }, [run?.walk.id, run?.walk.sandbox, run?.index])
+  // The sample company's day and whether a scene is up, for a chapter that plays on its own story day.
+  const clock = useSandboxClock()
+  const clockDay = clock.data?.day
+  const [sceneBusy, setSceneBusy] = React.useState(sandboxSceneBusy)
+  React.useEffect(() => {
+    const on = () => setSceneBusy(sandboxSceneBusy())
+    window.addEventListener(SCENE_BUSY_EVENT, on)
+    return () => window.removeEventListener(SCENE_BUSY_EVENT, on)
   }, [])
 
   // The person's preferences have come: a walkthrough waiting for its words starts now.
@@ -351,7 +371,9 @@ export function WalkthroughRunner() {
         return
       }
       pendingStart.current = null
-      const found = findWalkthrough(id)
+      // "id@index": a guided project picked up again after the page reloaded (days passed).
+      const [walkId, at] = id.split('@')
+      const found = findWalkthrough(walkId)
       // The guided project keeps what the person saves (no take-back): only ever inside their sample company.
       if (!found || (found.sandbox && !inSandbox())) return
       const walk = { ...found, steps: found.steps.map((s) => stepFor(s, wordsRef.current)).filter((s): s is WalkStep => !!s) }
@@ -361,12 +383,21 @@ export function WalkthroughRunner() {
       scopeRef.current = scopeNow.current
       setNewRecord(null)
       setFinished(null)
-      setRun({ walk, index: 0, dir: 1 })
+      const index = Math.min(Math.max(Number(at) || 0, 0), walk.steps.length - 1)
+      if (index > 0) resumed.current = walk.steps[index]?.chapter
+      setRun({ walk, index, dir: 1 })
     }
     window.addEventListener(WALKTHROUGH_EVENT, begin)
     return () => window.removeEventListener(WALKTHROUGH_EVENT, begin)
   }, [])
   React.useEffect(() => () => setWalkthroughRunning(false), [])
+  // After a reload inside the sample company, the guided project goes on from the step it was on.
+  React.useEffect(() => {
+    if (!inSandbox() || peekSandboxStart()) return
+    let kept: { id: string; index: number } | null = null
+    try { kept = JSON.parse(sessionStorage.getItem(RUN_KEY) ?? 'null') } catch { kept = null }
+    if (kept?.id) startWalkthrough(`${kept.id}@${kept.index}`)
+  }, [])
   // "Start the guided project" from outside the sandbox loads the app inside it, then starts here (SS-67).
   React.useEffect(() => {
     // UX-72: after the sample company's opening scene, never under it. Taken only when it starts (peekSandboxStart).
@@ -388,6 +419,12 @@ export function WalkthroughRunner() {
       return
     }
     if (chapter === lastChapter.current) return
+    if (resumed.current === chapter) {
+      // Picked up again after a reload: its card was already shown.
+      resumed.current = undefined
+      lastChapter.current = chapter
+      return
+    }
     const before = lastChapter.current
     lastChapter.current = chapter
     const starts = chapterStarts(run.walk.steps)
@@ -461,6 +498,13 @@ export function WalkthroughRunner() {
       goRef.current(run.dir)
       return
     }
+    // The guided project: a chapter plays on its own story day. Behind it, the days are played on first (the clock's
+    // own scenes, then that morning's briefing); the page then reloads and the project goes on from here.
+    if (inSandbox() && (sceneBusy || (step.day && clockDay === undefined))) return
+    if (inSandbox() && step.day && clockDay !== undefined && clockDay < step.day) {
+      playToDay(step.day)
+      return
+    }
     if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
       navigated.current = here
       navigateRef.current(urlWithScope(step.page, scopeRef.current))
@@ -497,7 +541,7 @@ export function WalkthroughRunner() {
       }
     }, 150)
     return () => window.clearInterval(timer)
-  }, [run, step, role, practiceOff])
+  }, [run, step, role, practiceOff, sceneBusy, clockDay])
 
   // Leaving the walkthrough's pages by hand (the sidebar, a link) ends it: the person went their own way.
   React.useEffect(() => {

@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import {
-  catchUp, dayTitle, goBackTo, openingDone, passDays, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
+  PLAY_TO_EVENT, catchUp, clearSandboxTarget, dayTitle, goBackTo, openingDone, passDays, sandboxTarget, setSandboxSceneBusy, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
 } from '@/lib/sandbox'
 import { ArrivalIris, Briefing, DayPassScene, EndCredits, OpeningScene, type SceneMode } from '@/components/sandbox-scenes'
 import { prefersReducedMotion } from '@/lib/timeline'
@@ -59,7 +59,11 @@ export function SandboxClock() {
   const [arrival, setArrival] = React.useState(takeArrival)
   const [scene, setScene] = React.useState<{ mode: SceneMode; from: number; to: number; origin: { x: number; y: number }; result: DaysPassed | null } | null>(null)
   const finishScene = React.useRef<(() => void) | null>(null)
-  const [briefing, setBriefing] = React.useState(() => !!(arrival?.kind === 'day' && away))
+  // The guided project playing on to its chapter's day: no briefing on the way, only when the day is reached.
+  const [briefing, setBriefing] = React.useState(() => {
+    const target = sandboxTarget()
+    return !!(arrival?.kind === 'day' && away) && (target === null || (away?.day ?? 0) >= target)
+  })
   const [credits, setCredits] = React.useState(() => !!(arrival?.kind === 'day' && away?.finale))
   const [iris, setIris] = React.useState(() => !!arrival && !prefersReducedMotion())
   // UX-72: coming into the sample company, its opening plays, then the page opens through the iris; the guided
@@ -92,6 +96,40 @@ export function SandboxClock() {
       setScene((s) => (s ? { ...s, result: d } : s))
     })
   }
+
+  // The guided project asked for a day (lib/sandbox playToDay): play on to it a week at a time, through reloads.
+  const day = clock.data?.day
+  const lastDay = clock.data?.last_day
+  const playing = React.useRef(false)
+  React.useEffect(() => {
+    const go = () => {
+      const target = sandboxTarget()
+      if (target === null || day === undefined || lastDay === undefined || playing.current) return
+      const to = Math.min(target, lastDay)
+      if (day >= to) {
+        clearSandboxTarget()
+        setSandboxSceneBusy(false)
+        return
+      }
+      playing.current = true
+      setSandboxSceneBusy(true)
+      const days = Math.min(7, to - day)
+      void passDays(days, playScene(days === 1 ? 'next' : 'skip', day, day + days)).catch((e) => {
+        playing.current = false
+        clearSandboxTarget()
+        setSandboxSceneBusy(false)
+        setScene(null)
+        setError(apiErrorMessage(e))
+      })
+    }
+    go()
+    window.addEventListener(PLAY_TO_EVENT, go)
+    return () => window.removeEventListener(PLAY_TO_EVENT, go)
+  }, [day, lastDay]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The guided project waits while the opening, a scene or the morning briefing is up.
+  React.useEffect(() => {
+    setSandboxSceneBusy(!!(scene || iris || briefing || credits || (opening && !reduced)) || sandboxTarget() !== null)
+  }, [scene, iris, briefing, credits, opening, reduced])
 
   // Another tab moved the days on: this one opens the sample again on the current date (once).
   const date = clock.data?.date

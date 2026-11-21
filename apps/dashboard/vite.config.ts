@@ -59,7 +59,7 @@ function checkTourMarkers(): Plugin {
       const walks = fs.readFileSync(path.join(SRC, 'lib/walkthroughs.ts'), 'utf8')
       const tourKeys = [...guides.matchAll(/^ {2}'(\/[^']+)': \{/gm)].map((m) => `page${m[1].replace(/\//g, '-')}`)
       const moduleKeys = [...map.matchAll(/^ {4}key: '([a-z_-]+)'/gm)].map((m) => `module-${m[1]}`)
-      const written = [...walks.matchAll(/\bid: '([a-z0-9-]+)'|(?:composed|journey)\(\s*'([a-z0-9-]+)'/g)].map((m) => m[1] ?? m[2])
+      const written = [...walks.matchAll(/\bid: '([a-z0-9-]+)'|(?:composed|journey|gv)\(\s*'([a-z0-9-]+)'/g)].map((m) => m[1] ?? m[2])
       const known = new Set([...written, ...written.map((id) => `goal-${id}`), ...tourKeys, ...moduleKeys, 'app'])
       const lists = [...walks.matchAll(/walks: \[([^\]]*)\]/g), ...walks.matchAll(/composed\([^\n]*?\[([^\]]*)\]/g)]
       // SS-61: the walkthroughs given a voice (VOICED) must exist too.

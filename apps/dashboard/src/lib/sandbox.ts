@@ -443,3 +443,38 @@ export async function goBackTo(day: number, beforeReload?: (d: DaysPassed) => Pr
   reload(`${window.location.pathname}${window.location.search}`)
 }
 
+
+// -- The guided project plays the story's days (21 Nov 2026: "fill its gaps"): each chapter on its own story day ----
+
+const TARGET_KEY = 'mesiri_sandbox_target'
+export const PLAY_TO_EVENT = 'mesiri:sandbox-play-to'
+export const SCENE_BUSY_EVENT = 'mesiri:sandbox-scene-busy'
+let sceneBusy = false
+
+/** The day the guided project asked the sample company to reach, kept across the reloads days passing make. */
+export function sandboxTarget(): number | null {
+  const n = Number(store()?.getItem(TARGET_KEY) ?? '')
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+export function clearSandboxTarget() {
+  store()?.removeItem(TARGET_KEY)
+}
+
+/** Play the days up to `day` (never back): the clock plays them a week at a time with its own scenes, then the
+ *  morning briefing of that day. */
+export function playToDay(day: number) {
+  store()?.setItem(TARGET_KEY, String(day))
+  window.dispatchEvent(new CustomEvent(PLAY_TO_EVENT, { detail: day }))
+}
+
+/** A scene or the morning briefing is on screen: the guided project waits under it. */
+export function setSandboxSceneBusy(busy: boolean) {
+  if (busy === sceneBusy) return
+  sceneBusy = busy
+  window.dispatchEvent(new CustomEvent(SCENE_BUSY_EVENT, { detail: busy }))
+}
+
+export function sandboxSceneBusy(): boolean {
+  return sceneBusy || sandboxTarget() !== null
+}

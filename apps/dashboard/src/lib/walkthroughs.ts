@@ -101,6 +101,10 @@ export interface WalkStep extends TourStep {
   /** The guided project (SS-67): the chapter this step belongs to, for the chapter list in the bubble. Set by
    *  `journey(...)`, never by hand. */
   chapter?: string
+  /** The guided project: the story day the sample company must be on for this step (its chapter's `day`, on the
+   *  chapter's first step). Earlier, the days are played on to it first; later, nothing changes (never back). Set by
+   *  `journey(...)`. */
+  day?: number
 }
 
 export interface Walkthrough {
@@ -797,7 +801,88 @@ const GV_BOQ: Walkthrough = {
   ],
 }
 
-const made: Walkthrough[] = [...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS, GV_SETUP, GV_BOQ]
+// The guided project's story chapters (21 Nov 2026: "fill its gaps ... so through simulation itself everyone can
+// easily learn"): each plays on its own story day of the 62-day plan (JOURNEY_CHAPTERS `day`), on Green Villa's real
+// records, with the owner's own work as "Your turn" (approve the wages, the count, send the running bill). Built from
+// the plan (application/learn/sample_plan.py): change a day there, change it here.
+const gv = (id: string, title: string, about: string, steps: WalkStep[]): Walkthrough =>
+  ({ id, kind: 'workflow', part: true, sandbox: true, title, about, minutes: minutesFor(steps.length), roles: STARTERS, steps })
+const GV = 'Green Villa'
+
+const GV_DAY = gv('gv-day', 'A day on site', "Monday at Green Villa, from Ravi's message to the evening report.", [
+  { page: '/today', pick: GV, target: 'today.sites', title: 'Monday, day 2', text: "Ravi sent each site's day: who came, the work done, the material used. Nobody typed a register.", say: 'Monday, day two. Ravi has sent each site\'s day: who came, the work done, the material used. Nobody typed a register.', mood: 'hello' },
+  { page: '/today', target: 'today.issues', title: 'What is stuck', text: 'Anything Ravi said is stuck stays open here until someone sorts it.', say: 'Anything Ravi said is stuck stays open here, until someone sorts it out.', mood: 'worry' },
+  { page: '/site-log', title: 'Everything the site sent', text: 'Every update, entry and photo, by day and by site.', say: 'And every update, entry and photo is kept, by day and by site.', mood: 'look' },
+  { page: '/reports', target: 'reports.list', title: 'The evening report', text: "Each evening every site's daily report (DPR) is made and sent, to you and to Dr. Anand Krishnan.", say: 'Each evening every site\'s daily report is made and sent, to you and to Doctor Anand Krishnan, the client. Nobody sat and typed it.', mood: 'happy' },
+  { page: '/today', title: 'Your turn: tell Mesiri', text: 'Type this into Tell Mesiri, the New box at the top. The card shows what Mesiri understood: look, then tap Cancel. The site sends the same on WhatsApp.', say: 'Your turn. Type this into Tell Mesiri, the New box at the top. Look at the card, then tap cancel. From site, Ravi sends the same on WhatsApp.', mood: 'send', try: { kind: 'whatsapp', say: '6 masons, 4 helpers. First-floor slab shuttering done. Cement ran out.', tools: ['record_attendance', 'record_work', 'report_issue'], save: false } },
+])
+
+const GV_MATERIAL = gv('gv-material', 'Cement runs short', "The Main block's cement, from Ravi's request to the lorry at the gate.", [
+  { page: '/materials/requests', target: 'req.list', title: 'Friday, day 6', text: "On Monday the Main block ran out of cement. Ravi asked for it here; Anil raised it to the month's 200 bags.", say: 'Friday, day six. On Monday the Main block ran out of cement. Ravi asked for it, and Anil raised it to the month\'s two hundred bags.', mood: 'hello' },
+  { page: '/materials?view=movements', title: 'First, the masons', text: 'Before ordering, Anil moved 40 bags from the Annex, so the masons did not stand idle.', say: 'Before anything was ordered, Anil moved forty bags across from the Annex, so the masons did not stand idle.', mood: 'think' },
+  { page: '/procurement/quotations', target: 'quotes.list', title: 'Three quotes', text: 'Malabar, Kerala Steels and Sri Hardwares quoted for the cement and the steel. Open the request for quotes to see them side by side.', say: 'Three suppliers quoted for the cement and the steel. Open the request for quotes, and see them side by side.', mood: 'look' },
+  { page: '/procurement/orders', target: 'po.list', title: 'Cheapest per item', text: 'The split was cheaper than any one supplier: cement from Malabar at ₹400, steel from Kerala Steels at ₹66. Two orders.', say: 'Splitting it was cheaper than any one supplier. Cement from Malabar at four hundred, steel from Kerala Steels at sixty-six. Two orders.', mood: 'happy' },
+  { page: '/procurement/pending', target: 'pending.list', title: 'The lorry came short', text: 'Malabar\'s lorry brought 190 bags against the 200 ordered. Ravi took what came: 10 are still to come, and the order says so.', say: 'Malabar\'s lorry brought a hundred and ninety bags, against two hundred ordered. Ravi took what came. Ten are still to come, and the order says so.', mood: 'worry' },
+  { page: '/procurement/returns', target: 'returns.list', title: 'Six torn bags', text: 'Six bags were torn. They went back on a return note, and Malabar owes for them until it is settled.', say: 'Six of the bags were torn. They went back on a return note, and Malabar owes for them until it is settled.', mood: 'think' },
+  { page: '/materials?view=stock', title: 'Back above the line', text: "The Main block's cement is back: the 40 moved and what the gate kept. Every bag is accounted for.", say: 'And the Main block has cement again: the forty moved, and what the gate kept. Every bag accounted for.', mood: 'happy' },
+])
+
+const GV_WAGES = gv('gv-wages', 'Wages week', "Saturday at Green Villa: the week's wage sheet, approved by you, paid by Meera.", [
+  { page: '/labour?view=muster', title: 'Saturday, day 7', text: "Pay day. The muster roll filled itself from Ravi's attendance all week: who came, who did not.", say: 'Saturday, day seven. Pay day. The muster roll filled itself from Ravi\'s attendance all week: who came, and who didn\'t.', mood: 'hello' },
+  { page: '/labour/advances', target: 'advances.list', title: 'An advance on Wednesday', text: 'Meera gave Suresh ₹2,000 on Wednesday. It comes off his wages today by itself.', say: 'On Wednesday, Meera gave Suresh two thousand rupees. It comes off his wages today, by itself.', mood: 'think' },
+  { page: '/labour/wages', target: 'wages.stats', title: 'The wage sheet made itself', text: "Each person's days at their daily wage, the crew as one line, the advance taken back: what is to pay.", say: 'The wage sheet made itself. Each person\'s days at their daily wage, Rahim\'s crew as one line, the advance taken back. And what is left to pay.', mood: 'look' },
+  { page: '/labour/wages', target: 'wages.approve', title: 'Your turn: approve it', text: 'Nothing is paid until you approve. Check the sheet, then press Approve.', say: 'Your turn. Nothing is paid until you approve it. Check the sheet, then press approve.', mood: 'send', try: { kind: 'here', poll: true, check: { path: '/labour/wage-sheets/open', params: { project_id: '{project}' }, has: { status: 'approved' } } } },
+  { page: '/labour/wages', target: 'wages.pay', title: 'Meera pays it', text: 'Approved, it is Meera\'s: she pays it from the bank or the site\'s cash, and each person gets a slip.', say: 'Once approved, it\'s Meera\'s. She pays it from the bank or the site\'s cash, and each person gets a slip.', mood: 'happy' },
+])
+
+const GV_PROBLEMS = gv('gv-problems', 'Problems and machines', "The Annex mixer breaks down: the problem, the task, and the hire bill checked.", [
+  { page: '/issues', target: 'issues.list', title: 'The mixer stopped', text: "On Thursday the Annex's hired mixer burnt out its motor mid-morning. Ravi said so, and it stayed open here until it was fixed.", say: 'On Thursday, the Annex\'s hired mixer burnt out its motor, mid-morning. Ravi said so, and it stayed open here until it was fixed.', mood: 'worry' },
+  { page: '/tasks', target: 'tasks.list', title: 'A task, with a time', text: "Anil gave Ravi a task: get the hire company's mechanic there before 8 the next morning. Done, it closed.", say: 'Anil gave Ravi a task: get the mechanic there before eight the next morning. When it was done, it closed.', mood: 'think' },
+  { page: '/equipment/log', title: "Each machine's day", text: 'Ravi logs the mixer\'s hours every day: worked, idle, broken down.', say: 'Ravi logs the mixer\'s hours every day: worked, idle, and broken down.', mood: 'look' },
+  { page: '/equipment/hire', target: 'hire.list', title: 'The hire bill, checked', text: 'The hire company billed more hours than the site logged. Anil had it corrected to the hours logged before anyone paid.', say: 'The hire company billed more hours than the site logged. Anil had it corrected, to the hours logged, before anyone paid.', mood: 'happy' },
+])
+
+const GV_MONEY_OUT = gv('gv-money-out', 'Money out', "Malabar's bill at ₹410, taken back; the corrected bill; the return settled.", [
+  { page: '/finance/vendors', target: 'vendors.list', title: 'The bill came at ₹410', text: 'Malabar billed 190 bags at ₹410, against the order at ₹400 and the 184 kept. Mesiri set it beside the order and the gate.', say: 'Malabar\'s bill came at four hundred and ten a bag, for a hundred and ninety bags. Against an order at four hundred, and a hundred and eighty-four kept. Mesiri set it beside the order and the gate.', mood: 'worry' },
+  { page: '/finance/vendors', target: 'vendors.list', title: 'Taken back, corrected', text: 'Meera took that bill back and asked for a corrected one: 184 bags at ₹400. The return was settled against it. Open Malabar to see both.', say: 'Meera took that bill back, and asked for a corrected one: a hundred and eighty-four bags at four hundred. The return was settled against it. Open Malabar to see both.', mood: 'happy' },
+  { page: '/finance/expenses', title: 'Every rupee out', text: 'Bills, petty cash, the hire: every rupee out is here, against its project and site.', say: 'And every rupee out is here: bills, petty cash, the hire. Each against its project and site.', mood: 'look' },
+])
+
+const GV_COUNT = gv('gv-count', 'The store counted', "Ravi counts the Main block's store; three bags short; you approve it.", [
+  { page: '/materials/counts', target: 'counts.list', title: 'Monday, day 16', text: "Ravi counted the Main block's store bag by bag. Mesiri put it beside the book: what came, less what was used and sent back.", say: 'Monday, day sixteen. Ravi counted the Main block\'s store, bag by bag. Mesiri put it beside the book: what came, less what was used, and what went back.', mood: 'hello' },
+  { page: '/materials/counts', target: 'counts.sheet', title: 'Your turn: approve the count', text: 'Three bags of cement short: wastage, Ravi says. Open the count and press Approve differences, so the book is the store again.', say: 'Three bags of cement short. Wastage, Ravi says. Your turn: open the count, and press approve differences, so the book is the store again.', mood: 'send', try: { kind: 'here', poll: true, check: { path: '/materials/stock-counts', params: { status: 'approved' } } } },
+])
+
+const GV_BILLING = gv('gv-billing', 'Billing the client', "Green Villa's running bill: the work done at the BOQ rates, less retention and the advance.", [
+  { page: '/billing/ra-bills', pick: GV, target: 'ra.terms', title: 'Day 30: a month of work', text: "The contract's terms are already here: retention 5%, the advance taken back 10% a bill, GST 18%.", say: 'Day thirty: a month of work. The contract\'s terms are already here: five percent retention, the advance taken back at ten percent a bill, and G S T.', mood: 'hello' },
+  { page: '/billing/ra-bills', target: 'ra.new', title: 'Your turn: the running bill', text: 'Press New RA bill up to today. The work done since the start is priced at the BOQ rates; check it, then submit it to Dr. Anand Krishnan.', say: 'Your turn. Press new R A bill, up to today. The work done is priced at your B O Q rates. Check it, then submit it to Doctor Anand Krishnan.', mood: 'send', try: { kind: 'here', check: { path: '/billing/ra-bills', params: { project_id: '{project}' } } } },
+  { page: '/accounts/receivables', target: 'recv.clients', title: 'What the client owes', text: 'Sent, it is owed: by the bill, how old it is, and what came in against it.', say: 'Once it\'s sent, it\'s owed. By bill, how old it is, and what has come in against it.', mood: 'look' },
+])
+
+const GV_COST = gv('gv-cost', 'Is it making money?', 'Green / red on a month of real work: which lines earn their labour, which do not.', [
+  { page: '/cost/green-red', pick: GV, target: 'gr.lines', title: 'Line by line', text: 'Each BOQ line: the labour its work earned at the BOQ rate, against the labour that went on it. Green earns it; red costs more.', say: 'Line by line. The labour each line\'s work earned at the B O Q rate, against the labour that went on it. Green earns it. Red costs more.', mood: 'think' },
+  { page: '/cost/budget', target: 'budget.kinds', title: 'Budget against spent', text: 'For labour, material and subcontract: the budget, what the work earned, and what was spent.', say: 'For labour, material and subcontract: the budget, what the work has earned, and what was spent.', mood: 'look' },
+  { page: '/cost/budget', target: 'budget.labour', title: 'Labour on its lines', text: 'A day of labour no line can be told for waits here, with the line Mesiri suggests. One tap puts the suggestions on.', say: 'A day of labour that no line can be told for waits here, with the line Mesiri suggests. One tap puts them on.', mood: 'happy' },
+])
+
+const GV_SUB = gv('gv-sub', 'A subcontractor', "Joy's tiling: measured with him, a bill turned down, the right one approved.", [
+  { page: '/subcontract/work-orders', target: 'wo.list', title: "Joy's work order", text: 'Joy Tiling Works lays the tiles at an agreed rate a square metre. Everything after is checked against it.', say: 'Joy Tiling Works lays the tiles, at an agreed rate a square metre. Everything after is checked against it.', mood: 'hello' },
+  { page: '/subcontract/bills', target: 'bills.list', title: 'Billed 92, measured 81.88', text: 'Joy billed 92 sqm. Anil measured the finished ground floor with him: 81.88. The bill was turned down with why, and the right one came the next day.', say: 'Joy billed ninety-two square metres. Anil measured the finished ground floor with him: eighty-one point eight eight. That bill was turned down, with why, and the right one came the next day.', mood: 'worry' },
+])
+
+const GV_MONTH = gv('gv-month', 'Month end', "The month's report, the books, and the Tally file.", [
+  { page: '/reports/period', target: 'period.kpis', title: "The month's report", text: 'Work, labour, material and money for the month, per project, made from what was recorded.', say: 'The month\'s report: work, labour, material and money, per project, made from what was recorded.', mood: 'hello' },
+  { page: '/accounts/periods', target: 'periods.months', title: 'The books kept themselves', text: 'Every bill, payment, delivery and wage went into the books when it was recorded. Close the month when it is checked.', say: 'Every bill, payment, delivery and wage went into the books as it was recorded. Close the month once it\'s checked.', mood: 'look' },
+  { page: '/accounts/tally', target: 'tally.download', title: 'For your accountant', text: 'The month for Tally in one file, so nobody types it in again.', say: 'And the month for Tally, in one file, so nobody types it in again.', mood: 'happy' },
+])
+
+const GV_HANDOVER = gv('gv-handover', 'Handover', 'The final bill, the handover, and the defects period.', [
+  { page: '/billing/ra-bills', pick: GV, target: 'ra.list', title: 'Friday, day 62', text: 'The snag list is closed. Your turn comes on the final bill: all the work, measured, at the BOQ rates.', say: 'Friday, day sixty-two. The snag list is closed. Now the final bill: all the work, measured, at your B O Q rates.', mood: 'hello' },
+  { page: '/billing/ra-bills', target: 'ra.new', title: 'Your turn: the final bill', text: 'Press New RA bill up to today: everything not billed yet. Check it, then submit it.', say: 'Your turn. Press new R A bill, up to today: everything not billed yet. Check it, then submit it.', mood: 'send', try: { kind: 'here', check: { path: '/billing/ra-bills', params: { project_id: '{project}' } } } },
+  { page: '/planning/setup', target: 'setup.stage', title: 'Handed over', text: 'Green Villa moves to Handover, then the defects period: 12 months, and the 5% retention comes back at its end.', say: 'Green Villa moves to handover, and then the defects period: twelve months. At its end, the five percent retention comes back.', mood: 'happy' },
+])
+
+const made: Walkthrough[] = [...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS, GV_SETUP, GV_BOQ, GV_DAY, GV_MATERIAL, GV_WAGES, GV_PROBLEMS, GV_MONEY_OUT, GV_COUNT, GV_BILLING, GV_COST, GV_SUB, GV_MONTH, GV_HANDOVER]
 
 /** A walkthrough made of others, one after another (W2 = asking + ordering + delivery). An id that is not a
  *  walkthrough fails the build (vite.config.ts), so it is never silently left out here. */
@@ -875,19 +960,23 @@ export const ROLE_PATHS: Walkthrough[] = [
  *  journey works end to end from day one; a chapter with nothing to run yet (handover and closing) is left out. */
 /** `film`: the film episode watched before the chapter (docs/learning/LEARNING_PATH.md), named on its card (21 Nov:
  *  "Chapter 4" and "Episode 3" are the same day on site). */
-export const JOURNEY_CHAPTERS: { title: string; walks: string[]; film?: string }[] = [
+export const JOURNEY_CHAPTERS: { title: string; walks: string[]; film?: string; day?: number }[] = [
   { title: 'Your sample company', walks: [], film: 'Prologue' },
   // SS-69 part 1 (17 Nov: "our focus is till BOQ, the role play working"): the person does it, Mesiri checks it.
   { title: 'Set up Green Villa', walks: ['gv-setup'], film: 'Episode 1' },
   { title: 'The BOQ', walks: ['gv-boq'], film: 'Episode 1' },
-  { title: 'A day on site', walks: ['site-to-report'], film: 'Episode 3' },
-  { title: 'Material', walks: ['material'], film: 'Episode 4' },
-  { title: 'Labour and wages', walks: ['labour-to-wages'], film: 'Episode 5' },
-  { title: 'A subcontractor', walks: ['subcontract'], film: 'Episode 7' },
-  { title: 'Money out', walks: ['supplier-bill'], film: 'Episode 4' },
-  { title: 'Billing the client', walks: ['billing'], film: 'Episode 8' },
-  { title: 'Is it making money?', walks: ['cost-control'], film: 'Episode 9' },
-  { title: 'Month end', walks: ['month-end'], film: 'Episode 10' },
+  // 21 Nov: each chapter on its own story day (the 62-day plan), in the order the days come.
+  { title: 'A day on site', walks: ['gv-day'], film: 'Episode 3', day: 2 },
+  { title: 'Cement runs short', walks: ['gv-material'], film: 'Episode 4', day: 6 },
+  { title: 'Wages week', walks: ['gv-wages'], film: 'Episode 5', day: 7 },
+  { title: 'Problems and machines', walks: ['gv-problems'], film: 'Episode 6', day: 9 },
+  { title: 'Money out', walks: ['gv-money-out'], film: 'Episode 4', day: 10 },
+  { title: 'The store counted', walks: ['gv-count'], film: 'Episode 4', day: 16 },
+  { title: 'Billing the client', walks: ['gv-billing'], film: 'Episode 8', day: 30 },
+  { title: 'Is it making money?', walks: ['gv-cost'], film: 'Episode 9', day: 31 },
+  { title: 'A subcontractor', walks: ['gv-sub'], film: 'Episode 7', day: 39 },
+  { title: 'Month end', walks: ['gv-month'], film: 'Episode 10', day: 40 },
+  { title: 'Handover', walks: ['gv-handover'], film: 'Episode 11', day: 62 },
 ]
 
 /** Chapter 0: where the person is, said before anything else (the plan's "Your sample company"). */
@@ -908,10 +997,10 @@ const JOURNEY_HELLO: WalkStep[] = [
   },
 ]
 
-function journey(id: string, title: string, about: string, chapters: { title: string; walks: string[] }[]): Walkthrough {
+function journey(id: string, title: string, about: string, chapters: { title: string; walks: string[]; day?: number }[]): Walkthrough {
   const steps = chapters.flatMap((c, i) => {
     const own = i === 0 ? JOURNEY_HELLO : c.walks.flatMap((x) => made.find((w) => w.id === x)?.steps ?? [])
-    return own.map((s) => ({ ...s, chapter: c.title }))
+    return own.map((s, k) => ({ ...s, chapter: c.title, ...(k === 0 && c.day ? { day: c.day } : {}) }))
   })
   return { id, kind: 'workflow', title, about, roles: STARTERS, sandbox: true, minutes: minutesFor(steps.length), steps }
 }
