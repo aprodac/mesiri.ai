@@ -522,3 +522,102 @@ async def test_an_unreadable_or_odd_list_never_breaks_the_reply(monkeypatch) -> 
     assert broken.ready is None and [r.text for r in broken.replies]
     [entry] = odd.ready
     assert entry.line == 3 and entry.key == "k-2" and entry.remove_id is None  # no card, no Remove tap
+
+
+# --- Sent again from the phone's queue: answered once (MOB-07) ------------------------
+
+
+async def test_the_same_message_id_sent_again_is_answered_once_with_the_first_answer(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    handler = _Handler()
+    storage = _Storage()
+    container = SimpleNamespace(simulate_handler=handler, redis_client=FakeRedis(), object_storage=storage,
+                                material_db=_Database("innu 6 mason"))
+    headers = {"X-Mesiri-Client": "app", "X-Mesiri-Message-Id": "note-6f1c2a9e5b3d"}
+
+    first = await web.send_voice(_voice_request(container, _m4a(seconds=4), headers), _token())
+    again = await web.send_voice(_voice_request(container, _m4a(seconds=4), headers), _token())
+
+    assert len(handler.messages) == 1 and len(storage.objects) == 1  # run once, stored once
+    assert again.message_id == first.message_id and again.transcript == "innu 6 mason"
+    assert [r.text for r in again.replies] == [r.text for r in first.replies]
+
+
+async def test_a_message_still_being_worked_on_is_a_409_and_nothing_runs_twice(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    handler = _Handler(delay=0.2)
+    redis = FakeRedis()
+    container = SimpleNamespace(simulate_handler=handler, redis_client=redis, actor_reader=None)
+
+    def request() -> Any:
+        r = _request(container)
+        r.headers = {"X-Mesiri-Message-Id": "typed-0001-abcd"}
+        return r
+
+    first = asyncio.create_task(web.send_message(web.WebMessageRequest(text="innu 4 helper"), request(), _token()))
+    await asyncio.sleep(0.05)
+    with pytest.raises(HTTPException) as busy:
+        await web.send_message(web.WebMessageRequest(text="innu 4 helper"), request(), _token())
+    await first
+
+    assert busy.value.status_code == 409 and len(handler.messages) == 1
+
+
+async def test_without_an_id_or_with_a_bad_one_every_send_runs(monkeypatch) -> None:
+    """The guard: the dashboard sends no id and nothing changes for it; a malformed id is ignored, never trusted."""
+    _numbers(monkeypatch)
+    handler = _Handler()
+    container = SimpleNamespace(simulate_handler=handler, redis_client=FakeRedis(), actor_reader=None)
+
+    for headers in ({}, {}, {"X-Mesiri-Message-Id": "x"}, {"X-Mesiri-Message-Id": "x"}, {"X-Mesiri-Message-Id": "a b c d e f g h"}):
+        r = _request(container)
+        r.headers = headers
+        await web.send_message(web.WebMessageRequest(text="hi"), r, _token())
+
+    assert len(handler.messages) == 5
+
+
+async def test_one_persons_message_id_never_answers_another_person(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    handler = _Handler()
+    container = SimpleNamespace(simulate_handler=handler, redis_client=FakeRedis(), actor_reader=None)
+
+    for user in (str(USR), str(uuid.uuid4())):
+        r = _request(container)
+        r.headers = {"X-Mesiri-Message-Id": "same-id-123456"}
+        await web.send_message(web.WebMessageRequest(text="hi"), r, _token(sub=user))
+
+    assert len(handler.messages) == 2
+
+
+async def test_a_message_that_failed_can_be_sent_again(monkeypatch) -> None:
+    """A run that broke leaves no claim behind: the phone's next try runs it."""
+    _numbers(monkeypatch)
+    redis = FakeRedis()
+
+    class _Breaks:
+        calls = 0
+
+        def __call__(self, sender: Any):
+            async def handle(message: Any, raw_payload: dict) -> None:
+                _Breaks.calls += 1
+                if _Breaks.calls == 1:
+                    raise RuntimeError("model down")
+                await sender.send_text(NUMBER, "Got it.")
+
+            return handle
+
+    container = SimpleNamespace(simulate_handler=_Breaks(), redis_client=redis, actor_reader=None)
+
+    def request() -> Any:
+        r = _request(container)
+        r.headers = {"X-Mesiri-Message-Id": "retry-me-0001"}
+        return r
+
+    broke = await web.send_message(web.WebMessageRequest(text="hi"), request(), _token())
+    answer = await web.send_message(web.WebMessageRequest(text="hi"), request(), _token())
+    replay = await web.send_message(web.WebMessageRequest(text="hi"), request(), _token())
+
+    assert broke.replies[0].text.startswith(web.BROKE_PREFIX)  # how run_captured shows a broken run
+    assert _Breaks.calls == 2 and [r.text for r in answer.replies] == ["Got it."]
+    assert [r.text for r in replay.replies] == ["Got it."]  # the good answer is the one kept

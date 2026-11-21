@@ -15,7 +15,9 @@ that names them and can never be a phone (UX-26).
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -46,6 +48,16 @@ router = APIRouter(prefix="/assistant", tags=["assistant"])
 #: Marks the message as from the dashboard in its log row (normalized
 #: message metadata and raw payload), so the inbox can tell the doors apart.
 SOURCE = "dashboard"
+#: MOB-07: a message's own id, chosen by the client, so the same message sent again (a phone that lost signal
+#: before the answer came, and sends its queue later) is answered once: the second send gets the first answer.
+MESSAGE_ID_HEADER = "X-Mesiri-Message-Id"
+_MESSAGE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+#: How long a message id is remembered (its answer replayed), and how long one being worked on holds its claim.
+ANSWER_TTL_S = 24 * 3600
+CLAIM_TTL_S = 10 * 60
+STILL_SENDING = "That one is still being worked on. Its answer will come in a moment."
+#: How runtime/reply_capture.run_captured shows a run that broke.
+BROKE_PREFIX = "[error:"
 #: MOB-03: the mobile app uses the same door and says so in this header; any other value is the dashboard.
 CLIENT_HEADER = "X-Mesiri-Client"
 APP_SOURCE = "app"
@@ -322,6 +334,48 @@ async def read_transcript(container: object, correlation_id: str) -> str | None:
     return (row.body_text or None) if row is not None else None
 
 
+def message_id_of(request: Request) -> str | None:
+    """The client's id for this message (MOB-07), when it sent a well-formed one."""
+    headers = getattr(request, "headers", None) or {}
+    said = next((v for k, v in headers.items() if str(k).lower() == MESSAGE_ID_HEADER.lower()), "")
+    said = str(said).strip()
+    return said if _MESSAGE_ID.match(said) else None
+
+
+async def once(
+    container: object,
+    user: dict,
+    message_id: str | None,
+    run: Callable[[], Awaitable[WebMessageResponse]],
+) -> WebMessageResponse:
+    """MOB-07: run a message once per client message id. The same id again gets the first answer (with the list
+    waiting for Save as it is now); while the first is still being worked on, a 409. Without an id, or without
+    Redis, every send runs (as before)."""
+    redis = getattr(container, "redis_client", None)
+    if message_id is None or redis is None:
+        return await run()
+    org_id, user_id = _who(user)
+    key = f"web_assistant:msg:{org_id}:{user_id}:{message_id}"
+    answer = await redis.get_json(f"{key}:answer")  # type: ignore[attr-defined]
+    if isinstance(answer, dict):
+        replay = WebMessageResponse.model_validate(answer)
+        replay.ready = await read_ready(container, org_id, user_id)
+        return replay
+    if not await redis.set_if_absent(f"{key}:claim", "1", ttl_seconds=CLAIM_TTL_S):  # type: ignore[attr-defined]
+        raise HTTPException(status_code=409, detail=STILL_SENDING)
+    try:
+        response = await run()
+    except BaseException:
+        await redis.delete(redis.namespaced(f"{key}:claim"))  # type: ignore[attr-defined]  # delete() takes the raw key
+        raise
+    if any(r.text.startswith(BROKE_PREFIX) for r in response.replies):
+        # The run broke (run_captured shows it as a reply): nothing is kept, so the phone's next try runs it again.
+        await redis.delete(redis.namespaced(f"{key}:claim"))  # type: ignore[attr-defined]  # delete() takes the raw key
+        return response
+    await redis.set_json(f"{key}:answer", response.model_dump(mode="json"), ttl_seconds=ANSWER_TTL_S)  # type: ignore[attr-defined]
+    return response
+
+
 def _who(user: dict) -> tuple[uuid.UUID, uuid.UUID]:
     """The signed-in person's company and user id (already checked by ``sender_number``)."""
     return uuid.UUID(str(user.get("org"))), uuid.UUID(str(user.get("sub")))
@@ -355,8 +409,11 @@ async def send_message(
     if len(text) > MAX_TEXT:
         raise HTTPException(status_code=413, detail=f"Keep it under {MAX_TEXT} characters.")
     container, wa_id = await _ready_sender(request, user)
-    return await handle(
-        container, wa_id, text=text, tap=tap, source=client_source(request), who=_who(user)
+    return await once(
+        container,
+        user,
+        message_id_of(request),
+        lambda: handle(container, wa_id, text=text, tap=tap, source=client_source(request), who=_who(user)),
     )
 
 
@@ -383,6 +440,9 @@ async def send_voice(
             status_code=413, detail="That recording is too long. Keep it under a minute."
         )
     container, wa_id = await _ready_sender(request, user)
-    return await handle(
-        container, wa_id, voice=audio, source=client_source(request), who=_who(user)
+    return await once(
+        container,
+        user,
+        message_id_of(request),
+        lambda: handle(container, wa_id, voice=audio, source=client_source(request), who=_who(user)),
     )
