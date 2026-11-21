@@ -8,6 +8,7 @@ import { fetchSiteDay, setConditions, type Weather } from '../../src/lib/mesiri'
 import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { amount, reportOf, sectionTitle, SECTIONS, words, type Section } from '../../src/lib/day'
 import { ApiError } from '../../src/lib/api'
+import { kept } from '../../src/lib/kept'
 import { BackHeader, Button, Card, Chip, Loading, Notice, Screen } from '../../src/components/ui'
 import { colors, font, space } from '../../src/theme'
 
@@ -43,7 +44,7 @@ export default function DaySection() {
   const section = (SECTIONS as string[]).includes(params.section ?? '') ? (params.section as Section) : 'labour'
   const date = todayFor(me)
   const siteId = current?.site.id
-  const day = useQuery({ queryKey: ['site-day', siteId, date], queryFn: () => fetchSiteDay(siteId as string, date), enabled: !!siteId })
+  const day = useQuery({ queryKey: ['site-day', siteId, date], queryFn: kept(`site-day:${siteId}:${date}`, () => fetchSiteDay(siteId as string, date)), enabled: !!siteId })
 
   const conditions = useMutation({
     mutationFn: (body: { weather?: Weather; site_working?: 'full' | 'half' | 'none' }) => setConditions(siteId as string, date, body),

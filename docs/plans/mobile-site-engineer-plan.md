@@ -8,7 +8,7 @@
 > the "Mesiri Site Engineer App" design canvas shared in session.
 >
 > Status: **building (21 Nov).** Done: MOB-01 design, MOB-02 shell, MOB-03 say anything, MOB-04 Today, MOB-05 forms
-> filled by voice, MOB-08 sign-in, MOB-10 site and requests. Next: MOB-07 no signal, MOB-06, MOB-12.
+> filled by voice, MOB-07 no signal, MOB-08 sign-in, MOB-10 site and requests. Next: MOB-06, MOB-12, then a real phone.
 > §9's defaults were taken (asked to "go implement" 21 Nov): Android first, phone + WhatsApp code sign-in, replies in
 > the app only, English and Malayalam.
 
@@ -245,3 +245,9 @@ returns; all of it shows on the dashboard's day page and in the DPR.
   routes the assistant uses still ignore it (MOB-12).
 - **A voice-filled form left without saving** leaves its entry on Mesiri's list, as on WhatsApp: it shows on Speak
   and is saved or cancelled there.
+- **No signal (MOB-07).** One outbox on the phone for everything sent: kept first, then tried. What a send actually
+  did is the signal, not the phone's bars ("connected, no data" is common on site): no way through shows No signal
+  and tries again in 15 s; signal back sends all at once. A note or message sent twice is answered once
+  (`X-Mesiri-Message-Id`, the door keeps the answer 24 h; a run that broke keeps nothing so it can be tried again);
+  a form save twice is one record (its idempotency key). Reads the site needs are kept on the phone and shown with no
+  connection; signing out forgets them and the outbox only ever sends as the person who made each item.

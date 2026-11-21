@@ -7,7 +7,8 @@ import { Building2, Keyboard, Mic, Send, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useWords } from '../src/lib/i18n'
 import { fileBody, ApiError } from '../src/lib/api'
-import { sendTap, sendText, sendVoice, type AssistantReply, type AssistantResponse } from '../src/lib/mesiri'
+import { useOutbox, type Sent } from '../src/lib/outbox'
+import { sendTap, type AssistantReply, type AssistantResponse } from '../src/lib/mesiri'
 import { contentTypeOf, doneRecording, level, MAX_SECONDS, readyToRecord, VOICE_NOTE } from '../src/lib/recorder'
 import { useSite } from '../src/lib/session'
 import { Screen } from '../src/components/ui'
@@ -27,6 +28,8 @@ interface Turn {
   pending: boolean
   error?: string
   chose?: string
+  /** MOB-07: kept on the phone (no signal); its answer comes on Today. */
+  queued?: boolean
 }
 
 const BARS = 28
@@ -37,10 +40,12 @@ export default function Speak() {
   const insets = useSafeAreaInsets()
   const client = useQueryClient()
   const { current } = useSite()
-  const params = useLocalSearchParams<{ typing?: string }>()
+  const params = useLocalSearchParams<{ typing?: string; from?: string }>()
+  const outbox = useOutbox()
+  const placeLabel = current ? `${current.project.name} · ${current.site.name}` : ''
   const recorder = useAudioRecorder(VOICE_NOTE)
   const state = useAudioRecorderState(recorder, 150)
-  const [phase, setPhase] = React.useState<Phase>(params.typing ? 'idle' : 'starting')
+  const [phase, setPhase] = React.useState<Phase>(params.typing || params.from ? 'idle' : 'starting')
   const [typing, setTyping] = React.useState(!!params.typing)
   const [draft, setDraft] = React.useState('')
   const [turns, setTurns] = React.useState<Turn[]>([])
@@ -58,11 +63,17 @@ export default function Speak() {
   const seconds = Math.floor((state.durationMillis ?? 0) / 1000)
 
   const run = React.useCallback(
-    async (turn: Omit<Turn, 'id' | 'replies' | 'pending'>, call: () => Promise<AssistantResponse>) => {
+    async (turn: Omit<Turn, 'id' | 'replies' | 'pending'>, call: () => Promise<AssistantResponse | Sent>) => {
       const id = nextId.current++
       setTurns((old) => [...old, { ...turn, id, replies: [], pending: true }])
       try {
-        const res = await call()
+        const got = await call()
+        if ('status' in got && got.status === 'queued') {
+          setTurns((old) => old.map((x) => (x.id === id ? { ...x, pending: false, queued: true } : x)))
+          return
+        }
+        const res = 'status' in got ? got.answer : got
+        if (!res) return
         setTurns((old) =>
           old.map((x) => (x.id === id ? { ...x, pending: false, replies: res.replies, said: res.transcript ?? x.said } : x)),
         )
@@ -113,15 +124,33 @@ export default function Speak() {
       setPhase('idle')
       return
     }
+    const length = (state.durationMillis ?? 0) / 1000
     await run({ said: null, kind: 'voice' }, async () => {
-      const blob = await fileBody(uri)
-      return sendVoice(blob, contentTypeOf(blob))
+      // Phones record m4a; only the web build needs to look at the file to know.
+      const type = Platform.OS === 'web' ? contentTypeOf(await fileBody(uri)) : 'audio/mp4'
+      return outbox.sendVoice(uri, type, length, placeLabel)
     })
     setPhase('idle')
-  }, [recorder, run])
+  }, [recorder, run, outbox, placeLabel, state.durationMillis])
 
-  // Opening the screen starts listening, like pressing a walkie-talkie.
+  // Opening the screen starts listening, like pressing a walkie-talkie; opened from Today on a note's later answer
+  // (MOB-07), it shows that answer, its buttons live.
   React.useEffect(() => {
+    if (params.from) {
+      const item = outbox.take(params.from)
+      if (item?.answer) {
+        setTurns([
+          {
+            id: nextId.current++,
+            said: item.answer.transcript ?? item.text ?? null,
+            kind: item.kind === 'text' ? 'text' : 'voice',
+            replies: item.answer.replies,
+            pending: false,
+          },
+        ])
+      }
+      return
+    }
     if (!params.typing) void start()
     return () => {
       void doneRecording()
@@ -138,7 +167,7 @@ export default function Speak() {
     const text = draft.trim()
     if (!text) return
     setDraft('')
-    await run({ said: text, kind: 'text' }, () => sendText(text))
+    await run({ said: text, kind: 'text' }, () => outbox.sendText(text, placeLabel))
   }
 
   const tap = (turnId: number, optionId: string, title: string) => {
@@ -200,9 +229,14 @@ export default function Speak() {
             <View key={turn.id} style={{ gap: space.sm }}>
               <View style={styles.saidBubble}>
                 <Text style={styles.saidLabel}>{turn.kind === 'tap' ? '✓' : t.youSaid}</Text>
-                <Text style={styles.saidText}>{turn.said ?? (turn.pending ? t.hearing : '—')}</Text>
+                <Text style={styles.saidText}>{turn.said ?? (turn.pending ? t.hearing : turn.queued ? t.voiceNote : '—')}</Text>
               </View>
               {turn.pending ? <Text style={styles.thinking}>{t.thinking}</Text> : null}
+              {turn.queued ? (
+                <View style={[styles.reply, { backgroundColor: colors.nightCard, borderColor: colors.charcoal }]}>
+                  <Text style={[font.body, { color: colors.nightText }]}>{t.keptOnPhone}</Text>
+                </View>
+              ) : null}
               {turn.error ? (
                 <View style={[styles.reply, { borderColor: colors.danger }]}>
                   <Text style={[font.body, { color: colors.danger }]}>{turn.error}</Text>

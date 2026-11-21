@@ -7,6 +7,7 @@ import { useWords } from '../../src/lib/i18n'
 import { fetchStock, type StockRow } from '../../src/lib/mesiri'
 import { useSite } from '../../src/lib/session'
 import { ApiError } from '../../src/lib/api'
+import { kept } from '../../src/lib/kept'
 import { Button, Card, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
 import { colors, font, space } from '../../src/theme'
 
@@ -21,7 +22,7 @@ export default function SiteStock() {
   const { current } = useSite()
   const siteId = current?.site.id
   const projectId = current?.project.id
-  const stock = useQuery({ queryKey: ['stock', siteId], queryFn: () => fetchStock(projectId as string, siteId as string), enabled: !!siteId })
+  const stock = useQuery({ queryKey: ['stock', siteId], queryFn: kept(`stock:${siteId}`, () => fetchStock(projectId as string, siteId as string)), enabled: !!siteId })
 
   const rows = [...(stock.data ?? [])]
     .filter((r) => r.site_id === siteId || r.site_id === null)

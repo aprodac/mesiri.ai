@@ -72,7 +72,10 @@ export async function request<T>(
   } = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json', ...CLIENT, ...(options.headers ?? {}) }
-  if (token) headers.Authorization = `Bearer ${token}`
+  // The token this request carries: only its refusal means the sign-in is over (a request sent before the saved
+  // token was read, answered after, must not sign the person out).
+  const sentWith = token
+  if (sentWith) headers.Authorization = `Bearer ${sentWith}`
   let body: BodyInit | undefined = options.body
   if (options.json !== undefined) {
     headers['Content-Type'] = 'application/json'
@@ -98,7 +101,7 @@ export async function request<T>(
     parsed = null
   }
   if (!res.ok) {
-    if (res.status === 401 && token && !path.startsWith('/auth/')) {
+    if (res.status === 401 && sentWith && sentWith === token && !path.startsWith('/auth/')) {
       await saveToken(null)
       onSignedOut?.()
     }

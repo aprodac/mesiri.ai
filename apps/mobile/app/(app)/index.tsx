@@ -3,12 +3,14 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 import { useRouter } from 'expo-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useWords } from '../../src/lib/i18n'
-import { fetchSiteDay, sendDprNow } from '../../src/lib/mesiri'
+import { fetchMaterials, fetchSiteDay, fetchUnits, sendDprNow } from '../../src/lib/mesiri'
+import { kept } from '../../src/lib/kept'
 import { personName, todayFor, useSession, useSite } from '../../src/lib/session'
 import { dayLines } from '../../src/lib/day'
-import { useOnline } from '../../src/lib/online'
+import { useSignal } from '../../src/lib/outbox'
 import { ApiError } from '../../src/lib/api'
 import { Card, DayRow, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
+import { OutboxPanel } from '../../src/components/OutboxPanel'
 import { colors, font, space } from '../../src/theme'
 
 export default function Today() {
@@ -16,16 +18,21 @@ export default function Today() {
   const router = useRouter()
   const { me } = useSession()
   const { current, places, loading: placesLoading, error: placesError, reload } = useSite()
-  const online = useOnline()
+  const online = useSignal()
   const date = todayFor(me)
   const siteId = current?.site.id
 
   const day = useQuery({
     queryKey: ['site-day', siteId, date],
-    queryFn: () => fetchSiteDay(siteId as string, date),
+    queryFn: kept(`site-day:${siteId}:${date}`, () => fetchSiteDay(siteId as string, date)),
     enabled: !!siteId,
     refetchInterval: 60_000,
   })
+
+  // MOB-07: what the forms need, loaded while there is signal (and kept), so a form opened on site without it works.
+  const signedIn = !!me
+  useQuery({ queryKey: ['materials'], queryFn: kept('materials', fetchMaterials), staleTime: 10 * 60_000, enabled: signedIn })
+  useQuery({ queryKey: ['units'], queryFn: kept('units', fetchUnits), staleTime: 60 * 60_000, enabled: signedIn })
 
   const send = useMutation({
     mutationFn: () => sendDprNow(current!.project.id),
@@ -69,6 +76,7 @@ export default function Today() {
           {me ? <Text style={font.tiny}>{personName(me)}</Text> : null}
         </View>
 
+        <OutboxPanel />
         {placesLoading ? <Loading label={t.loading} /> : null}
         {!placesLoading && placesError ? <Notice text={t.couldNotLoad} /> : null}
         {!placesLoading && !placesError && places.length === 0 ? <Notice tone="info" text={t.noSites} /> : null}

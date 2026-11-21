@@ -1,15 +1,14 @@
 import * as React from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useOutbox } from '../../src/lib/outbox'
 import { Mic } from 'lucide-react-native'
 import { useWords } from '../../src/lib/i18n'
 import {
   fetchMaterials,
   fetchUnits,
   newKey,
-  saveRecord,
-  sendTap,
   type AssistantResponse,
   type CatalogMaterial,
   type ReadyEntry,
@@ -17,6 +16,7 @@ import {
 import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { useVoiceNote } from '../../src/lib/useVoiceNote'
 import { ApiError } from '../../src/lib/api'
+import { kept } from '../../src/lib/kept'
 import { BackHeader, Button, Chip, Screen } from '../../src/components/ui'
 import { colors, font, radius, space, TOUCH } from '../../src/theme'
 
@@ -61,7 +61,7 @@ const qty = (v: unknown) => {
 export default function EntryForm() {
   const { t, lang } = useWords()
   const router = useRouter()
-  const client = useQueryClient()
+  const outbox = useOutbox()
   const { me } = useSession()
   const { current, places } = useSite()
   const params = useLocalSearchParams<{ kind: string }>()
@@ -69,8 +69,8 @@ export default function EntryForm() {
   const spec = KINDS[kind]
   const isMaterial = kind !== 'problem'
 
-  const materials = useQuery({ queryKey: ['materials'], queryFn: fetchMaterials, enabled: isMaterial, staleTime: 10 * 60_000 })
-  const units = useQuery({ queryKey: ['units'], queryFn: fetchUnits, enabled: isMaterial, staleTime: 60 * 60_000 })
+  const materials = useQuery({ queryKey: ['materials'], queryFn: kept('materials', fetchMaterials), enabled: isMaterial, staleTime: 10 * 60_000 })
+  const units = useQuery({ queryKey: ['units'], queryFn: kept('units', fetchUnits), enabled: isMaterial, staleTime: 60 * 60_000 })
 
   // The record as it will be sent: the voice entry's whole body (fields the form doesn't show, like a rate or an
   // order line, are kept), with what the form shows on top.
@@ -191,16 +191,29 @@ export default function EntryForm() {
       } else {
         Object.assign(body, { issue_type: issueType, severity, narrative: narrative.trim() })
       }
-      await saveRecord(entry?.method ?? spec.method, entry?.path ?? spec.path, body, key)
-      // Off Mesiri's list (its own Remove tap). The same key means its Save can't record it twice even if this fails.
-      if (entry?.remove_id) void sendTap(entry.remove_id).catch(() => undefined)
+      // MOB-07: through the phone's outbox, so no signal keeps it to send later. Then off Mesiri's list (its own
+      // Remove tap, sent after the save). The same key means its Save can't record it twice even if that tap is lost.
+      return outbox.saveRecord({
+        method: entry?.method ?? spec.method,
+        path: entry?.path ?? spec.path,
+        body,
+        key,
+        removeId: entry?.remove_id,
+        title: `${title}: ${summaryLine()}`,
+        place: place ? `${place.project.name} · ${place.site.name}` : '',
+      })
     },
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['site-day'] })
-      void client.invalidateQueries({ queryKey: ['stock'] })
-      setTimeout(() => (router.canGoBack() ? router.back() : router.replace('/')), 700)
+    onSuccess: (sent) => {
+      if (sent.status === 'queued') setProblem(t.savedOnPhone)
+      setTimeout(() => (router.canGoBack() ? router.back() : router.replace('/')), sent.status === 'queued' ? 1800 : 700)
     },
   })
+
+  const summaryLine = () => {
+    if (!isMaterial) return narrative.trim()
+    const unit = (units.data?.items ?? []).find((u) => u.id === unitId)?.code ?? ''
+    return `${quantity} ${unit} ${material?.name ?? ''}`.replace(/\s+/g, ' ').trim()
+  }
 
   const check = (): string | null => {
     if (isMaterial && !material) return t.pickMaterial
