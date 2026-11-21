@@ -78,6 +78,18 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
       WA-316 (5): as a project manager the assistant put names in `worker_id` and Save was refused.
 - [x] Built: `node docs/learning/film/build.mjs 03` → `out/episode-03.mp4` (about 7 minutes).
 
+### Episode 6, 21 Nov
+
+- [x] Story first (LRN-F25): the Annex mixer on hire, logged days 2 to 7, broken down on day 5, fixed day 6, billed day 9.
+- [x] `node docs/learning/film/record.cjs 06 <token>`: the owner on day 4 (Machines, Daily log); Ravi's day-5 line sent to
+      the real assistant (`breakdown`), then, with `after: true`, Anil's task from the problem and the owner's view;
+      Anil on day 6 (task done, problem fixed); Meera on day 9 (the bill over the log, then the corrected one). The
+      sample company's dates follow the real date (day 4 was Wed 25 Nov here), so `steps-06.cjs` reads the bill's week
+      off the day banner and the narration says weekdays, not dates.
+- [x] Found on the way and fixed before the last take: UX-89 (the task didn't show on its problem), UX-90 (the problem
+      dated by the real clock), LRN-F26 (Ravi's day-5 line played again on day 6 by the cast).
+- [x] Built: `node docs/learning/film/build.mjs 06` → `out/episode-06.mp4`.
+
 ### Episode 4 recording, 20 Nov (this session): where it stopped
 
 - Website way for `gate` and `count` (Ilan, 20 Nov): no WhatsApp in the episode; every website scene has `as`, `day`

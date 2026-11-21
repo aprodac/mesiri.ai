@@ -128,6 +128,9 @@ PAGE = {
     "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
     "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
     "bill_reverse": "/finance/vendors", "stock_count": "/materials/counts", "count_approve": "/materials/counts",
+    # LRN-F25: the Annex mixer.
+    "machine": "/equipment", "machine_log": "/equipment/log", "task": "/tasks?view=all", "task_status": "/tasks?view=all",
+    "hire_bill": "/equipment/hire", "hire_bill_fix": "/equipment/hire",
 }
 
 #: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
@@ -191,6 +194,22 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
         return bool(await scalar("SELECT count(*) FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
                                  "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status <> 'confirmed'",
                                  n=e.data["bill_number"]))
+    # LRN-F25: the Annex mixer's story, known by what it leaves (whoever saved it, here or on WhatsApp).
+    if e.kind == "machine":
+        return bool(await scalar("SELECT count(*) FROM equipment WHERE organization_id = :o AND name = :n", n=e.data["machine"]))
+    if e.kind == "machine_log":
+        return bool(await scalar("SELECT count(*) FROM equipment_events ev JOIN equipment m ON m.id = ev.equipment_id "
+                                 "WHERE ev.organization_id = :o AND m.name = :n AND ev.event_type = 'day_log' "
+                                 "AND ev.occurred_date = :d", n=e.data["machine"], d=date))
+    if e.kind in ("task", "task_status"):
+        status = "('done', 'cancelled')" if e.kind == "task_status" else "('open', 'doing', 'blocked', 'done', 'cancelled')"
+        return bool(await scalar(f"SELECT count(*) FROM tasks WHERE organization_id = :o AND title = :t AND status IN {status}",  # noqa: S608
+                                 t=e.data["title"]))
+    if e.kind in ("hire_bill", "hire_bill_fix"):
+        sql = "SELECT count(*) FROM equipment_hire_bills WHERE organization_id = :o AND bill_ref = :r"
+        if e.kind == "hire_bill_fix":
+            sql += " AND billed_hours <= :h"
+        return bool(await scalar(sql, r=e.data["bill_ref"], **({"h": e.data["hours"]} if e.kind == "hire_bill_fix" else {})))
     if e.kind == "boq_count":  # nothing of that work left off its BOQ line
         return not await scalar(
             "SELECT count(*) FROM activities a JOIN activity_quantities q ON q.activity_id = a.id "
@@ -484,6 +503,8 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
         if not count:
             raise _Wait("no count to approve")
         return _ok(await w.call(role, "POST", f"/materials/stock-counts/{count['id']}/approve"), e.kind)
+    if e.kind in ("machine", "machine_log", "task", "task_status", "hire_bill", "hire_bill_fix"):
+        return await _machine_story(w, e, role, site, project, iso)
     if e.kind == "bill_reverse":
         bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
                            "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "
@@ -629,6 +650,60 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
     raise _Failed(f"unknown kind {e.kind}")
 
 
+async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str, iso: str) -> Any:
+    """LRN-F25 (episode 6): the Annex mixer on hire, its day logs, the task for its breakdown, its hire bill."""
+    d = e.data
+    machine = None
+    if e.kind != "machine" and "machine" in d:
+        machine = await w.one("SELECT id FROM equipment WHERE organization_id = :o AND name = :n ORDER BY created_at LIMIT 1",
+                              n=d["machine"])
+        if not machine:
+            raise _Wait("the machine is not on hire yet")
+    if e.kind == "machine":
+        if await w.one("SELECT id FROM equipment WHERE organization_id = :o AND name = :n", n=d["machine"]):
+            return {"already": True}  # put on hire by the person, on screen
+        return _ok(await w.call(role, "POST", "/equipment", json={
+            "name": d["machine"], "type": d["type"], "kind": "machine", "ownership": "hired",
+            "vendor_id": w.vendors.get(d["vendor"]), "hire_company": d["vendor"], "rate": d["rate"], "rate_unit": "hour",
+            "site_id": site, "on_hire_from": iso}), e.kind)
+    if e.kind == "machine_log":
+        line: dict[str, Any] = {"equipment_id": str(machine["id"]), "site_id": site, "worked_hours": d["worked"]}
+        if d["breakdown"]:
+            line |= {"breakdown_hours": d["breakdown"], "breakdown_reason": d["reason"]}
+        return _ok(await w.call(role, "POST", "/equipment/logs", json={
+            "occurred_date": iso, "lines": [line], "source": "whatsapp"}), e.kind)
+    if e.kind == "task":
+        if await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t", t=d["title"]):
+            return {"already": True}  # given by the person, on screen
+        issue = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
+                            "ORDER BY created_at DESC LIMIT 1", n=d["narrative"])
+        if not issue:
+            raise _Wait("the breakdown has not raised its problem yet")
+        due = (dt.date.fromisoformat(iso) + dt.timedelta(days=d["due_days"])).isoformat()
+        return _ok(await w.call(role, "POST", "/tasks", json={
+            "project_id": project, "site_id": site, "title": d["title"], "due_date": due, "priority": "high",
+            "assignee_user_id": str(w.users[d["for"]][0]), "site_issue_id": str(issue["id"])}), e.kind)
+    if e.kind == "task_status":
+        task = await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t ORDER BY created_at DESC LIMIT 1",
+                           t=d["title"])
+        if not task:
+            raise _Wait("no task to close")
+        return _ok(await w.call(role, "POST", f"/tasks/{task['id']}/status",
+                                json={"status": d["status"], "note": d["note"]}), e.kind)
+    day0 = dt.date.fromisoformat(iso) - dt.timedelta(days=e.day)
+    if e.kind == "hire_bill":
+        return _ok(await w.call(role, "POST", "/equipment/hire-bills", json={
+            "equipment_id": str(machine["id"]), "period_from": (day0 + dt.timedelta(days=d["from_day"])).isoformat(),
+            "period_to": (day0 + dt.timedelta(days=d["to_day"])).isoformat(), "billed_hours": d["hours"],
+            "amount": d["amount"], "bill_ref": d["bill_ref"], "bill_date": iso}), e.kind)
+    bill = await w.one("SELECT id FROM equipment_hire_bills WHERE organization_id = :o AND bill_ref = :r "
+                       "ORDER BY created_at DESC LIMIT 1", r=d["bill_ref"])
+    if not bill:
+        raise _Wait("no hire bill of that number")
+    return _ok(await w.call(role, "PATCH", f"/equipment/hire-bills/{bill['id']}", json={
+        "billed_hours": d["hours"], "amount": d["amount"], "notes": d["note"]}), e.kind)
+
+
 def _boq_line(boq: Any, work: str, site_name: str) -> str | None:
     """The BOQ line for this work in this site's section (the seed names sections "Structure · <site>")."""
     if not isinstance(boq, dict):
@@ -687,6 +762,11 @@ async def _record(engine: Any, org: uuid.UUID, e: sp.Entry | None, status: str, 
             {"o": org, "e": entry_id or e.id, "d": day if day is not None else e.day, "s": status,
              "r": role or (e.role if e else None), "rec": json.dumps(record, default=str) if record is not None else None,
              "err": error})
+
+
+def _yours(played: dict[str, str]) -> set[tuple[int, str]]:
+    """(day, role) the person landed on: that role's entries of that day are theirs, done by them or not at all."""
+    return {(int(k.split(":")[1]), k.split(":")[2]) for k in played if k.startswith("you:")}
 
 
 def _day_mark(day: int) -> str:
@@ -857,10 +937,17 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
         await _save(engine, org, start, day0)
     w = _World(engine, app, org, person.organization_id)
     await w.load()
-    # What the person left undone today stays theirs; what they did is ticked first.
+    # What the person left undone today stays theirs; what they did is ticked first. That holds for every role they
+    # landed on a day as (``_yours``), not only the one they move on as: someone who switched role (Ravi's message,
+    # then Anil's task) has the first role's day ticked, and its undone entries are never played late by the cast,
+    # dated another day (found recording episode 6: Ravi's day-5 mixer line played again on day 6).
     me = w.users.get(role, (None, ""))[0]
-    if me:
-        await _tick(engine, org, role, me, start, day0)
+    async with engine.connect() as conn:
+        yours = _yours(await _played(conn, org))
+    for r in {role} | {r for _d, r in yours}:
+        uid = w.users.get(r, (None, ""))[0]
+        if uid:
+            await _tick(engine, org, r, uid, start, day0)
     summary: dict[tuple[str, str], int] = {}
     failed: list[dict[str, Any]] = []
     played_now: list[sp.Entry] = []
@@ -872,7 +959,8 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played = await _played(conn, org)
             yours_today = day == target
             due = [e for e in p.entries if e.day <= day and e.id not in played
-                   and not (e.role == role and (yours_today or e.day < start + 1))]
+                   and not (e.role == role and (yours_today or e.day < start + 1))
+                   and (e.day, e.role) not in yours]
             for e in due:
                 try:
                     record = await _play(w, e)
@@ -887,17 +975,21 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played_now.append(e)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
+            if yours_today:  # the day's entries of this role are the person's from now on (``_yours``), saved with it
+                await _record(engine, org, None, "done", entry_id=f"you:{day:03d}:{role}", day=day, role=role)
             # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
             await _save(engine, org, day, day0)
         async with engine.begin() as conn:
             await conn.execute(sa.text("UPDATE organizations SET sandbox_today = :d WHERE id = :o AND sandbox_of IS NOT NULL"),
                                {"d": day0 + dt.timedelta(days=target), "o": org})
+
     finally:
         await w.close()
     async with engine.connect() as conn:
         played = await _played(conn, org)
     waiting = [{"id": e.id, "day": e.day, "who": sp.WHO[e.role], "what": e.what}
-               for e in p.entries if e.day <= target and e.id not in played and e.role != role]
+               for e in p.entries if e.day <= target and e.id not in played and e.role != role
+               and (e.day, e.role) not in _yours(played)]
     for_you = await _tick(engine, org, role, me, target, day0) if me else []
     finale = None
     if target >= p.last_day:

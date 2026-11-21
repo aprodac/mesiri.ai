@@ -40,6 +40,8 @@ DEMO_VENDORS = (
     ("Sri Hardwares", "MG Road, Thrissur"), ("Kerala Steels", "Industrial Estate, Kalamassery"),
     ("Malabar Cements Agency", "Palakkad"), ("Periyar Sand & Aggregates", "Aluva"), ("Thrissur Blocks", "Ollur"),
     ("Hi-Tech Electricals", "Ernakulam"), ("City Plywood", "Perumbavoor"),
+    # LRN-F25: the Annex mixer's hire company (episode 6; the kit's hire bill, green_villa.HIRE).
+    ("Kerala Earthmovers & Equipments", "Thrissur"),
 )
 #: SS-65: a subcontractor, so the guided demo's subcontract chapter (work order, measurement, bill) has one to give
 #: work to. In the vendor register as kind ``subcontractor``; no work order yet (the chapter writes it).

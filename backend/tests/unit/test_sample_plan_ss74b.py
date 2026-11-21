@@ -197,7 +197,9 @@ def test_issues_use_real_types_and_are_closed(plan):
     for e in issues:
         assert e.data["issue_type"] in ISSUE_TYPES and e.data["severity"] in ISSUE_SEVERITIES
     closed = {e.needs[0] for e in plan.entries if e.kind == "issue_resolve"}
-    assert closed == {e.id for e in issues}
+    # LRN-F25: the mixer's breakdown is raised by its day log (the equipment rule), and closed too.
+    raised = {e.id for e in plan.entries if e.kind == "machine_log" and e.data["breakdown"]}
+    assert closed == {e.id for e in issues} | raised
 
 
 def test_names_are_the_stories(plan):
@@ -297,3 +299,32 @@ def test_the_month_end_count_of_episode_4(plan):
     assert count.data["short"] == 3 and count.data["reason"] == "wastage" and count.data["book"] > 3
     day16 = plan.day(16)
     assert all(day16.index(count) > day16.index(e) for e in day16 if e.kind == "use" and e.site == "main")  # after the use
+
+
+def test_the_mixer_story_plays_the_kits_hire_bill(plan):
+    """LRN-F25 (episode 6): the Annex mixer on hire, logged each day, its breakdown raising a problem that a task for
+    Ravi fixes, and the bill's hours above the log, corrected."""
+    hire = gv.HIRE
+    logs = [e for e in plan.entries if e.kind == "machine_log"]
+    assert [e.day for e in logs] == sorted(hire["log"]) and all(e.site == "annex" for e in logs)
+    # The kit's figures are what the days log: 36 worked, the bill's 42 is the six days at 7 hours.
+    assert sum(e.data["worked"] for e in logs) == hire["logged_hours"]
+    assert len(logs) * 7 == hire["billed_hours"]
+    # Monday to Saturday: no day of the bill's period goes without a log (Hire check's "days with no log").
+    assert not any(sp.is_sunday(e.day) for e in logs) and len(logs) == logs[-1].day - logs[0].day + 1
+    (machine,) = [e for e in plan.entries if e.kind == "machine"]
+    assert machine.day == hire["on_day"] and all(machine.id in e.needs for e in logs)
+    broke = [e for e in logs if e.data["breakdown"]]
+    assert len(broke) == 1  # one breakdown, one problem
+    (task,) = [e for e in plan.entries if e.kind == "task"]
+    assert task.day == broke[0].day and broke[0].id in task.needs and task.data["for"] == sp.ENGINEER
+    (done,) = [e for e in plan.entries if e.kind == "task_status"]
+    close = next(e for e in plan.entries if e.kind == "issue_resolve" and broke[0].id in e.needs)
+    assert done.day == close.day == task.day + 1 and done.id in close.needs
+    (bill,) = [e for e in plan.entries if e.kind == "hire_bill"]
+    (fix,) = [e for e in plan.entries if e.kind == "hire_bill_fix"]
+    assert bill.data["hours"] == hire["billed_hours"] and fix.data["hours"] == hire["logged_hours"]
+    assert fix.data["amount"] == hire["logged_hours"] * hire["rate_per_hour"] and bill.id in fix.needs
+    assert {e.id for e in logs} <= set(bill.needs)
+    # The hire company is one of the sample company's suppliers.
+    assert hire["vendor"] in {v for v, _a in story.DEMO_VENDORS}

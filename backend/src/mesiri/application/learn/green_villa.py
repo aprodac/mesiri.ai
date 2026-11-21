@@ -291,7 +291,21 @@ RETURN = {"vendor": "Malabar Cements Agency", "note": CEMENT_STORY["return_note"
 #: A hired machine (Equipment, Hire check): the bill against the hours logged on site. The catch: billed 42 hours,
 #: 36 logged (two half days the mixer stood idle with the motor fault are billed as working).
 HIRE = {"vendor": "Kerala Earthmovers & Equipments", "bill": "KEE/2027/0118", "machine": "Concrete mixer with hopper (10/7)",
-        "site": "Annex", "for": "Annex roof slab and plinth", "rate_per_hour": 450, "billed_hours": 42, "logged_hours": 36}
+        "site": "Annex", "for": "Annex plinth beam and filling, 16 to 21 Nov", "rate_per_hour": 450, "billed_hours": 42,
+        "logged_hours": 36,
+        # LRN-F25 (episode 6, docs/learning/film/EPISODE_06_PLAN.md): the story the sample company plays. Anil puts the
+        # mixer on hire for the Annex on day 2; Ravi logs it each evening (day: hours worked, hours broken down); on
+        # day 5 the motor burns out mid-morning, the log raises the problem, Anil gives Ravi the task of getting Kerala
+        # Earthmovers' mechanic there (a task is for a person: the dashboard offers people and subcontractors, not a
+        # hire company); the mechanic comes before work on day 6, the task is done and the problem closed. On day 9 the bill for the week
+        # (days 2 to 7) asks for 42 hours (7 a day, as if it never stopped); the hire check says 36; Kerala Earthmovers
+        # accept the log and the bill is corrected the same day.
+        "short_name": "Concrete mixer", "on_day": 2,
+        "log": {2: (7, 0), 3: (7, 0), 4: (7, 0), 5: (1, 6), 6: (7, 0), 7: (7, 0)},
+        "breakdown_reason": "motor burnt out mid-morning",
+        "task": "Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am", "task_due_days": 1,
+        "fixed": "Mechanic rewound the motor before work; mixer running from 8 am",
+        "bill_day": 9, "agreed": "Kerala Earthmovers accepted our log: 6 hours broken down, not billable"}
 
 #: The handover certificate (Documents, handover), signed on handover day.
 HANDOVER = {"date": "31 July 2027", "defects_until": "31 July 2028", "keys": 3,
