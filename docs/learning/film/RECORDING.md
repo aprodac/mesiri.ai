@@ -108,7 +108,7 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
   scene lost the person's own entries (the order made in `compare` was gone by `gate`). The chained scenes now `keep`;
   `match` takes the bill back on screen (frame 5) so the plan plays the corrected bill and the settled return on day 10;
   `stock` is a steps scene on day 9 inside the run (Go back to a day restores a copy without the on-screen orders).
-  Words to the screen: 191 bags, 34 days. `record.cjs 04` → 28 frames, nothing failed; `build.mjs 04` → 8.4 minutes.
+  Words to the screen: 191 bags, 34 days. `record.cjs 04` → 26 frames, nothing failed; `build.mjs 04` → 8.4 minutes.
 - Local copy notes: the dashboard installs with `pnpm install` (no npm lockfile) and builds with
   `VITE_API_URL=http://localhost:8000 pnpm exec vite build`; serve with `vite preview --port 5199`. The answer of
   `go-back` has no role in it: take a fresh `POST /learn/sandbox` with the role before shooting a scene (record.cjs
