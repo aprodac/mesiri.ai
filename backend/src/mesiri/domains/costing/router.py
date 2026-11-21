@@ -183,6 +183,16 @@ async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUI
                                  **scope)
     spent = {c["key"]: Decimal(c["amount"]) for c in centres["centres"]}
 
+    # UX-97: materials count as spent when used, not when bought. What is still in the project's stores (valued as
+    # Stock value values it: the weighted average rate) is stock, not cost: it comes off the materials bought, and off
+    # the project's total for the forecast. Wastage and losses stay in (they were bought and are gone).
+    from mesiri.domains.materials.valuation import stock_value
+
+    in_store = Decimal((await stock_value(conn, org, as_of=today, project_ids={project_id}))["total"] or 0)
+    bought = spent[_CENTRE_OF["material"]]
+    in_store = min(in_store, bought) if bought > 0 else Decimal(0)
+    spent[_CENTRE_OF["material"]] = bought - in_store
+
     committed = {
         "material": committed_materials(await fetch_orders(conn, org, project_ids={project_id})),
         "subcontract": committed_subcontract(await fetch_work_orders(conn, org, project_ids={project_id})),
@@ -201,6 +211,7 @@ async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUI
             "actual": _m(actual),
             "difference": _m(earned_total - actual) if earned else None,
             "lines_priced": len(budget),
+            **({"bought": _m(bought), "in_store": _m(in_store)} if kind == "material" else {}),
             "committed": _m(committed[kind]["amount"]) if kind in committed else None,
             "committed_detail": {k: v for k, v in committed[kind].items() if k != "amount"} if kind in committed else None,
             **{k: (_m(v) if isinstance(v, Decimal) else v) for k, v in forecast(
@@ -214,7 +225,7 @@ async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUI
         for ln in section["lines"]:
             ln.update(_line_labour(ln, labour["lines"].get(uuid.UUID(str(ln["id"])))))
     other = [c for c in centres["centres"] if c["key"] not in _CENTRE_OF.values() and Decimal(c["amount"])]
-    whole = project_forecast(kinds, Decimal(centres["total"]))
+    whole = project_forecast(kinds, Decimal(centres["total"]) - in_store)
     return {
         # UX-93: the project's one forecast (every page reads this, none adds the kinds up itself).
         "project": {k: (_m(v) if isinstance(v, Decimal) else v) for k, v in whole.items()},
@@ -224,7 +235,9 @@ async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUI
         "kinds": kinds,
         "other_spending": [{"key": c["key"], "label": c["label"], "amount": c["amount"]} for c in other],
         "not_set": centres["not_set"]["amount"],
-        "total_spent": centres["total"],
+        # UX-97: the cost of the work (what is in the stores taken off); ``stock_in_store`` is that stock.
+        "total_spent": _m(Decimal(centres["total"]) - in_store),
+        "stock_in_store": _m(in_store),
         "work_not_on_a_line": unlinked,
         "labour_on_lines": {"man_days": _q(sum((v["man_days"] for v in labour["lines"].values()), Decimal(0))),
                             "cost": _m(sum((v["cost"] for v in labour["lines"].values()), Decimal(0)))},
@@ -823,7 +836,13 @@ async def materials_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.
     for line in lines:
         line["done"] = done.get(line["id"], Decimal(0))
     held = await _stock(conn, org, project_id, None, today)
-    since = today - datetime.timedelta(days=730)
+    # UX-97: use is judged from the day the BOQ's norms were put in: what was used before cannot be set against them
+    # (a project brought in mid-way, or the sample's seeded weeks, read every material red otherwise).
+    normed_from = (await conn.execute(text(
+        "SELECT MIN(n.created_at)::date FROM boq_material_norms n JOIN work_package_planned_items i "
+        "ON i.id = n.planned_item_id JOIN work_packages w ON w.id = i.work_package_id "
+        "WHERE n.organization_id = :org AND w.project_id = :p"), {"org": org, "p": project_id})).scalar()
+    since = max(today - datetime.timedelta(days=730), normed_from or today - datetime.timedelta(days=730))
     for r in await PostgresMaterialReadRepository(conn).get_stock_summary(
             org, date_from=since, date_to=today, project_ids={project_id}):
         row = held.setdefault(r["material_id"], {"unit": r["unit"], "on_hand": Decimal(0), "on_order": Decimal(0)})

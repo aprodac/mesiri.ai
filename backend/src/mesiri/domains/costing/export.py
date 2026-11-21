@@ -59,7 +59,7 @@ def workbook(project: str, budget: dict, variance: dict, materials: dict) -> byt
         cover.append([k["label"], _n(k["budget"]), _n(k["earned"]), _n(k["actual"]), _n(k["difference"]),
                       _n(k.get("committed")), _n(k.get("forecast")), _n(k.get("forecast_difference"))])
     cover.append([])
-    cover.append(["Total spent (all cost centres)", _n(budget["total_spent"])])
+    cover.append(["Cost of the work (all cost centres, stock in store taken off)", _n(budget["total_spent"])])
     for o in budget["other_spending"]:
         cover.append([f"  of which {o['label']} (no BOQ rate)", _n(o["amount"])])
     cover.append(["Labour not on a BOQ line", _n(budget["labour_not_on_a_line"]["cost"])])

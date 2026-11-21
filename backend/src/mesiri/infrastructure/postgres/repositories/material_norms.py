@@ -8,12 +8,15 @@ Every function takes the request's connection and never commits.
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from collections import defaultdict
 from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
+
+from mesiri.domains.shared import clock
 
 _COLUMNS = (
     "n.id, n.planned_item_id AS line_id, n.material_id, m.name AS material, n.unit_id, u.code AS unit, "
@@ -66,11 +69,12 @@ class MaterialNormRepository:
         for n in norms:
             await self.conn.execute(text(
                 "INSERT INTO boq_material_norms (organization_id, planned_item_id, material_id, unit_id, "
-                "quantity_per_unit, wastage_pct, note, created_by) "
-                "VALUES (:org, :line, :m, :u, :q, :w, :note, :by)"),
+                "quantity_per_unit, wastage_pct, note, created_by, created_at) "
+                "VALUES (:org, :line, :m, :u, :q, :w, :note, :by, :at)"),
                 {"org": organization_id, "line": line_id, "m": n["material_id"], "u": n["unit_id"],
                  "q": n["quantity_per_unit"], "w": n.get("wastage_pct") or Decimal(0), "note": n.get("note"),
-                 "by": user_id})
+                 # The sample company's own date (UX-90's class): Materials vs BOQ judges use from this day (UX-97).
+                 "by": user_id, "at": clock.now(datetime.UTC)})
 
     async def lines_like(
         self, organization_id: uuid.UUID, project_id: uuid.UUID, line: dict

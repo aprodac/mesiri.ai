@@ -44,7 +44,7 @@ Sunday: nobody works.
 
 **Anil**
 - Put Green Villa's estimate in as its BOQ: 34 lines
-- Put the materials a unit uses on Green Villa's BOQ: 10 lines, 5% wastage
+- Put the materials a unit uses on Green Villa's BOQ: 13 lines, 5% wastage
 - Put the concrete mixer from Kerala Earthmovers & Equipments on hire at Annex, ₹450 an hour
 
 **Meera**
