@@ -26,7 +26,7 @@ const TERMS: { key: keyof Contract; label: string; explain?: React.ComponentProp
   { key: 'gst_pct', label: 'GST', suffix: '%', explain: { term: 'GST' } },
   { key: 'tds_pct', label: 'TDS', suffix: '%', explain: { term: 'TDS' } },
   { key: 'defect_liability_months', label: 'Defect liability', suffix: 'months', explain: { term: 'defects period' } },
-  // PS-01, PS-03 (migration 0563)
+  // PS-01, PS-03 (migration 0564)
   { key: 'client_payment_days', label: 'Client pays in', suffix: 'days', explain: { title: 'Client pays in', text: 'Days the client takes to pay an RA bill. Cash flow expects the money then; after it the bill is overdue.' } },
   { key: 'ld_pct_per_week', label: 'Delay penalty', suffix: '% a week', explain: { title: 'Delay penalty (LD)', text: 'What the client may cut for each week of delay past handover, as a % of the contract value.', example: '0.5% a week on ₹82 lakh: ₹41,000 a week.' } },
   { key: 'ld_cap_pct', label: 'Penalty cap', suffix: '%', explain: { title: 'Penalty cap', text: 'The most the delay penalty can reach, as a % of the contract value.' } },

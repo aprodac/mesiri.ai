@@ -1,0 +1,571 @@
+<title>Green Villa A to Z</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;600;700&display=swap">
+<style>
+/* Layout: a site schedule sheet. A title block, the six phases as one ribbon, then the 62 days as a Gantt-like grid
+   (sites' stages on top, one lane per person under them), and a chain or a day opened beneath. */
+:root {
+  --bg: #f6f4ef; --paper: #ffffff; --ink: #1a1c1f; --dim: #5d6168; --faint: #8b9097; --line: #e2ded4; --grid: #efebe2;
+  --brand: #facc15; --brand-ink: #7a5c00; --sun: #f1ede4;
+  --owner: #d4a106; --pm: #0ea5e9; --engineer: #f97316; --accounts: #8b5cf6;
+  --c-mat: #2563eb; --c-money: #7c3aed; --c-bill: #059669; --c-ok: #ca8a04; --c-bad: #dc2626; --c-good: #16a34a; --c-boq: #0d9488;
+  --shade: 26, 28, 31;
+  --f-display: 'Unbounded', 'IBM Plex Sans', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0f11; --paper: #16181b; --ink: #f1f1ef; --dim: #a7abb2; --faint: #7a7f86; --line: #2a2d32; --grid: #1f2226;
+    --brand: #facc15; --brand-ink: #facc15; --sun: #1b1d20;
+    --owner: #facc15; --pm: #38bdf8; --engineer: #fb923c; --accounts: #a78bfa;
+    --c-mat: #60a5fa; --c-money: #a78bfa; --c-bill: #34d399; --c-ok: #facc15; --c-bad: #f87171; --c-good: #4ade80; --c-boq: #2dd4bf;
+    --shade: 241, 241, 239; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e0f11; --paper: #16181b; --ink: #f1f1ef; --dim: #a7abb2; --faint: #7a7f86; --line: #2a2d32; --grid: #1f2226;
+  --brand: #facc15; --brand-ink: #facc15; --sun: #1b1d20;
+  --owner: #facc15; --pm: #38bdf8; --engineer: #fb923c; --accounts: #a78bfa;
+  --c-mat: #60a5fa; --c-money: #a78bfa; --c-bill: #34d399; --c-ok: #facc15; --c-bad: #f87171; --c-good: #4ade80; --c-boq: #2dd4bf;
+  --shade: 241, 241, 239; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); margin: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 64px; }
+.stripe { height: 6px; background: repeating-linear-gradient(135deg, #1a1d21 0 10px, #facc15 10px 20px); }
+h1, h2, h3 { font-family: var(--f-display); letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 48px); font-weight: 600; line-height: 1.05; }
+h2 { font-size: 20px; font-weight: 600; }
+.eyebrow { font: 500 11px/1.4 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.lede { color: var(--dim); max-width: 68ch; margin: 10px 0 0; }
+section { margin-top: 40px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+.sec-head p { margin: 0; color: var(--dim); font-size: 14px; max-width: 70ch; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* Title block */
+.title { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: end; padding-top: 28px; }
+.sheet { display: grid; grid-template-columns: repeat(2, auto); border: 1.5px solid var(--ink); font: 500 12px/1.3 var(--f-mono); }
+.sheet div { padding: 7px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.sheet div:nth-child(2n) { border-right: 0; font-weight: 600; }
+.sheet div:nth-last-child(-n+2) { border-bottom: 0; }
+.sheet .k { color: var(--dim); text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; }
+@media (max-width: 760px) { .title { grid-template-columns: 1fr; } }
+
+/* Phases ribbon */
+.ribbon { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
+.phase { padding: 14px 14px 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
+.phase:last-child { border-right: 0; }
+.phase .n { font: 600 11px var(--f-mono); color: var(--faint); }
+.phase h3 { font-size: 15px; }
+.phase p { margin: 0; font-size: 13px; color: var(--dim); }
+.phase .where { margin-top: auto; font: 500 11.5px/1.35 var(--f-mono); color: var(--ink); background: var(--sun); border-radius: 6px; padding: 5px 7px; }
+.phase.in { background: linear-gradient(var(--paper), var(--paper)) padding-box; }
+.phase.in::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: var(--brand); }
+@media (max-width: 900px) { .ribbon { grid-template-columns: repeat(2, minmax(0, 1fr)); } .phase { border-bottom: 1px solid var(--line); } }
+
+/* People */
+.people { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.person { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.person:hover { border-color: var(--faint); }
+.person[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.person .top { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 700 14px var(--f-display); color: #111; flex: none; }
+.person .name { font-weight: 600; }
+.person .role { font-size: 12.5px; color: var(--dim); }
+.person .total { margin-left: auto; font: 600 18px var(--f-mono); }
+.person p { margin: 0; font-size: 13px; color: var(--dim); }
+.bars { display: flex; flex-direction: column; gap: 3px; }
+.bar { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: center; font-size: 12px; }
+.bar span:first-child { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bar i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.bar em { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar b { font: 500 11.5px var(--f-mono); text-align: right; color: var(--dim); }
+@media (max-width: 900px) { .people { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .people { grid-template-columns: 1fr; } }
+
+/* Chains */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 7px 13px; font: 500 13px var(--f-body); cursor: pointer; }
+.chip:hover { border-color: var(--faint); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.clear { color: var(--dim); }
+
+/* The grid */
+.board { margin-top: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; position: relative; }
+.grid { position: relative; --cw: 26px; --lw: 168px; width: calc(var(--lw) + 62 * var(--cw)); font-size: 12px; }
+.row { display: flex; min-height: 30px; border-bottom: 1px solid var(--grid); }
+.row:last-child { border-bottom: 0; }
+.lab { position: sticky; left: 0; z-index: 3; width: var(--lw); flex: none; background: var(--paper); border-right: 1px solid var(--line); padding: 6px 10px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lab small { color: var(--faint); display: block; font-size: 11px; }
+.lab .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.cells { display: flex; position: relative; }
+.cell { width: var(--cw); flex: none; border-right: 1px solid var(--grid); position: relative; }
+.cell.sun { background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(var(--shade), .05) 4px 8px); }
+.cell.wk { border-right-color: var(--line); }
+.head .cell { display: flex; flex-direction: column; align-items: center; justify-content: center; font: 500 10.5px/1.15 var(--f-mono); color: var(--dim); padding: 4px 0; }
+.head .cell b { color: var(--ink); font-weight: 600; }
+.head .cell.on b { color: var(--brand-ink); }
+.weeks .cell { font: 600 10px var(--f-mono); color: var(--faint); letter-spacing: .06em; justify-content: flex-start; padding-left: 4px; display: flex; align-items: center; }
+.miles .flag { position: absolute; top: 4px; bottom: 4px; left: 3px; right: 3px; border-radius: 5px; display: grid; place-items: center; font: 700 11px var(--f-display); color: #111; cursor: pointer; }
+.stage { position: absolute; top: 5px; bottom: 5px; border-radius: 5px; padding: 0 6px; font-size: 11px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(var(--shade), .08); color: var(--ink); border: 1px solid rgba(var(--shade), .14); }
+.stage.alt { background: rgba(var(--shade), .14); }
+.lane .cell { cursor: pointer; }
+.lane .cell:hover { background: rgba(var(--shade), .06); }
+.lane .cell.sel { box-shadow: inset 0 0 0 2px var(--ink); }
+.lane .fill { position: absolute; inset: 0; }
+.lane .marks { position: absolute; inset: 3px 2px; display: flex; flex-direction: column; flex-wrap: wrap; align-content: center; justify-content: center; gap: 2px; }
+.lane .marks i { width: 7px; height: 7px; border-radius: 2px; display: block; }
+.dim .lane .marks i { opacity: .18; }
+.dim .lane .fill { opacity: .25; }
+.lane .marks i.hit { opacity: 1; outline: 2px solid var(--ink); outline-offset: 1px; }
+svg.links { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+svg.links path { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+svg.links circle { fill: var(--ink); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12.5px; color: var(--dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.legend .shade { width: 14px; height: 9px; background: linear-gradient(90deg, rgba(var(--shade), .05), rgba(var(--shade), .28)); }
+
+/* Detail panel */
+.panel { margin-top: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.panel h3 { font-size: 17px; }
+.panel .sub { color: var(--dim); font-size: 13.5px; margin: 4px 0 0; }
+.steps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+.step { display: grid; grid-template-columns: 64px 150px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--grid); align-items: start; }
+.step:first-child { border-top: 0; }
+.step .when { font: 600 12px var(--f-mono); }
+.step .when small { display: block; font-weight: 400; color: var(--faint); }
+.step .who { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; min-width: 0; }
+.step .who small { display: block; font-weight: 400; color: var(--dim); font-size: 11.5px; }
+.step .what { min-width: 0; }
+.step .what .kind { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; }
+.step .what p { margin: 2px 0 0; font-size: 14px; }
+.wait { grid-column: 1 / -1; font-size: 12px; color: var(--dim); padding-left: 76px; margin-top: -4px; }
+.wait b { color: var(--ink); font-weight: 600; }
+.link { background: none; border: 0; padding: 0; color: var(--brand-ink); font: 500 12.5px var(--f-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.daygrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.daygrid .col h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.daygrid ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.daygrid li { font-size: 13px; display: flex; gap: 8px; align-items: baseline; }
+.daygrid li i { width: 8px; height: 8px; border-radius: 2px; flex: none; transform: translateY(-1px); }
+.daygrid li .t { min-width: 0; flex: 1; }
+.routine { color: var(--dim); font-size: 12.5px; }
+@media (max-width: 760px) { .daygrid { grid-template-columns: 1fr; } .step { grid-template-columns: 54px minmax(0, 1fr); } .step .what { grid-column: 1 / -1; } .wait { padding-left: 0; } }
+.note { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
+:focus-visible { outline: 2px solid var(--brand-ink); outline-offset: 2px; }
+
+/* Every page */
+.states { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.state { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 12px 6px 8px; font: 500 13px var(--f-body); color: var(--ink); cursor: pointer; }
+.state[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.state b { font: 600 13px var(--f-mono); }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 1px 8px; font: 600 10.5px/1.6 var(--f-mono); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st-recorded { color: var(--c-bill); background: color-mix(in srgb, var(--c-bill) 12%, transparent); }
+.st-shows { color: var(--c-mat); background: color-mix(in srgb, var(--c-mat) 12%, transparent); }
+.st-setup { color: var(--brand-ink); background: color-mix(in srgb, var(--brand) 22%, transparent); }
+.st-gap { color: var(--c-bad); background: color-mix(in srgb, var(--c-bad) 10%, transparent); }
+.mods { columns: 3 300px; column-gap: 12px; }
+.mod { break-inside: avoid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.mod header { padding: 10px 12px 8px; border-bottom: 1px solid var(--grid); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mod header h3 { font-size: 14px; }
+.mod header small { font: 500 10.5px var(--f-mono); color: var(--faint); text-transform: uppercase; letter-spacing: .08em; }
+.pg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; width: 100%; text-align: left; padding: 8px 12px; border: 0; border-top: 1px solid var(--grid); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.pg:first-of-type { border-top: 0; }
+.pg:hover { background: rgba(var(--shade), .04); }
+.pg.sel { background: rgba(var(--shade), .07); }
+.pg .t { font-size: 13.5px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg .who { display: flex; gap: 3px; align-items: center; justify-content: flex-end; }
+.pg .who .av { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font: 700 9px var(--f-display); color: #111; }
+.spark { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(62, 1fr); gap: 1px; height: 6px; }
+.spark i { background: var(--grid); border-radius: 1px; }
+.spark i.on { background: var(--c-bill); }
+.spark.shows i.on { background: var(--c-mat); }
+.pg .note2 { grid-column: 1 / -1; font-size: 11.5px; color: var(--dim); }
+.hidden-by-filter { display: none; }
+.pagelinks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pagelinks button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 9px; font: 500 12.5px var(--f-body); color: var(--ink); cursor: pointer; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.facts div { background: var(--bg); border-radius: 8px; padding: 9px 11px; font-size: 13px; }
+.facts b { display: block; font: 600 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin-bottom: 2px; }
+@media (max-width: 640px) { .facts { grid-template-columns: 1fr; } }
+.loading { color: var(--dim); padding: 24px; }
+@media (prefers-reduced-motion: no-preference) { .panel { animation: rise .25s ease-out; } @keyframes rise { from { opacity: .4; transform: translateY(6px); } } }
+</style>
+
+<div class="stripe" aria-hidden="true"></div>
+<div class="wrap">
+  <header class="title">
+    <div>
+      <div class="eyebrow">Mesiri · the project from A to Z</div>
+      <h1>Green Villa, A to Z</h1>
+      <p class="lede">One building company running two projects, from the first weeks on site to Green Villa's handover on day 62. Every entry each person makes, who waits for whom, and where it happens in Mesiri. Taken from the plan the sample company plays, so it is exactly what the product does.</p>
+    </div>
+    <div class="sheet" aria-label="Project">
+      <div class="k">Projects</div><div>Green Villa · Lake View</div>
+      <div class="k">Sites</div><div>Main block · Annex · Tower A · Tower B</div>
+      <div class="k">Days</div><div class="mono">62 to handover</div>
+      <div class="k">Entries</div><div class="mono" id="total-entries">1,477</div>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-phases">
+    <div class="sec-head">
+      <h2 id="h-phases">The six phases</h2>
+      <p>Every project runs these in order. The map below is the middle: the job is won and set up, then 62 days of work, billing and handover.</p>
+    </div>
+    <div class="ribbon">
+      <div class="phase"><span class="n">1</span><h3>Win</h3><p>Drawings become a BOQ: every item with its quantity and rate. The contract is signed.</p><span class="where">Before day 1 · BOQ & budget</span></div>
+      <div class="phase"><span class="n">2</span><h3>Set up</h3><p>Project, sites, the team on WhatsApp, suppliers, the daily report time.</p><span class="where">Before day 1 · Project start</span></div>
+      <div class="phase in"><span class="n">3</span><h3>Execute</h3><p>Every day: attendance, work, material in and out, problems. Most money is spent here.</p><span class="where">Days 1 to 62 · Today, Site log</span></div>
+      <div class="phase in"><span class="n">4</span><h3>Bill and collect</h3><p>Measured work is billed to the client as running bills; suppliers, subcontractors and wages are paid.</p><span class="where">RA bills days 23 and 51 · paid day 35</span></div>
+      <div class="phase in"><span class="n">5</span><h3>Hand over</h3><p>The last finishes, the snag list, the keys to the client.</p><span class="where">Day 62 · Green Villa</span></div>
+      <div class="phase"><span class="n">6</span><h3>Defects period</h3><p>About a year of fixing defects; then the retention held from each bill is released.</p><span class="where">After day 62 · Client bills</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-people">
+    <div class="sec-head">
+      <h2 id="h-people">Who does what</h2>
+      <p>Four people keep the whole project in Mesiri. Tap one to see only their lane.</p>
+    </div>
+    <div class="people" id="people"></div>
+  </section>
+
+  <section aria-labelledby="h-pages">
+    <div class="sec-head">
+      <h2 id="h-pages">Every page in Mesiri</h2>
+      <p>Each page against the story: where something is recorded, where its results show, what is set up before day 1, and what the 62 days don't use yet. Tap a page to see who uses it, when, and what feeds it.</p>
+    </div>
+    <div class="states" id="states"></div>
+    <div class="mods" id="mods"></div>
+    <div id="pagepanel"></div>
+  </section>
+
+  <section aria-labelledby="h-map">
+    <div class="sec-head">
+      <h2 id="h-map">The 62 days</h2>
+      <p>Each site's stage on top, then one lane per person. Each mark is one thing they record or decide that day; the shading is their everyday site records. Tap a day to see it all.</p>
+    </div>
+    <div class="chips" id="chains" aria-label="Follow a chain"></div>
+    <div class="board" id="board"><div class="loading">Loading the plan…</div></div>
+    <div class="legend" id="legend"></div>
+    <div id="panel"></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict'
+  const LANES = ['owner', 'pm', 'engineer', 'accounts']
+  const PERSON = {
+    owner: { name: 'Owner', role: 'Runs the company', letter: 'O', color: 'var(--owner)', day: 'Approves the wages, sends the running bills to the client, hands the villa over.' },
+    pm: { name: 'Anil', role: 'Project manager', letter: 'A', color: 'var(--pm)', day: 'Orders what the site asks for, counts work on the BOQ, closes problems, runs the tiling subcontract.' },
+    engineer: { name: 'Ravi', role: 'Site engineer', letter: 'R', color: 'var(--engineer)', day: 'Records every site day on WhatsApp, asks for material before it runs out, receives deliveries.' },
+    accounts: { name: 'Meera', role: 'Accounts', letter: 'M', color: 'var(--accounts)', day: 'Books supplier bills, pays suppliers, subcontractors and wages, records what the client pays.' },
+  }
+  // What each kind of entry is, its colour group, and the page it happens on.
+  const GROUPS = {
+    mat: { name: 'Material: ask, order, receive', color: 'var(--c-mat)' },
+    money: { name: 'Paying out', color: 'var(--c-money)' },
+    bill: { name: 'Billing the client', color: 'var(--c-bill)' },
+    ok: { name: 'Approving', color: 'var(--c-ok)' },
+    bad: { name: 'A problem raised', color: 'var(--c-bad)' },
+    good: { name: 'A problem fixed', color: 'var(--c-good)' },
+    boq: { name: 'Measuring work', color: 'var(--c-boq)' },
+  }
+  const KIND = {
+    request: ['mat', 'Material requests'], order: ['mat', 'Purchase orders'], delivery: ['mat', 'Stock · Record delivery'],
+    supplier_bill: ['money', 'Suppliers · bills'], supplier_payment: ['money', 'Suppliers · payments'], sub_bill: ['money', 'Subcontract bills'],
+    sub_payment: ['money', 'Subcontract bills'], wage_pay: ['money', 'Wages'], advance: ['money', 'Advances'],
+    ra_bill: ['bill', 'RA bills'], client_receipt: ['bill', 'Receivables'], stage: ['bill', 'Projects'],
+    wage_approve: ['ok', 'Approvals · Wages'], issue: ['bad', 'Issues'], issue_resolve: ['good', 'Issues'],
+    boq_count: ['boq', 'BOQ & budget'], work_order: ['boq', 'Subcontract work orders'], measurement: ['boq', 'Subcontract work orders'],
+  }
+  const ROUTINE = new Set(['conditions', 'attendance', 'work', 'use', 'expense'])
+  const fmt = (n) => n.toLocaleString('en-IN')
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+  let entries = [], meta = null, byId = new Map(), next = new Map(), byCell = new Map()
+  let laneFilter = null, chain = null, selDay = null
+
+  Promise.all([fetch('entries.json').then((r) => r.json()), fetch('meta.json').then((r) => r.json())])
+    .then(([e, m]) => { entries = e; meta = m; index(); render() })
+    .catch(() => { document.getElementById('board').innerHTML = '<div class="loading">The plan did not load. Open this page from its own link to see the map.</div>' })
+
+  function index() {
+    for (const e of entries) {
+      byId.set(e.i, e)
+      for (const n of e.n) { if (!next.has(n)) next.set(n, []); next.get(n).push(e.i) }
+      const key = e.r + ':' + e.d
+      if (!byCell.has(key)) byCell.set(key, [])
+      byCell.get(key).push(e)
+    }
+    document.getElementById('total-entries').textContent = fmt(entries.length)
+  }
+
+  // The chain of one entry: everything it waited for, and everything that waited for it.
+  function chainOf(id) {
+    const seen = new Set([id])
+    const up = (x) => { for (const n of byId.get(x).n) if (!seen.has(n)) { seen.add(n); up(n) } }
+    const down = (x) => { for (const n of next.get(x) || []) if (!seen.has(n)) { seen.add(n); down(n) } }
+    up(id); down(id)
+    return [...seen].map((x) => byId.get(x)).sort((a, b) => a.d - b.d || LANES.indexOf(a.r) - LANES.indexOf(b.r))
+  }
+
+  const PRESETS = [
+    { key: 'cement', label: 'Cement for Main block', find: (e) => e.k === 'request' && e.s === 'main' && /cement/.test(e.t) },
+    { key: 'wages', label: "A week's wages", find: (e) => e.k === 'wage_approve' && e.d >= 9 },
+    { key: 'tiling', label: 'The tiling subcontract', find: (e) => e.k === 'work_order' },
+    { key: 'ra', label: 'The first running bill', find: (e) => e.k === 'ra_bill' },
+    { key: 'problem', label: 'A problem on site', find: (e) => e.k === 'issue' },
+  ]
+
+  const STATE = {
+    recorded: { name: 'Recorded in the story', short: 'Recorded', why: 'Someone records something on this page during the 62 days.' },
+    shows: { name: 'Shows the results', short: 'Shows', why: 'Nobody types here; it shows what the others recorded.' },
+    setup: { name: 'Set up before day 1', short: 'Setup', why: 'Done once while the company and project are set up, before the story starts.' },
+    gap: { name: 'Not in the story yet', short: 'Not yet', why: 'The 62 days never use this page yet. It will be added to the story.' },
+  }
+  const SECTION_ORDER = ['plan', 'daily', 'site', 'buy', 'money', 'tasks', 'settings']
+  const SECTION_NAME = { plan: 'Plan', daily: 'Every day', site: 'Site', buy: 'Buy', money: 'Money', tasks: 'Tasks', settings: 'Settings' }
+  let stateFilter = null, selPage = null
+  const pageByUrl = new Map()
+
+  function renderPages() {
+    for (const m of meta.modules) for (const pg of m.pages) if (!pg.shortcut) pageByUrl.set(pg.url, { ...pg, module: m.title })
+    const counts = {}
+    for (const pg of pageByUrl.values()) counts[pg.state] = (counts[pg.state] || 0) + 1
+    const st = document.getElementById('states')
+    st.innerHTML = Object.entries(STATE).map(([k, v]) => `<button type="button" class="state" data-state="${k}" aria-pressed="${stateFilter === k}"><span class="pill st-${k}">${v.short}</span>${v.name}<b>${counts[k] || 0}</b></button>`).join('') +
+      `<span class="note" style="align-self:center;margin:0">${pageByUrl.size} pages in all</span>`
+    st.querySelectorAll('[data-state]').forEach((b) => b.addEventListener('click', () => { stateFilter = stateFilter === b.dataset.state ? null : b.dataset.state; renderPages() }))
+    const mods = [...meta.modules].sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section))
+    const box = document.getElementById('mods')
+    box.innerHTML = mods.map((m) => {
+      const rows = m.pages.filter((pg) => !pg.shortcut).map((pg) => {
+        const p = pageByUrl.get(pg.url)
+        const days = new Set(p.days)
+        const spark = (p.state === 'recorded' || p.state === 'shows') ? `<span class="spark ${p.state}" aria-hidden="true">${meta.days.map((d) => `<i class="${days.has(d.d) ? 'on' : ''}"></i>`).join('')}</span>` : ''
+        const who = p.roles.map((r) => `<span class="av" style="background:${PERSON[r].color}" title="${PERSON[r].name}">${PERSON[r].letter}</span>`).join('')
+        const note = p.state === 'setup' ? `<span class="note2">${esc(p.setup || 'Company setup')}</span>` : p.setup ? `<span class="note2">Also: ${esc(p.setup)}</span>` : ''
+        return `<button type="button" class="pg${selPage === p.url ? ' sel' : ''}${stateFilter && stateFilter !== p.state ? ' hidden-by-filter' : ''}" data-url="${esc(p.url)}"><span class="t">${esc(p.title)}</span><span class="who">${who}<span class="pill st-${p.state}">${STATE[p.state].short}</span></span>${spark}${note}</button>`
+      }).join('')
+      const anyShown = !stateFilter || m.pages.some((pg) => !pg.shortcut && pageByUrl.get(pg.url).state === stateFilter)
+      return `<div class="mod${anyShown ? '' : ' hidden-by-filter'}"><header><h3>${esc(m.title)}</h3><small>${SECTION_NAME[m.section] || ''}</small></header>${rows}</div>`
+    }).join('')
+    box.querySelectorAll('[data-url]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.url)))
+  }
+
+  function openPage(url) {
+    const p = pageByUrl.get(url)
+    if (!p) return
+    selPage = url
+    renderPages()
+    const days = p.days
+    const span = days.length ? `Day ${days[0]} to ${days[days.length - 1]} · on ${days.length} of 62 days` : '—'
+    const ents = entries.filter((e) => p.kinds.includes(e.k))
+    const samples = p.state === 'recorded' ? ents.filter((e) => !ROUTINE.has(e.k)).slice(0, 4).concat(ents.filter((e) => ROUTINE.has(e.k)).slice(0, ents.some((e) => !ROUTINE.has(e.k)) ? 0 : 3)) : []
+    const link = (u) => { const q = pageByUrl.get(u); return q ? `<button type="button" data-url="${esc(u)}">${esc(q.module)} · ${esc(q.title)}</button>` : '' }
+    let html = `<div class="panel"><div class="eyebrow">${esc(p.module)}</div><h3 style="margin-top:4px">${esc(p.title)} <span class="pill st-${p.state}" style="vertical-align:3px">${STATE[p.state].short}</span></h3>
+      <p class="sub">${esc(p.about)}</p><p class="sub">${STATE[p.state].why}${p.setup ? ` ${esc(p.setup)}.` : ''}</p>`
+    if (p.state === 'recorded' || p.state === 'shows') {
+      html += `<div class="facts"><div><b>${p.state === 'recorded' ? 'Who records here' : 'What it shows'}</b>${p.state === 'recorded' ? p.roles.map((r) => `${PERSON[r].name} (${PERSON[r].role.toLowerCase()})`).join(', ') : p.kinds.map((k) => esc(meta.kinds[k] || k)).join(', ')}</div><div><b>When</b>${span}</div><div><b>${p.state === 'recorded' ? 'Entries' : 'Fed by'}</b>${p.state === 'recorded' ? fmt(p.count) : [...new Set(p.kinds.map((k) => Object.entries(KIND).find(([kk]) => kk === k)?.[1][1]).filter(Boolean))].join(', ') || 'the site records'}</div></div>`
+    }
+    if (p.from?.length) html += `<p class="sub" style="margin-top:12px">Comes from</p><div class="pagelinks">${p.from.map(link).join('')}</div>`
+    if (p.to?.length) html += `<p class="sub" style="margin-top:10px">Leads to</p><div class="pagelinks">${p.to.map(link).join('')}</div>`
+    if (samples.length) html += `<p class="sub" style="margin-top:12px">In the story · tap one to follow its chain</p><ul class="steps" style="margin-top:4px">${samples.map((e) => `<li class="step"><div class="when">Day ${e.d}<small>${meta.days[e.d - 1]?.wd || ''}</small></div><div class="who">${personCell(e.r)}</div><div class="what"><button type="button" class="link" data-id="${esc(e.i)}">${esc(e.t)}</button></div></li>`).join('')}</ul>`
+    html += '</div>'
+    const panel = document.getElementById('pagepanel')
+    panel.innerHTML = html
+    panel.querySelectorAll('[data-url]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.url)))
+    panel.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => { openChain(b.dataset.id, null); document.getElementById('h-map').scrollIntoView({ behavior: 'smooth', block: 'start' }) }))
+  }
+
+  function render() {
+    renderPeople()
+    renderPages()
+    renderChips()
+    renderBoard()
+    renderLegend()
+    const first = PRESETS[0]
+    const seed = entries.find(first.find)
+    if (seed) openChain(seed.i, first.key)
+  }
+
+  function renderPeople() {
+    const box = document.getElementById('people')
+    box.innerHTML = ''
+    for (const r of LANES) {
+      const mine = entries.filter((e) => e.r === r)
+      const counts = {}
+      for (const e of mine) counts[e.k] = (counts[e.k] || 0) + 1
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      const p = PERSON[r]
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'person'
+      b.setAttribute('aria-pressed', laneFilter === r ? 'true' : 'false')
+      b.innerHTML = `<div class="top"><span class="avatar" style="background:${p.color}">${p.letter}</span><span><div class="name">${p.name}</div><div class="role">${p.role}</div></span><span class="total mono" title="entries">${fmt(mine.length)}</span></div>
+        <p>${esc(p.day)}</p>
+        <div class="bars">${top.map(([k, n]) => `<div class="bar"><span><i style="background:${KIND[k] ? GROUPS[KIND[k][0]].color : 'var(--faint)'}"></i><em>${esc(meta.kinds[k] || k)}</em></span><b>${fmt(n)}</b></div>`).join('')}</div>`
+      b.addEventListener('click', () => { laneFilter = laneFilter === r ? null : r; renderPeople(); renderBoard() })
+      box.appendChild(b)
+    }
+  }
+
+  function renderChips() {
+    const box = document.getElementById('chains')
+    box.innerHTML = '<span class="eyebrow" style="align-self:center">Follow a chain</span>'
+    for (const p of PRESETS) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'chip'
+      b.textContent = p.label
+      b.setAttribute('aria-pressed', chain && chain.preset === p.key ? 'true' : 'false')
+      b.addEventListener('click', () => { const seed = entries.find(p.find); if (seed) openChain(seed.i, p.key) })
+      box.appendChild(b)
+    }
+    if (chain) {
+      const c = document.createElement('button')
+      c.type = 'button'; c.className = 'chip clear'; c.textContent = 'Clear'
+      c.addEventListener('click', () => { chain = null; selDay = null; renderChips(); renderBoard(); document.getElementById('panel').innerHTML = '' })
+      box.appendChild(c)
+    }
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('board')
+    const days = meta.days
+    const inChain = new Set(chain ? chain.items.map((e) => e.i) : [])
+    const lanes = laneFilter ? [laneFilter] : LANES
+    const dayCells = (fn) => days.map((d) => `<div class="cell${d.sun ? ' sun' : ''}${d.wd === 'Saturday' ? ' wk' : ''}" data-d="${d.d}">${fn(d)}</div>`).join('')
+    let html = '<div class="grid' + (chain ? ' dim' : '') + '" id="grid">'
+    // Weeks, days
+    html += '<div class="row weeks"><div class="lab"><span class="eyebrow">Week</span></div><div class="cells">' + dayCells((d) => (d.wd === 'Monday' || d.d === 1) ? `W${Math.floor((d.d + 5) / 7) + 1}` : '') + '</div></div>'
+    html += '<div class="row head"><div class="lab"><span class="eyebrow">Day</span></div><div class="cells">' + dayCells((d) => `<b>${d.d}</b>${d.wd[0]}`).replace(/class="cell([^"]*)" data-d="(\d+)"/g, (m, c, n) => `class="cell${c}${Number(n) === selDay ? ' on' : ''}" data-d="${n}"`) + '</div></div>'
+    // Milestones
+    const miles = new Map(meta.milestones.map((m) => [m.d, m]))
+    html += '<div class="row miles"><div class="lab"><span><b>Milestones</b><small>bills, payments, handover</small></span></div><div class="cells">' + dayCells((d) => {
+      const m = miles.get(d.d); if (!m) return ''
+      const g = KIND[m.k] ? GROUPS[KIND[m.k][0]].color : 'var(--brand)'
+      const t = m.k === 'ra_bill' ? 'RA' : m.k === 'client_receipt' ? '₹' : m.k === 'work_order' ? 'WO' : '★'
+      return `<button type="button" class="flag" style="background:${m.k === 'stage' ? 'var(--brand)' : g}" title="Day ${d.d}: ${esc(m.t)}" data-day="${d.d}">${t}</button>`
+    }) + '</div></div>'
+    // Sites' stages
+    for (const [key, s] of Object.entries(meta.sites)) {
+      const runs = meta.stages[key] || []
+      html += `<div class="row"><div class="lab"><span><b>${esc(s.name)}</b><small>${esc(s.project)}</small></span></div><div class="cells">${dayCells(() => '')}${runs.map((r, i) => `<span class="stage${i % 2 ? ' alt' : ''}" style="left:calc(${r.from - 1} * var(--cw) + 1px);width:calc(${r.to - r.from + 1} * var(--cw) - 3px)" title="${esc(r.work)}: day ${r.from} to ${r.to}">${esc(r.work)}</span>`).join('')}</div></div>`
+    }
+    // People's lanes
+    for (const r of lanes) {
+      const p = PERSON[r]
+      html += `<div class="row lane" data-lane="${r}"><div class="lab"><span class="dot" style="background:${p.color}"></span><span><b>${p.name}</b><small>${p.role}</small></span></div><div class="cells">` + dayCells((d) => {
+        const list = byCell.get(r + ':' + d.d) || []
+        const routine = list.filter((e) => ROUTINE.has(e.k)).length
+        const marks = list.filter((e) => !ROUTINE.has(e.k))
+        const fill = routine ? `<span class="fill" style="background:rgba(var(--shade), ${Math.min(.3, .05 + routine * .012).toFixed(3)})"></span>` : ''
+        const dots = marks.slice(0, 8).map((e) => `<i class="${inChain.has(e.i) ? 'hit' : ''}" style="background:${GROUPS[KIND[e.k][0]].color}"></i>`).join('')
+        return `${fill}<span class="marks">${dots}</span>`
+      }).replace(/<div class="cell([^"]*)" data-d="(\d+)">/g, (m, c, n) => `<div class="cell${c}${Number(n) === selDay ? ' sel' : ''}" data-d="${n}" role="button" tabindex="0" aria-label="${p.name}, day ${n}">`) + '</div></div>'
+    }
+    html += '</div>'
+    board.innerHTML = html
+    board.querySelectorAll('.lane .cell, .flag').forEach((c) => {
+      const go = () => openDay(Number(c.dataset.d || c.dataset.day))
+      c.addEventListener('click', go)
+      c.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go() } })
+    })
+    drawLinks()
+  }
+
+  // Lines between the chain's steps, lane to lane.
+  function drawLinks() {
+    const grid = document.getElementById('grid')
+    if (!grid || !chain) return
+    const cw = 26, lw = 168
+    const laneY = {}
+    grid.querySelectorAll('.lane').forEach((row) => { laneY[row.dataset.lane] = row.offsetTop + row.offsetHeight / 2 })
+    const pts = chain.items.filter((e) => laneY[e.r] !== undefined).map((e) => ({ x: lw + (e.d - 1) * cw + cw / 2, y: laneY[e.r] }))
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('class', 'links')
+    svg.setAttribute('width', grid.offsetWidth); svg.setAttribute('height', grid.offsetHeight)
+    let d = ''
+    const seenPt = new Set()
+    for (let i = 0; i < pts.length; i++) {
+      const k = pts[i].x + ',' + pts[i].y
+      if (!seenPt.has(k)) { seenPt.add(k); const c = document.createElementNS(svg.namespaceURI, 'circle'); c.setAttribute('cx', pts[i].x); c.setAttribute('cy', pts[i].y); c.setAttribute('r', 3.2); svg.appendChild(c) }
+      if (i) { const a = pts[i - 1], b = pts[i]; const mx = (a.x + b.x) / 2; d += `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y} ` }
+    }
+    const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', d); svg.insertBefore(path, svg.firstChild)
+    grid.appendChild(svg)
+    const first = pts[0]
+    if (first) { const board = document.getElementById('board'); board.scrollLeft = Math.max(0, first.x - lw - 80) }
+  }
+
+  function personCell(r) { const p = PERSON[r]; return `<span class="avatar" style="width:24px;height:24px;font-size:11px;background:${p.color}">${p.letter}</span><span>${p.name}<small>${p.role}</small></span>` }
+
+  function openChain(id, preset) {
+    const items = chainOf(id)
+    chain = { preset, items }
+    selDay = null
+    renderChips(); renderBoard()
+    const firstDay = items[0].d, lastDay = items[items.length - 1].d
+    const people = [...new Set(items.map((e) => e.r))]
+    let html = `<div class="panel"><div class="eyebrow">A chain · ${items.length} steps · day ${firstDay} to ${lastDay}</div><h3 style="margin-top:4px">${esc(PRESETS.find((p) => p.key === preset)?.label || meta.kinds[byId.get(id).k])}</h3>
+      <p class="sub">${people.map((r) => PERSON[r].name).join(', ')} ${people.length > 1 ? 'pass it along' : 'does it'} over ${lastDay - firstDay + 1} ${lastDay === firstDay ? 'day' : 'days'}. Each step waits for the one before it.</p><ol class="steps">`
+    items.forEach((e, i) => {
+      const prev = i ? items[i - 1] : null
+      const g = KIND[e.k] ? GROUPS[KIND[e.k][0]] : { color: 'var(--faint)' }
+      html += `<li class="step"><div class="when">Day ${e.d}<small>${meta.days[e.d - 1]?.wd || ''}</small></div><div class="who">${personCell(e.r)}</div><div class="what"><div class="kind" style="color:${g.color}">${esc(meta.kinds[e.k] || e.k)}${KIND[e.k] ? ` · ${esc(KIND[e.k][1])}` : ''}</div><p>${esc(e.t)}</p></div>`
+      if (prev && prev.r !== e.r) html += `<div class="wait">Handed from <b>${PERSON[prev.r].name}</b> to <b>${PERSON[e.r].name}</b>${e.d > prev.d ? `, ${e.d - prev.d} ${e.d - prev.d === 1 ? 'day' : 'days'} later` : ', the same day'}</div>`
+      html += '</li>'
+    })
+    html += '</ol></div>'
+    document.getElementById('panel').innerHTML = html
+  }
+
+  function openDay(day) {
+    selDay = day
+    chain = null
+    renderChips(); renderBoard()
+    const d = meta.days[day - 1]
+    const list = entries.filter((e) => e.d === day)
+    let html = `<div class="panel"><div class="eyebrow">Day ${day} · ${d.wd}</div><h3 style="margin-top:4px">${d.sun ? 'Sunday: nobody works on site' : `${fmt(list.length)} entries`}</h3>`
+    if (!d.sun) {
+      html += '<p class="sub">Tap a line to follow its chain: what it waited for and what waited for it.</p><div class="daygrid">'
+      for (const r of LANES) {
+        const mine = list.filter((e) => e.r === r)
+        if (!mine.length) continue
+        const routine = mine.filter((e) => ROUTINE.has(e.k))
+        const marks = mine.filter((e) => !ROUTINE.has(e.k))
+        html += `<div class="col"><h4>${personCell(r)}</h4><ul>`
+        for (const e of marks) html += `<li><i style="background:${GROUPS[KIND[e.k][0]].color}"></i><span class="t"><button type="button" class="link" data-id="${esc(e.i)}">${esc(e.t)}</button></span></li>`
+        if (routine.length) {
+          const sites = [...new Set(routine.map((e) => meta.sites[e.s]?.name).filter(Boolean))]
+          html += `<li class="routine">+ ${fmt(routine.length)} everyday site records (attendance, work, material used, expenses, conditions)${sites.length ? ` at ${sites.join(', ')}` : ''}</li>`
+        }
+        html += '</ul></div>'
+      }
+      html += '</div>'
+    }
+    html += '</div>'
+    const panel = document.getElementById('panel')
+    panel.innerHTML = html
+    panel.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => openChain(b.dataset.id, null)))
+  }
+
+  function renderLegend() {
+    const box = document.getElementById('legend')
+    box.innerHTML = Object.values(GROUPS).map((g) => `<span><i style="background:${g.color}"></i>${esc(g.name)}</span>`).join('') +
+      '<span><i class="shade"></i>Everyday site records (darker: more)</span><span><i style="background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(var(--shade),.25) 3px 6px);width:14px"></i>Sunday</span>'
+  }
+
+  let t
+  window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => chain && renderBoard(), 150) })
+})()
+</script>

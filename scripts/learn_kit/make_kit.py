@@ -17,9 +17,16 @@ from __future__ import annotations
 import io
 import json
 import pathlib
+import sys
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+from mesiri.application.learn import green_villa  # noqa: E402, I001  (after the path)
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gv_drawings  # noqa: E402
+
 OUT = ROOT / "apps" / "dashboard" / "public" / "learn" / "kit"
 
 ESTIMATE = "Green Villa - estimate.xlsx"
@@ -31,78 +38,25 @@ CHALLAN = "Malabar - delivery challan.pdf"
 BILL = "Malabar - bill MCA-INV-2611.pdf"
 MEASURE = "Joy Tiling - measurement sheet.pdf"
 SUB_BILL = "Joy Tiling - bill JTW-014.pdf"
+# LRN-F5 (project bible section 5): the rest of a real project's paperwork.
+DRAWING_SET = "Green Villa - drawing set rev A.pdf"
+PERMIT = "Green Villa - building permit.pdf"
+RATE_CARD = "Periyar - rate card.pdf"
+RETURN_NOTE = "Malabar - return note GV-RN-014.pdf"
+HIRE_BILL = "Kerala Earthmovers - hire bill KEE-0118.pdf"
+HANDOVER = "Green Villa - handover certificate.pdf"
 ZIP = "green-villa-starter-kit.zip"
 
-#: The estimate: sections (heading rows) and their lines: item no., work, unit, quantity, client rate, labour rate,
-#: material rate. Lines with no labour and no material rate have no budget yet (the catch: "Lines priced" counts
-#: them); the staircase is priced below what it costs (the catch: a red margin).
-SECTIONS: tuple[tuple[str, tuple[tuple[str, str, str, float, float, float | None, float | None], ...]], ...] = (
-    ("A. EARTHWORK", (
-        ("1.1", "Site clearance", "sqm", 450, 25, 20, None),
-        ("1.2", "Excavation", "cum", 180, 480, 300, None),
-        ("1.3", "Backfilling with excavated earth", "cum", 90, 210, 160, None),
-        ("1.4", "Anti-termite treatment", "sqm", 300, 45, 10, 28),
-    )),
-    ("B. CONCRETE", (
-        ("2.1", "PCC", "cum", 22, 6200, 900, 4300),
-        ("2.2", "Footing concreting", "cum", 48, 8600, 950, 5900),
-        ("2.3", "Plinth beam", "rmt", 160, 1450, 420, 780),
-        ("2.4", "Column casting", "cum", 26, 9800, 1900, 5600),
-        ("2.5", "Lintel concreting", "cum", 14, 8900, 1300, 5800),
-        ("2.6", "Roof slab concreting", "cum", 62, 8700, 900, 6100),
-        ("2.7", "Slab shuttering", "sqm", 410, 620, 260, 210),
-        ("2.8", "Reinforcement steel", "kg", 16500, 92, 12, 70),
-        ("2.9", "Staircase waist slab", "cum", 9, 7900, 1400, 6800),
-    )),
-    ("C. MASONRY", (
-        ("3.1", "Block work", "sqm", 620, 1250, 380, 640),
-        ("3.2", "Brick work in partitions", "sqm", 140, 980, 360, 520),
-        ("3.3", "Parapet wall", "rmt", 95, 1100, 400, 520),
-    )),
-    ("D. PLASTERING", (
-        ("4.1", "Plastering", "sqm", 1450, 420, 210, 120),
-        ("4.2", "External plastering", "sqm", 780, 520, 260, 150),
-        ("4.3", "Ceiling plastering", "sqm", 380, 460, 240, 130),
-    )),
-    ("E. FLOORING AND TILING", (
-        ("5.1", "Vitrified tile flooring", "sqm", 290, 1650, None, None),
-        ("5.2", "Bathroom wall tiling", "sqm", 160, 1450, None, None),
-        ("5.3", "Granite kitchen counter", "rmt", 12, 4200, None, None),
-        ("5.4", "Skirting", "rmt", 260, 180, 60, 85),
-    )),
-    ("F. ELECTRICAL", (
-        ("6.1", "Electrical conduits", "nos", 320, 260, 90, 110),
-        ("6.2", "Wiring per point", "nos", 140, 1450, 450, 700),
-        ("6.3", "Distribution board", "nos", 2, 18500, 2500, 13000),
-    )),
-    ("G. PLUMBING", (
-        ("7.1", "CPVC water supply lines", "rmt", 180, 420, 150, 190),
-        ("7.2", "Sanitary fittings", "nos", 18, 6500, 900, 4800),
-    )),
-    ("H. PAINTING", (
-        ("8.1", "Interior emulsion", "sqm", 2100, 140, 55, 50),
-        ("8.2", "Exterior emulsion", "sqm", 780, 190, 65, 75),
-        ("8.3", "Enamel on doors and windows", "sqm", 120, 260, 110, 80),
-    )),
-    ("I. DOORS AND WINDOWS", (
-        ("9.1", "Teak main door", "nos", 1, 68000, 6000, 52000),
-        ("9.2", "Flush doors", "nos", 9, 14500, 1800, 10500),
-        ("9.3", "UPVC windows", "sqm", 46, 7200, 900, 5600),
-    )),
-)
-#: What one unit of a line uses (the "Materials per unit" sheet), in the material's stock unit. Names as the sample
-#: company's catalogue has them (domains/materials/defaults.py).
-NORMS = (
-    ("2.1", "PCC", "Cement", 4.5, "bags"), ("2.2", "Footing concreting", "Cement", 8, "bags"),
-    ("2.5", "Lintel concreting", "Cement", 8, "bags"), ("2.6", "Roof slab concreting", "Cement", 8, "bags"),
-    ("3.1", "Block work", "Solid Blocks", 12.5, "nos"), ("3.1", "Block work", "Cement", 0.4, "bags"),
-    ("4.1", "Plastering", "Cement", 0.25, "bags"), ("4.1", "Plastering", "P Sand", 0.02, "cum"),
-)
+#: The estimate and its materials per unit: Green Villa's own data (backend .../learn/green_villa.py), the one source
+#: the 62-day plan also reads (project bible D2), so the file people bring in and the BOQ the plan puts in agree.
+SECTIONS = green_villa.ESTIMATE
+NORMS = green_villa.NORMS
 #: The work the sample site reports for Green Villa (sample_story.DEMO_WORK, Main block and Annex): each must be a line
 #: here with the same unit, or that work can't count on the BOQ. "Plastering" is a catch too: three plastering lines
 #: (internal, external, ceiling), so Mesiri suggests none and the person picks (the BOQ page's "Change line").
-SITE_WORK = (("Block work", "sqm"), ("Lintel concreting", "cum"), ("Plastering", "sqm"), ("Electrical conduits", "nos"),
-             ("Excavation", "cum"), ("PCC", "cum"), ("Footing concreting", "cum"), ("Plinth beam", "rmt"))
+SITE_WORK = (("Parapet wall", "rmt"), ("Brick work in partitions", "sqm"), ("Plastering", "sqm"), ("Electrical conduits", "nos"),
+             ("Site clearance", "sqm"), ("Excavation", "cum"), ("Anti-termite treatment", "sqm"), ("PCC", "cum"),
+             ("Footing concreting", "cum"))
 
 #: The materials workbook (the materials import's four sheets). Rows already in the sample company (Cement, Malabar, Joy)
 #: are the catch: the preview shows them "already in Mesiri, left as they are", so importing twice is safe.
@@ -127,39 +81,35 @@ MINIMUM = (("Green Villa", "Main block", "Cement", 100, 200), ("Green Villa", "A
 
 #: The contract summary (the "won" chapter types these in).
 CONTRACT_TERMS = (
-    ("Client", "Dr. Anand Krishnan"),
-    ("Site", "Green Villa, Puthur Road, Thrissur"),
-    ("Agreement no.", "GV/2026/007"),
+    ("Client", green_villa.CLIENT["name"]),
+    ("Site", green_villa.CLIENT["address"]),
+    ("Agreement no.", green_villa.CONTRACT["contract_no"]),
     ("Signed on", "20 October 2026"),
-    ("Contract value", "{value}, GST extra at 18% (the estimate's total)"),
+    ("Contract value", f"{{value}}, GST extra at {green_villa.CONTRACT['gst_pct']}% (the estimate's total)"),
     ("Work starts", "2 November 2026"),
     ("Handover", "31 July 2027 (9 months)"),
     ("Mobilisation advance", "{advance} (10% of the contract value), paid on signing"),
-    ("Advance recovery", "10% of each RA bill, until the advance is back"),
-    ("Retention", "5% of each RA bill, released after the defects period"),
-    ("Defects period", "12 months from handover"),
-    ("Billing", "Monthly RA bills on measured work at the BOQ rates; paid within 15 days"),
+    ("Advance recovery", f"{green_villa.CONTRACT['advance_recovery_pct']}% of each RA bill, until the advance is back"),
+    ("Retention", f"{green_villa.CONTRACT['retention_pct']}% of each RA bill, released after the defects period"),
+    ("Defects period", f"{green_villa.CONTRACT['defect_liability_months']} months from handover"),
+    ("Billing", green_villa.CONTRACT["payment_terms"]),
     ("Delay", "Rs 25,000 per week of delay beyond handover, at most 5% of the contract value"),
 )
 
-#: The ground floor plan, drawn the way Drawing check reads a plan: each room's name, its size in cm under it, and the
+#: The ground floor's rooms (green_villa, drawn by gv_drawings): each room's name, its size in cm under it, and the
 #: area the architect printed. Bedroom 2 is drawn 360 x 360 but labelled 163 sq ft, Bedroom 1's area: the catch.
-#: (label, x cm, y cm, width cm, depth cm, printed sq ft)
-ROOMS = (("LIVING", 0, 0, 520, 430, 241), ("DINING", 520, 0, 400, 360, 155), ("KITCHEN", 920, 0, 330, 300, 107),
-         ("BEDROOM-1", 0, 430, 420, 360, 163), ("BEDROOM-2", 420, 430, 360, 360, 163), ("TOILET", 780, 430, 240, 150, 39),
-         ("SIT OUT", 1020, 430, 300, 240, 78))
+ROOMS = green_villa.GROUND_FLOOR_ROOMS
 
-#: The quotation request: 300 bags of cement and 2,000 kg of steel for Main block. Malabar is cheapest for cement,
-#: Kerala Steels cheapest in total; buying each item from its cheapest (cement Malabar, steel Kerala) is cheaper
-#: still: the catch Quotations' compare shows (lowest per item, lowest total).
-RFQ_ITEMS = (("Cement (OPC 53)", "bags", 300), ("Steel (TMT Fe 500)", "kg", 2000))
-QUOTE_RATES = {"Malabar Cements Agency": (400, 72), "Kerala Steels": (412, 66), "Sri Hardwares": (408, 70)}
-QUOTE_FROM = {"Malabar Cements Agency": ("Palakkad", "MCA/Q/0412"), "Kerala Steels": ("Industrial Estate, Kalamassery", "KS/Q/2280"),
-              "Sri Hardwares": ("MG Road, Thrissur", "SH/Q/117")}
-#: The delivery: 190 bags against an order for 200 (the catch: 10 still to come on the order).
-ORDERED, DELIVERED = 200, 190
-#: The bill: Rs 410 a bag against the order's Rs 400 (the catch: the bill's rate differs from the delivery's).
-BILL_RATE, CEMENT_GST = 410, 28
+#: The quotation request, the quotes, the delivery and the bill: green_villa.CEMENT_STORY (LRN-F18), the one source the
+#: 62-day plan plays too. Malabar is cheapest for cement, Kerala Steels cheapest in total; each item from its cheapest
+#: is cheaper still (the catch Quotations' compare shows). 190 bags come against 200 (10 still to come); the bill says
+#: Rs 410 a bag against the order's Rs 400.
+_CS = green_villa.CEMENT_STORY
+RFQ_ITEMS = tuple((printed, unit, qty) for _m, printed, unit, qty in _CS["lines"])
+QUOTE_RATES = {v: tuple(rates[m] for m, *_ in _CS["lines"]) for v, _where, _ref, rates in _CS["quotes"]}
+QUOTE_FROM = {v: (where, ref) for v, where, ref, _rates in _CS["quotes"]}
+ORDERED, DELIVERED = _CS["ordered"], _CS["sent"]
+BILL_RATE, CEMENT_GST = _CS["bill_rate"], 18  # cement's GST: 18% since the change of 22 Sept 2025 (was 28%; LRN-F17)
 #: Joy Tiling's flooring: measured room by room from the plan (rooms with floor tiles), billed for more.
 TILED = ("LIVING", "DINING", "KITCHEN", "BEDROOM-1", "BEDROOM-2", "SIT OUT")
 TILING_RATE, TILING_BILLED = 320, 92.0
@@ -184,7 +134,7 @@ MANIFEST = (
      "catch": "One bedroom is labelled bigger than it is drawn: Mesiri works out the real area and says the label was copied."},
     {"file": QUOTES[0], "title": "Three quotations: cement and steel", "kind": "pdf", "page": "/procurement/quotations",
      "also": list(QUOTES[1:]),
-     "what": "Malabar, Kerala Steels and Sri Hardwares quote for 300 bags of cement and 2,000 kg of steel.",
+     "what": f"Malabar, Kerala Steels and Sri Hardwares quote for {RFQ_ITEMS[0][2]} bags of cement and {RFQ_ITEMS[1][2]:,} kg of steel.",
      "goes": "Quotations: a request to the three, then their rates",
      "catch": "The cheapest for cement is not the cheapest in total, and splitting the order beats both. The compare shows each."},
     {"file": CHALLAN, "title": "Delivery challan", "kind": "pdf", "page": "/procurement/orders",
@@ -200,6 +150,30 @@ MANIFEST = (
      "what": "The flooring measured room by room, and the subcontractor's bill for it.",
      "goes": "Subcontract: measurement, then the bill",
      "catch": "The bill asks for more square metres than were measured: Mesiri says how many more."},
+    {"file": DRAWING_SET, "title": "The drawing set (8 sheets)", "kind": "pdf", "page": "/planning/drawing-check",
+     "what": "The architect's and consultants' set: both floor plans, the elevation, a section, the footings, the columns, electrical and plumbing.",
+     "goes": "Drawing check, then Documents (each sheet kept, its rooms and footings tracked as places)",
+     "catch": "The first-floor toilet is drawn smaller than the one below it, and the roof is +660 on the elevation but +655 on the section: Mesiri asks which is right before the slab is cast."},
+    {"file": PERMIT, "title": "Building permit", "kind": "pdf", "page": "/planning/documents",
+     "what": "The municipality's permit: the plot, the built-up area, the floors allowed.",
+     "goes": "Documents: Approvals",
+     "catch": "None: it is kept where everyone on the project can find the latest one."},
+    {"file": RATE_CARD, "title": "Periyar's rate card", "kind": "pdf", "page": "/procurement/rates",
+     "what": "The rates agreed with the sand and aggregate supplier for the year.",
+     "goes": "Rates (and the rate on each order)",
+     "catch": "M sand is agreed at Rs 1,650 a cum, but the later loads come at Rs 1,750: Rates shows the rise."},
+    {"file": RETURN_NOTE, "title": "Return note", "kind": "pdf", "page": "/procurement/returns",
+     "what": "Six torn bags from Malabar's load sent back.",
+     "goes": "Returns: from the delivery",
+     "catch": "The debit note takes Rs 2,400 off what you owe Malabar at once, before their next bill."},
+    {"file": HIRE_BILL, "title": "A hire bill", "kind": "pdf", "page": "/equipment/hire",
+     "what": "The concrete mixer hired for the Annex, billed by the hour.",
+     "goes": "Equipment: Hire check",
+     "catch": "42 hours billed, 36 logged on site: Mesiri shows the 6 hours (Rs 2,700) to question."},
+    {"file": HANDOVER, "title": "Handover certificate", "kind": "pdf", "page": "/planning/documents",
+     "what": "Green Villa handed over to Dr. Anand Krishnan, the defects period starting.",
+     "goes": "Documents: Handover",
+     "catch": "None: it starts the 12-month defects period, after which the retention is released."},
 )
 
 
@@ -210,7 +184,8 @@ def estimate_bytes() -> bytes:
     book = Workbook()
     sheet = book.active
     sheet.title = "BOQ"
-    sheet.append(["GREEN VILLA, PUTHUR ROAD, THRISSUR: ESTIMATE (G+1 residence, 3,200 sq ft)"])
+    sheet.append([f"GREEN VILLA, PUTHUR ROAD, THRISSUR: ESTIMATE (G+1 residence and annex, "
+                  f"{sum(green_villa.BUILT_UP.values()):,} sq ft built-up)"])
     sheet.append(["Client: Dr. Anand Krishnan. Rates in rupees per unit. Labour and material rates are our cost."])
     sheet.append([])
     header = ["Item no.", "Description", "Unit", "Qty", "Rate", "Labour rate", "Material rate", "Amount"]
@@ -340,41 +315,13 @@ def _doc(title: str, head: list[tuple[str, str]], table: list[list[str]], foot: 
 
 
 def plan_bytes() -> bytes:
-    """A3 sheet, 1:100 in centimetres, with a title block Drawing check reads."""
-    from reportlab.lib.pagesizes import A3, landscape
+    """A-101 issued alone (rev B), A3 at 1:50, the same drawing as the set's first sheet."""
     from reportlab.pdfgen import canvas
 
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=landscape(A3), invariant=1)
+    pdf = canvas.Canvas(buffer, pagesize=gv_drawings.landscape(gv_drawings.A3), invariant=1)
     pdf.setTitle("Green Villa: ground floor plan A-101")
-    width, height = landscape(A3)
-    scale, left0, top0 = 0.6, 70, height - 110  # points per cm; the plan hangs from its top-left corner
-    pdf.setLineWidth(1.2)
-    pdf.rect(30, 30, width - 60, height - 60)  # the sheet's border
-    pdf.setLineWidth(2)
-    for label, x, y, w, d, sqft in ROOMS:
-        left, bottom = left0 + x * scale, top0 - (y + d) * scale
-        pdf.rect(left, bottom, w * scale, d * scale)
-        cx, cy = left + w * scale / 2, bottom + d * scale / 2
-        pdf.setFont("Helvetica-Bold", 9)
-        pdf.drawCentredString(cx, cy + 12, label)
-        pdf.setFont("Helvetica", 8)
-        pdf.drawCentredString(cx, cy, f"{w} x {d}")
-        pdf.drawCentredString(cx, cy - 11, f"{sqft} Sq.ft")
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(left0, height - 75, "GROUND FLOOR PLAN")
-    # The title block, boxed, bottom right, clear of the plan.
-    bx, by, bw, bh = width - 320, 40, 280, 200
-    pdf.setLineWidth(1)
-    pdf.rect(bx, by, bw, bh)
-    pdf.setFont("Helvetica", 9)
-    block = (("PROJECT:", "GREEN VILLA, PUTHUR ROAD, THRISSUR"), ("CLIENT:", "DR. ANAND KRISHNAN"),
-             ("DWG.TITLE:", "GROUND FLOOR PLAN"), ("DWG.NO:", "A-101"), ("REV:", "B"), ("SCALE:", "1:100"),
-             ("DATE:", "09.10.2026"), ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR"))
-    for i, (key, value) in enumerate(block):
-        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}")
-    pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
-    pdf.drawString(left0, 45, "Sample drawing for learning Mesiri. Not for construction.")
+    gv_drawings.ground_floor(pdf, rev="B")
     pdf.showPage()
     pdf.save()
     return buffer.getvalue()
@@ -391,12 +338,12 @@ def quote_bytes(vendor: str) -> bytes:
     rows.append(["Total, before GST", "", "", "", _rupees(total)[3:]])
     return _doc(f"Quotation: {vendor}", [("From", f"{vendor}, {place}"), ("Quotation no.", ref), ("To", "Green Villa Builders"),
                                         ("For", "Green Villa, Main block, Puthur Road, Thrissur"), ("Date", "18 November 2026")],
-                rows, ["Rates include unloading at site. GST extra: cement 28%, steel 18%.", "Valid for 7 days. Delivery in 2 days from the order."])
+                rows, ["Rates include unloading at site. GST extra at 18% on cement and steel.", "Valid for 7 days. Delivery in 2 days from the order."])
 
 
 def challan_bytes() -> bytes:
     rows = [["Item", "Unit", "Ordered", "Sent", ""], ["Cement (OPC 53)", "bags", f"{ORDERED}", f"{DELIVERED}", ""]]
-    return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", "MCA/DC/2611"),
+    return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", _CS["challan"]),
                                      ("To", "Green Villa, Main block, Puthur Road, Thrissur"), ("Against", "Your order for cement"),
                                      ("Date", "20 November 2026"), ("Vehicle", "Lorry (sample)")],
                 rows, [f"{ORDERED - DELIVERED} bags to follow with the next load.", "Received by: ____________   Site seal: ____________"],
@@ -409,8 +356,8 @@ def bill_bytes() -> bytes:
     rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"],
             ["Cement (OPC 53)", "bags", f"{DELIVERED}", f"{BILL_RATE}", _rupees(amount)[3:]],
             [f"GST {CEMENT_GST}%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
-    return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", "MCA/INV/2611"),
-                                ("To", "Green Villa Builders"), ("Delivery", "Challan MCA/DC/2611, 20 November 2026"),
+    return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", _CS["bill"]),
+                                ("To", "Green Villa Builders"), ("Delivery", f"Challan {_CS['challan']}, 20 November 2026"),
                                 ("Date", "22 November 2026")],
                 rows, ["Payment within 15 days. Bank details on request."])
 
@@ -444,6 +391,75 @@ def sub_bill_bytes() -> bytes:
                                           ("To", "Green Villa Builders"), ("Work", "Ground floor flooring, Green Villa"),
                                           ("Date", "29 November 2026")],
                 rows, ["Labour only; tiles and adhesive supplied by the contractor."])
+
+
+def drawing_set_bytes() -> bytes:
+    """The whole set, eight A3 sheets (green_villa.DRAWINGS), drawn by gv_drawings."""
+    from reportlab.pdfgen import canvas
+
+    sheets = {"A-101": gv_drawings.ground_floor, "A-102": gv_drawings.first_floor, "A-201": gv_drawings.front_elevation,
+              "A-301": gv_drawings.section_aa, "S-101": gv_drawings.footing_layout, "S-102": gv_drawings.column_schedule,
+              "E-101": gv_drawings.electrical, "P-101": gv_drawings.plumbing}
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=gv_drawings.landscape(gv_drawings.A3), invariant=1)
+    pdf.setTitle("Green Villa: drawing set rev A")
+    for number, _title, _kind in green_villa.DRAWINGS:
+        sheets[number](pdf)
+        pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def permit_bytes() -> bytes:
+    p = green_villa.PERMIT
+    rows = [["Particular", "", "", "", "Allowed"], ["Plot", "", "", "", p["plot"]], ["Floors", "", "", "", p["floors"]],
+            ["Built-up area", "", "", "", f"{p['built_up_sqft']:,} sq ft"], ["Validity", "", "", "", p["valid"]]]
+    return _doc("Building permit", [("Issued by", p["authority"]), ("Permit no.", p["number"]), ("Date", p["date"]),
+                                    ("Owner", green_villa.CLIENT["name"]), ("Site", green_villa.CLIENT["address"])],
+                rows, ["Construction to follow the approved drawings (Rev A). Keep this permit on site."],
+                widths=(110, 10, 10, 10, 370))
+
+
+def rate_card_bytes() -> bytes:
+    r = green_villa.RATE_CARD
+    rows = [["Material", "Unit", "", "", "Rate (Rs)"]] + [[m.title(), u, "", "", f"{rate:,}"] for m, u, rate in r["rates"]]
+    return _doc("Rate card", [("From", f"{r['vendor']}, Aluva"), ("Ref", r["ref"]), ("To", "Green Villa Builders"),
+                              ("Valid from", r["from"]), ("Delivery", "At site, Thrissur, by tipper lorry")],
+                rows, ["Rates before GST (5%). Any change will be told in writing a week before."])
+
+
+def return_note_bytes() -> bytes:
+    r = green_villa.RETURN
+    value = r["quantity"] * r["rate"]
+    rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Value (Rs)"], [r["material"], r["unit"], f"{r['quantity']}", f"{r['rate']}",
+                                                                 _rupees(value)[3:]]]
+    return _doc("Return note", [("From", "Green Villa Builders, Green Villa site"), ("Note no.", r["note"]),
+                                ("To", f"{r['vendor']}, Palakkad"), ("Against", f"Challan {r['against']}"),
+                                ("Reason", r["reason"])],
+                rows, ["Please send a credit note or replace with the next load.", "Sent by: ____________"])
+
+
+def hire_bill_bytes() -> bytes:
+    h = green_villa.HIRE
+    amount = h["billed_hours"] * h["rate_per_hour"]
+    gst = amount * 18 // 100
+    rows = [["Machine", "Unit", "Hours", "Rate (Rs)", "Amount (Rs)"],
+            [h["machine"], "hour", f"{h['billed_hours']}", f"{h['rate_per_hour']}", _rupees(amount)[3:]],
+            ["GST 18%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
+    return _doc("Hire bill", [("From", h["vendor"]), ("Bill no.", h["bill"]), ("To", "Green Villa Builders"),
+                              ("Site", f"Green Villa, {h['site']}"), ("For", h["for"])],
+                rows, ["Hours as per our operator's log. Payment within 15 days."])
+
+
+def handover_bytes() -> bytes:
+    h = green_villa.HANDOVER
+    rows = [["Handed over", "", "", "", "Count"], ["Keys (main door, back door, Annex)", "", "", "", f"{h['keys']}"],
+            ["Drawings as built (Rev A)", "", "", "", "1 set"], ["Warranty papers (pump, fittings)", "", "", "", "1 file"]]
+    return _doc("Handover certificate", [("Project", "Green Villa, Puthur Road, Thrissur"), ("Client", green_villa.CLIENT["name"]),
+                                         ("Agreement", green_villa.CONTRACT["contract_no"]), ("Handed over on", h["date"]),
+                                         ("Defects period until", h["defects_until"])],
+                rows, [h["note"], "For the contractor: ____________     For the client: ____________"],
+                widths=(320, 10, 10, 10, 160))
 
 
 def _rupees(amount: float) -> str:
@@ -482,7 +498,9 @@ def _fixed_zip(data: bytes) -> bytes:
 
 def build() -> dict[str, bytes]:
     files = {ESTIMATE: estimate_bytes(), MATERIALS: materials_bytes(), CONTRACT: contract_bytes(), PLAN: plan_bytes(),
-             CHALLAN: challan_bytes(), BILL: bill_bytes(), MEASURE: measurement_bytes(), SUB_BILL: sub_bill_bytes()}
+             CHALLAN: challan_bytes(), BILL: bill_bytes(), MEASURE: measurement_bytes(), SUB_BILL: sub_bill_bytes(),
+             DRAWING_SET: drawing_set_bytes(), PERMIT: permit_bytes(), RATE_CARD: rate_card_bytes(),
+             RETURN_NOTE: return_note_bytes(), HIRE_BILL: hire_bill_bytes(), HANDOVER: handover_bytes()}
     files.update({name: quote_bytes(vendor) for name, vendor in zip(QUOTES, QUOTE_RATES, strict=True)})
     manifest = {"name": "Green Villa starter kit", "zip": ZIP, "files": list(MANIFEST)}
     files["kit.json"] = (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode()

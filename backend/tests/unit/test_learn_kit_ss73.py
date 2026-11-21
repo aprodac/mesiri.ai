@@ -55,7 +55,7 @@ def test_the_estimate_reads_with_its_catches(make_kit) -> None:
 
 def test_every_work_the_sample_site_reports_has_its_line(make_kit) -> None:
     """Green Villa's sites are the first two of the story's four; their work must count on the estimate's lines."""
-    reported = {(work, unit) for site in sample_story.DEMO_WORK[:2] for work, _n, unit, _q in site}
+    reported = {(work, unit) for site in sample_story.DEMO_WORK[:2] for work, _n, unit, *_ in site}
     assert reported == set(make_kit.SITE_WORK)
     lines = {(work, unit) for _h, rows in make_kit.SECTIONS for _c, work, unit, *_ in rows}
     assert reported <= lines
@@ -111,7 +111,7 @@ def test_drawing_check_finds_the_copied_bedroom_label_and_nothing_else(make_kit)
 
     out = read_pdf((KIT / make_kit.PLAN).read_bytes())
     sheet = out["sheets"][0]
-    assert (sheet["title"], sheet["number"], sheet["scale"], sheet["units"]) == ("GROUND FLOOR PLAN", "A-101", "1:100", "cm")
+    assert (sheet["title"], sheet["number"], sheet["scale"], sheet["units"]) == ("GROUND FLOOR PLAN", "A-101", "1:50", "cm")
     assert len(sheet["rooms"]) == len(make_kit.ROOMS)
     assert [c["message"] for c in out["checks"]] == [
         "BEDROOM-2 is drawn 360 x 360 cm (13 m², 140 sq ft) but labelled 163 sq ft. "
@@ -151,10 +151,56 @@ def test_joy_tiling_bills_more_than_was_measured(make_kit) -> None:
     from mesiri.domains.subcontracts.rules import check_bill
 
     rows, measured = make_kit._tiled_rows()
-    assert measured == 81.94 and f"{measured:.2f}" in _text(KIT / make_kit.MEASURE)
+    assert measured == 81.88 and f"{measured:.2f}" in _text(KIT / make_kit.MEASURE)
     assert f"{make_kit.TILING_BILLED:.2f}" in _text(KIT / make_kit.SUB_BILL)
     line = {"description": "Vitrified tile flooring", "unit": "sqm", "quantity": Decimal(290), "rate": Decimal(make_kit.TILING_RATE)}
     found = check_bill({"l": line}, {"l": Decimal(str(measured))}, {}, [{"line_id": "l", "quantity": make_kit.TILING_BILLED,
                                                                         "rate": make_kit.TILING_RATE}],
                        Decimal(str(make_kit.TILING_BILLED * make_kit.TILING_RATE)))
-    assert [f["code"] for f in found] == ["over_measured"] and "10.06 sqm more than measured" in found[0]["words"]
+    assert [f["code"] for f in found] == ["over_measured"] and "10.12 sqm more than measured" in found[0]["words"]
+
+
+def test_the_drawing_set_reads_with_exactly_its_three_catches(make_kit) -> None:
+    """LRN-F5: the eight-sheet set reads through Drawing check with the catches the kit says, and no others: the copied
+    bedroom label (A-101), the roof at +660 on the elevation and +655 on the section, and the first-floor toilet drawn
+    smaller than the one below it. Its footings are counted (14, each with its column and grid) for Track and the
+    draft BOQ; the plan's rooms are the ones green_villa lays out."""
+    from mesiri.application.learn import green_villa
+    from mesiri.domains.drawings.read import read_pdf
+
+    out = read_pdf((KIT / make_kit.DRAWING_SET).read_bytes())
+    assert [s["number"] for s in out["sheets"]] == [n for n, _t, _k in green_villa.DRAWINGS]
+    kinds = {c["kind"]: c["message"] for c in out["checks"]}
+    assert set(kinds) == {"area_label", "level", "typical_floor"}
+    assert "+660" in kinds["level"] and "+655" in kinds["level"]
+    assert "TOILET" in kinds["typical_floor"]
+    assert out["architect"] == green_villa.ARCHITECT.split(",")[0]
+    assert out["structure"]["foundation"]["footings"] == sum(len(f[5]) for f in green_villa.FOOTINGS) == 14
+    on_plan = {f["mark"]: sorted(f["columns"]) for f in out["structure"]["footings"]}
+    assert on_plan == {f[0]: sorted(f[5]) for f in green_villa.FOOTINGS}  # every footing found with its own columns
+    for page, rooms in ((0, green_villa.GROUND_FLOOR_ROOMS), (1, green_villa.FIRST_FLOOR_ROOMS)):
+        assert {(r["label"], r["a"], r["b"]) for r in out["sheets"][page]["rooms"]} == {
+            (label, w, d) for label, _x, _y, w, d, _a in rooms}
+    # The column schedule gives every column on the footing plan its size, and nothing else is read twice: the
+    # services sheets name rooms without sizes, so only the two floor plans hold rooms and fixtures.
+    sizes = {c["mark"]: c["size"] for c in out["structure"]["columns"]}
+    assert sizes == {m: f"{a}×{b}" for m, a, b, _main, _ties in green_villa.COLUMNS}
+    assert [len(s["rooms"]) for s in out["sheets"][2:]] == [0] * 6
+    assert [s["scale"] for s in out["sheets"]] == ["1:50"] * 4 + ["1:75", "1:15", "1:50", "1:50"]
+
+
+def test_the_papers_agree_with_the_story(make_kit) -> None:
+    """The rate card is the seed's supply rates, and its catch is the seed's later M sand rate; the return comes off
+    the kit's own challan; the hire bill is above the hours logged; the handover is the contract's date."""
+    from mesiri.application.learn import green_villa as gv
+
+    for material, _unit, rate in gv.RATE_CARD["rates"]:
+        vendor, _size, seeded = sample_story.DEMO_SUPPLY[material]
+        assert (vendor, seeded) == (gv.RATE_CARD["vendor"], rate)
+    assert sample_story.DEMO_RATE_NOW[(None, "m sand")][0] > dict((m, r) for m, _u, r in gv.RATE_CARD["rates"])["m sand"]
+    assert gv.RETURN["quantity"] <= make_kit.DELIVERED and gv.RETURN["against"] == "MCA/DC/2611"
+    assert gv.HIRE["billed_hours"] > gv.HIRE["logged_hours"]
+    assert gv.HANDOVER["date"] == "31 July 2027" and gv.CONTRACT["handover_on"] == "2027-07-31"
+    files = {f["file"] for f in json.loads((KIT / "kit.json").read_text())["files"]}
+    assert {make_kit.DRAWING_SET, make_kit.PERMIT, make_kit.RATE_CARD, make_kit.RETURN_NOTE, make_kit.HIRE_BILL,
+            make_kit.HANDOVER} <= files

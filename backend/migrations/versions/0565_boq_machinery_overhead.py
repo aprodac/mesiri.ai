@@ -8,8 +8,8 @@
 
 Additive: nullable columns with CHECKs like 0508's; no row is rewritten. Downgrade drops the columns.
 
-Revision ID: 0564
-Revises: 0563
+Revision ID: 0565
+Revises: 0564
 Create Date: 2026-11-20
 """
 
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0564"
-down_revision = "0563"
+revision = "0565"
+down_revision = "0564"
 branch_labels = None
 depends_on = None
 

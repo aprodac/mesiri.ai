@@ -84,7 +84,7 @@ projects_table = sa.Table(
     sa.Column("auto_generate_dpr", sa.Boolean),
     sa.Column("dpr_send_deadline", sa.String),
     sa.Column("required_report_types", sa.JSON),
-    sa.Column("project_type", sa.String),  # PS-05 (0563)
+    sa.Column("project_type", sa.String),  # PS-05 (0564)
     sa.Column("built_up_area_sqft", sa.Numeric),
     sa.Column("floors", sa.Integer),
     sa.Column("overhead_pct", sa.Numeric),

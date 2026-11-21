@@ -29,11 +29,68 @@ try {
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
+function hash(s) {
+  return createHash('sha1').update(s).digest('hex').slice(0, 16)
+}
 const root = join(here, '..', '..', '..')
 const ep = (process.argv[2] || '01').padStart(2, '0')
 const script = JSON.parse(readFileSync(join(here, `episode-${ep}.json`), 'utf8'))
 const CACHE = join(here, '.cache')
 const OUT = join(here, 'out')
+
+// LRN-F15: a steps scene's frames: frame n's picture is <episode prefix>-<scene>-<n> (shoot.cjs), its box the mark
+// shoot.cjs found for that step.
+for (const sc of script.scenes.filter((s) => s.kind === 'steps')) {
+  sc.frames.forEach((f, i) => {
+    f.shot = f.shot || `ep${ep}-${sc.id}-${i + 1}`
+    const file = join(CACHE, 'shots', `${f.shot}.json`)
+    if (!existsSync(join(CACHE, 'shots', `${f.shot}.png`))) throw new Error(`${f.shot}: not shot yet: run shoot.cjs ${ep}`)
+    const marks = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+    f.rect = marks.mark || null
+  })
+}
+// A screen scene's focus and boxes may name a mark (`{ "at": 1, "mark": "value" }`): where shoot.cjs found that thing
+// on the picture (.cache/shots/<shot>.json), with `pad` (a share of the picture) round it. Never placed by hand.
+for (const sc of script.scenes.filter((s) => s.kind === 'screen')) {
+  const file = join(CACHE, 'shots', `${sc.shot}.json`)
+  const named = [...(sc.focus || []), ...(sc.boxes || [])].filter((f) => f.mark)
+  if (!named.length) continue
+  if (!existsSync(file)) throw new Error(`${sc.shot}: no marks yet: run shoot.cjs ${ep} first`)
+  const marks = JSON.parse(readFileSync(file, 'utf8'))
+  const place = (f, pad) => {
+    const m = marks[f.mark]
+    if (!m) throw new Error(`${sc.shot}: no mark "${f.mark}"`)
+    const p = f.pad ?? pad
+    const { mark: _m, pad: _p, ...rest } = f
+    return { ...rest, x: m.x - p, y: m.y - p, w: m.w + 2 * p, h: m.h + 2 * p }
+  }
+  sc.focus = (sc.focus || []).map((f) => (f.mark ? place(f, 0.05) : f))
+  sc.boxes = (sc.boxes || []).map((f) => (f.mark ? place(f, 0.004) : f))
+}
+// LRN-F15: a chat scene recorded by record.cjs shows Mesiri's real reply (.cache/shots/<scene>.chat.json) in place of
+// the script's guess: the message sent (a voice note keeps the script's 🎤 line), the reply on the reply's beat, then
+// each tap and its answer over the last beat. Links in a reply are shortened to where they go.
+const link = (text) => text.replace(/https?:\/\/[^\s/]+(\/[^\s]*)?/g, (_m, path = '') => `mesiri${path.split('/').slice(0, 3).join('/')}…`)
+for (const sc of script.scenes.filter((s) => s.kind === 'chat' && s.capture)) {
+  const file = join(CACHE, 'shots', `${sc.id}.chat.json`)
+  if (!existsSync(file)) {
+    if (process.env.REAL !== '0') throw new Error(`${sc.id}: no real reply yet: run record.cjs ${ep} first (REAL=0 builds the script's guess)`)
+    continue
+  }
+  const got = JSON.parse(readFileSync(file, 'utf8'))
+  const site = sc.messages.find((m) => m.from === 'site') || { at: 0 }
+  const reply = sc.messages.find((m) => m.from === 'mesiri') || { at: 1 }
+  const last = sc.beats.length - 1
+  const said = (r) => ({ text: link(r.map((x) => x.text).join('\n\n')), buttons: r.flatMap((x) => x.buttons || []).map((x) => x.title) })
+  sc.messages = [
+    { at: site.at, from: 'site', text: site.text?.startsWith('🎤') ? site.text : got.sent },
+    { at: reply.at, from: 'mesiri', reply: said(got.reply) },
+    ...got.turns.flatMap((turn, i) => [
+      { at: last, plus: 200 + i * 2600, from: 'site', tap: turn.tapped },
+      { at: last, plus: 1300 + i * 2600, from: 'mesiri', reply: { text: said(turn.reply.slice(0, 1)).text.split('\n').filter((l) => !l.includes('mesiri/')).join('\n'), buttons: [] } },
+    ]),
+  ]
+}
 const SOUNDS = join(root, 'apps', 'dashboard', 'public', 'learn', 'scenes')
 mkdirSync(CACHE, { recursive: true })
 mkdirSync(OUT, { recursive: true })
@@ -44,7 +101,6 @@ const FPS = 24
 const LEAD = 900 // ms before the first beat of a scene
 const GAP = 420 // ms between beats
 const TAIL = 1500 // ms after the last beat
-const hash = (s) => createHash('sha1').update(s).digest('hex').slice(0, 16)
 
 function durationMs(file) {
   const r = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' })
@@ -130,7 +186,10 @@ if (process.env.STILLS) {
 const parts = []
 for (const s of scenes) {
   if (process.env.ONLY && process.env.ONLY !== s.scene.id) continue
-  const key = hash(JSON.stringify([s.scene, s.beats.map((b) => [b.at, b.len]), s.dur, s.index, scenes.length, page]))
+  // A screen scene's picture is part of its key: a re-shot screen is drawn again even when the script is unchanged.
+  const pics = [s.scene.shot, ...(s.scene.frames || []).map((f) => f.shot)].filter(Boolean).map((n) => join(CACHE, 'shots', `${n}.png`))
+  const shot = hash(pics.filter((f) => existsSync(f)).map((f) => hash(readFileSync(f).toString('base64'))).join('|'))
+  const key = hash(JSON.stringify([s.scene, s.beats.map((b) => [b.at, b.len]), s.dur, s.index, scenes.length, page, shot]))
   const file = join(CACHE, `scene-${s.scene.id}-${key}.mp4`)
   if (!existsSync(file)) {
     const t0 = Date.now()

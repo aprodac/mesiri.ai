@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import uuid
 from typing import Any
 
 WORK_TOOL = "record_work"
@@ -76,6 +77,51 @@ def fill_body(tool: str, body: dict[str, Any], summary: str, names: tuple[str, .
         if words and not other_script(words):
             return {**body, "narrative": words}
     return body
+
+
+def _uuid(value: Any) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def names_for_ids(parameters: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    """LRN-F16 / WA-316 (20 Nov, recording episode 3: Anil's "Annex: Manoj, Satheesh, Vinod present" was held with
+    ``worker_id: "Manoj"`` on each line, and Save got 422 "Input should be a valid UUID" for the whole report): a name
+    the model put in an id field, where the same row has the name's own field (``worker_id`` beside ``worker_name``),
+    moves to that field, and the id is left out, so the API matches the name the way it does for anyone typed by name.
+    Read from the tool's own schema (its fields), at the top level and inside its lists; an id that is an id is never touched, and a
+    field with no name beside it is left for the checks that already ask the model to look the record up."""
+
+    def fix(props: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+        out = row
+        for field in props:
+            value = row.get(field)
+            # Every record id in this API is a UUID; the tool schemas the model sees keep no format, so the field's
+            # name says it is an id.
+            if not field.endswith("_id") or value in (None, ""):
+                continue
+            name_field = field[:-3] + "_name"
+            if _uuid(value) or name_field not in props:
+                continue
+            out = {k: v for k, v in out.items() if k != field}
+            if not str(out.get(name_field) or "").strip():
+                out[name_field] = str(value)
+        return out
+
+    props = parameters.get("properties", {})
+    out = fix(props, body)
+    for name, value in list(out.items()):
+        schema = props.get(name) or {}
+        items = schema.get("items") if schema.get("type") == "array" else None
+        if isinstance(items, dict) and isinstance(value, list):
+            inner = items.get("properties") or {}
+            fixed = [fix(inner, row) if isinstance(row, dict) else row for row in value]
+            if fixed != value:
+                out = {**out, name: fixed}
+    return out
 
 
 def missing_in_body(parameters: dict[str, Any], body: dict[str, Any]) -> list[str]:

@@ -75,7 +75,8 @@ export interface Tour {
 /** The first tour: the app around the page, once per person. */
 export const APP_TOUR: Tour = {
   key: '/tour/app',
-  version: 1,
+  // 2: UX-74, the sidebar shows what you need now; All pages has the rest; the top bar is Search, New, Help, the bell.
+  version: 2,
   steps: [
     {
       title: "Hi, I'm Mesiri",
@@ -84,16 +85,17 @@ export const APP_TOUR: Tour = {
     },
     {
       target: 'app.nav',
-      title: 'Everything is here',
-      text: 'Every part of Mesiri, in the order a project runs: Plan, Site, Buy, Money. You start with the everyday pages; "Show all" opens the rest.',
+      title: 'What you need now',
+      text: 'Your everyday pages are at the top. While you set up, your next steps are here too, and pages with nothing in them yet wait with a lock.',
     },
     {
       target: 'app.pins',
       title: 'Your pages',
-      text: 'The pages your role opens most. Pin any page with its pin; Customise orders or hides the rest.',
+      text: 'The pages your role opens most. Pin any page to keep it here.',
       mood: 'happy',
     },
-    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere. New, beside it, starts a record in one sentence.', mood: 'look' },
+    { target: 'app.all', title: 'Everything else', text: 'All pages opens every page you can use, in the order a project runs: Plan, Site, Buy, Money.' },
+    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere.', mood: 'look' },
     { target: 'app.scope', title: 'One project or all', text: 'Pick a project or a site here, and every page shows just that one.' },
     {
       target: 'app.whatsapp',
@@ -102,8 +104,8 @@ export const APP_TOUR: Tour = {
     },
     {
       target: 'app.tell',
-      title: 'Or tell me here',
-      text: 'Type or speak to me from any page, the way you would on WhatsApp. You get the same card to Save or Cancel.',
+      title: 'New, or tell me here',
+      text: 'New starts anything you record, in one sentence, or tell me anything the way you would on WhatsApp. You get the same card to Save or Cancel.',
       mood: 'listen',
     },
     { target: 'app.help', title: 'Stuck?', text: 'Help explains the page and its words, and plays this tour again.', mood: 'happy' },
@@ -114,25 +116,26 @@ export const APP_TOUR: Tour = {
 export const PAGE_TOURS: Record<string, Tour> = {
   '/today': {
     key: '/tour/today',
-    // 3: the site's day only; This week and the checklist moved to Home (UX-68).
-    version: 3,
+    // 3: the site's day only; This week and the checklist moved to Home (UX-68). 4: UX-75, sites as a list; Tell me
+    // is the top bar's New.
+    version: 4,
     introFromPage: true,
     steps: [
       { target: 'today.day', title: 'Any day', text: 'Move between days here. Each day keeps what the sites sent.' },
-      { target: 'today.sites', title: "Each site's day", text: "Who came, what work was done, what came in and what is missing. Open a site to see its whole day." },
+      { target: 'today.sites', title: "Each site's day", text: "One line a site: who sent the last update, the day's figures, and what is still missing. Open a site to see its whole day." },
       { target: 'today.send', title: 'The daily report', text: 'When the day looks right, send the daily report (DPR) to the owner and the client. It can also go by itself every evening.', mood: 'send' },
       { target: 'today.issues', title: 'What is stuck', text: 'Problems from site wait here until someone acts on them.', mood: 'worry' },
-      { target: 'today.tell', title: 'Tell me here too', text: 'You can tell me things right here, the way you would on WhatsApp.', mood: 'happy' },
     ],
   },
   '/home': {
     key: '/tour/home',
-    version: 1,
+    // 2: UX-75, Needs you first; the figures moved beside it as "At a glance".
+    version: 2,
     introFromPage: true,
     steps: [
       { target: 'home.checklist', title: 'Getting started', text: 'Your first steps. Each one ticks itself when it is done.' },
-      { target: 'home.figures', title: 'Your figures', text: 'The numbers your role watches. Tap one to open its page.', mood: 'look' },
-      { target: 'home.week', title: 'This week', text: 'What waits on you, worst first. Each line opens the page that does it.', mood: 'look' },
+      { target: 'home.week', title: 'Needs you', text: 'What waits on you this week, worst first. Each line opens the page that does it.', mood: 'look' },
+      { target: 'home.figures', title: 'At a glance', text: 'The numbers your role watches; red and amber mean look now. Tap one to open its page.', mood: 'look' },
       { target: 'home.projects', title: 'Your projects', text: 'Each project in one line: budget, late work, who is on site today.' },
       { target: 'home.today', title: "The site's day", text: 'Today shows every site\'s day and sends the daily report.', mood: 'happy' },
     ],

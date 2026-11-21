@@ -144,12 +144,19 @@ const SCENES = {
     bar.style.cssText = 'display:flex;height:170px;border-radius:22px;overflow:hidden;margin-top:40px;background:rgba(255,255,255,.04)'
     const labels = el('div', '', '', b)
     labels.style.cssText = 'display:flex;margin-top:26px'
+    // A label never narrower than 17% (a 5% slice's "₹50,000" overlapped its neighbour): the small ones take that,
+    // the rest share what is left in proportion.
+    const MIN = 17
+    const small = sc.segments.filter((x) => x.pct < MIN)
+    const rest = 100 - small.length * MIN
+    const big = sc.segments.reduce((t, x) => t + (x.pct < MIN ? 0 : x.pct), 0)
+    const labelWidth = (x) => (x.pct < MIN ? MIN : (x.pct / big) * rest)
     for (const s of sc.segments) {
       const seg = el('div', '', '', bar)
       seg.style.cssText = `width:${s.pct}%;background:${s.tone};transform-origin:left;${s.label === 'Margin' ? 'box-shadow:inset 0 0 0 4px #fff' : ''}`
       on(seg, 'grow', s.at, 100, 1100)
       const lab = el('div', '', `<div class="brand" style="font-size:${s.pct >= 20 ? 52 : 36}px;font-weight:600;color:${s.tone}">${esc(/^\d/.test(s.range) ? `₹${s.range}` : s.range.replace(/^~(\d)/, '~₹$1'))}</div><div style="font-size:26px;color:var(--dim);margin-top:6px;padding-right:20px">${esc(s.label)}</div>`, labels)
-      lab.style.width = `${s.pct}%`
+      lab.style.width = `${labelWidth(s)}%`
       on(lab, 'rise', s.at, 400)
     }
     const c = el('div', 'card', `<div class="brand" style="font-size:56px;font-weight:600;color:var(--red)">${esc(sc.callout.big)}</div><div style="font-size:36px;margin-top:10px">${esc(sc.callout.small)}</div>`, b)
@@ -369,17 +376,31 @@ const SCENES = {
     on(phone, 'rise', 0, 200, 900)
     const top = el('div', '', `<span style="width:52px;height:52px;border-radius:50%;background:var(--primary);color:#111;display:grid;place-items:center;font-weight:700;font-size:24px">M</span><span><div style="font-size:26px;font-weight:600">Mesiri</div><div style="font-size:18px;color:#8696a0">your site assistant</div></span>`, phone)
     top.style.cssText = 'display:flex;align-items:center;gap:16px;padding:22px 26px;background:#202c33'
-    const list = el('div', '', '', phone)
-    list.style.cssText = 'display:flex;flex-direction:column;gap:18px;padding:28px 22px'
+    // The chat sits on its newest message, as a phone does: older ones move up and out of the top (LRN-F15: real
+    // replies are long).
+    const win = el('div', '', '', phone)
+    win.style.cssText = 'position:absolute;left:0;right:0;top:96px;bottom:0;overflow:hidden'
+    const list = el('div', '', '', win)
+    list.style.cssText = 'position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:16px;padding:22px 22px 26px'
     for (const m of sc.messages) {
       const mine = m.from === 'site'
       const bub = el('div', '', '', list)
-      bub.style.cssText = `align-self:${mine ? 'flex-end' : 'flex-start'};max-width:86%;padding:16px 20px;border-radius:18px;font-size:25px;line-height:1.35;background:${mine ? '#005c4b' : '#202c33'}`
-      if (m.card) {
+      bub.style.cssText = `align-self:${mine ? 'flex-end' : 'flex-start'};max-width:88%;padding:14px 18px;border-radius:18px;font-size:23px;line-height:1.32;background:${mine ? '#005c4b' : '#202c33'}`
+      if (m.reply) {
+        // Mesiri's real reply (record.cjs): WhatsApp's *bold*, its lines as sent, its buttons under it.
+        const words = esc(m.reply.text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>')
+        const small = m.reply.text.length > 260
+        bub.innerHTML = `<div style="white-space:pre-line;font-size:${small ? 19 : 22}px">${words}</div>` +
+          (m.reply.buttons || []).map((b) => `<div style="margin-top:8px;padding:8px;text-align:center;border-radius:10px;background:rgba(255,255,255,.08);color:#53bdeb;font-weight:600;font-size:20px">${esc(b)}</div>`).join('')
+        bub.style.minWidth = '360px'
+      } else if (m.tap) {
+        bub.innerHTML = `<span style="font-size:20px;color:#d1d7db">tapped</span> <b style="color:#53bdeb">${esc(m.tap)}</b>`
+        bub.style.padding = '10px 16px'
+      } else if (m.card) {
         bub.innerHTML = `<div style="font-weight:600;font-size:24px">${esc(m.card.title)}</div>${m.card.rows.map((r) => `<div style="font-size:22px;color:#d1d7db;margin-top:8px">${esc(r)}</div>`).join('')}<div style="margin-top:16px;padding:10px;text-align:center;border-radius:12px;background:rgba(255,255,255,.08);color:#53bdeb;font-weight:600;font-size:23px">${esc(m.card.button)}</div>`
         bub.style.minWidth = '380px'
       } else bub.textContent = m.text
-      on(bub, 'pop', m.at, 500)
+      on(bub, 'pop', m.at, 500 + (m.plus || 0))
     }
     const side = el('div', '', '', b)
     side.style.cssText = 'position:absolute;left:860px;right:0;top:60px;display:flex;flex-direction:column;gap:30px'
@@ -391,6 +412,67 @@ const SCENES = {
     const n = el('div', 'mono', esc(sc.note), b)
     n.style.cssText = 'position:absolute;left:860px;bottom:0;font-size:18px;color:var(--dim)'
     on(n, 'fade', 0, 1200)
+  },
+  // LRN-F15: a real action on the website, a picture per step (shoot.cjs, steps-NN.cjs), each fading in on its beat
+  // (steps sharing a beat split it), the camera moving onto the part that changed and a box on it.
+  steps() {
+    heading()
+    const b = body()
+    b.style.cssText += ';bottom:150px'
+    b.style.borderRadius = '22px'
+    b.style.overflow = 'hidden'
+    b.style.background = '#08090b'
+    b.style.boxShadow = '0 0 0 2px rgba(255,255,255,.12), 0 30px 80px rgba(0,0,0,.55)'
+    const IW = 1728, IH = 1080
+    const groups = {}
+    sc.frames.forEach((f, i) => (groups[f.at] ||= []).push(i))
+    const start = sc.frames.map((f, i) => {
+      const bt = S.beats[Math.min(f.at, S.beats.length - 1)]
+      const g = groups[f.at]
+      return i === 0 ? 0 : bt.at + (g.indexOf(i) * bt.len) / g.length
+    })
+    const layers = sc.frames.map((f, i) => {
+      const layer = el('div', '', '', b)
+      layer.style.cssText = 'position:absolute;inset:0;opacity:0'
+      const cam = el('div', '', '', layer)
+      cam.style.cssText = `position:absolute;left:0;top:0;width:${IW}px;height:${IH}px;transform-origin:0 0`
+      const img = el('img', '', null, cam)
+      img.src = `.cache/shots/${f.shot}.png`
+      img.style.cssText = `width:${IW}px;height:${IH}px;display:block`
+      if (f.rect) {
+        const p = 0.004
+        const box = el('div', '', '', cam)
+        box.style.cssText = `position:absolute;left:${(f.rect.x - p) * 100}%;top:${(f.rect.y - p) * 100}%;width:${(f.rect.w + 2 * p) * 100}%;height:${(f.rect.h + 2 * p) * 100}%;border:4px solid var(--primary);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.28), 0 0 24px rgba(250,204,21,.5)`
+        on(box, 'pop', null, start[i] + 900, 600)
+      }
+      return { layer, cam, f, t0: start[i], t1: i + 1 < start.length ? start[i + 1] : S.dur }
+    })
+    layoutHooks.push(() => {
+      const VW = b.clientWidth, VH = b.clientHeight
+      const D = S.dur
+      const pct = (t) => `${Math.min(100, Math.max(0, (t / D) * 100)).toFixed(3)}%`
+      const fit = (r) => {
+        const s = Math.min(2.2, VW / (r.w * IW), VH / (r.h * IH))
+        const clampAxis = (v, size, view) => (size <= view ? (view - size) / 2 : Math.min(0, Math.max(view - size, v)))
+        const tx = clampAxis(VW / 2 - s * (r.x + r.w / 2) * IW, s * IW, VW)
+        const ty = clampAxis(VH / 2 - s * (r.y + r.h / 2) * IH, s * IH, VH)
+        return `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${s.toFixed(4)})`
+      }
+      let css = ''
+      layers.forEach(({ layer, cam, f, t0, t1 }, i) => {
+        const fadeIn = i === 0 ? 0 : 350
+        css += `@keyframes st-${sc.id}-${i} { 0% { opacity: ${i === 0 ? 1 : 0}; } ${pct(t0)} { opacity: ${i === 0 ? 1 : 0}; } ${pct(t0 + fadeIn)} { opacity: 1; } ${pct(t1)} { opacity: 1; } ${pct(t1 + 1)} { opacity: ${i + 1 < layers.length ? 0 : 1}; } 100% { opacity: ${i + 1 < layers.length ? 0 : 1}; } }\n`
+        layer.style.animation = `st-${sc.id}-${i} ${D}ms linear 0ms both`
+        const full = fit({ x: 0, y: 0, w: 1, h: 1 })
+        const pad = f.pad ?? 0.06
+        const near = f.rect && !f.full ? fit({ x: f.rect.x - pad, y: f.rect.y - pad, w: f.rect.w + 2 * pad, h: f.rect.h + 2 * pad }) : full
+        css += `@keyframes cm-${sc.id}-${i} { 0% { transform: ${full}; } ${pct(t0 + 500)} { transform: ${full}; animation-timing-function: cubic-bezier(.65,0,.35,1); } ${pct(t0 + 1600)} { transform: ${near}; } 100% { transform: ${near}; } }\n`
+        cam.style.animation = `cm-${sc.id}-${i} ${D}ms linear 0ms both`
+      })
+      const style = document.createElement('style')
+      style.textContent = css
+      document.head.appendChild(style)
+    })
   },
   screen() {
     heading()

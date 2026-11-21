@@ -127,12 +127,12 @@ export function HelpButton() {
         type="button"
         data-guide="app.help"
         onClick={() => setOpen(true)}
-        className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 text-sm font-medium text-foreground hover:bg-primary/20 sm:px-3"
-        title={`What is ${title}?`}
+        // UX-74: a round icon like the bell; the panel it opens is unchanged.
+        className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        title={`Help: what is ${title}?`}
         aria-label={`Help: what is ${title}?`}
       >
-        <CircleHelp className="size-[18px] text-primary-ink" />
-        <span className="hidden sm:inline">Help</span>
+        <CircleHelp className="size-[18px]" />
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md">

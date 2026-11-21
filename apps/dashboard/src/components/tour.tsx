@@ -367,6 +367,16 @@ export function TourOverlay({
     bubble = phone
       ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))` }
       : { right: 16, bottom: 16, width: BUBBLE_W }
+  } else if (phone && spot) {
+    // On a phone the bubble spans the width, on the side of the lit thing with more room, scrolling inside when it
+    // is taller: never over what the step asks for (20 Nov test: the project list to pick from was under the bubble,
+    // with nothing left to tap).
+    const H = window.innerHeight
+    const roomBelow = H - (spot.top + spot.height) - GAP - 12
+    const roomAbove = spot.top - GAP - 12
+    bubble = roomBelow >= Math.min(bubbleH, 240) || roomBelow >= roomAbove
+      ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))`, maxHeight: Math.max(roomBelow, 160) }
+      : { left: 12, right: 12, top: 12, maxHeight: Math.max(roomAbove, 160) }
   } else if (phone || !spot) {
     bubble = phone
       ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))` }

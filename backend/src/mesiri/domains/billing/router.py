@@ -92,7 +92,7 @@ class ContractIn(BaseModel):
     defect_liability_months: int | None = Field(default=None, ge=0, le=120)
     payment_terms: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=1000)
-    # PS-01..04 (migration 0563)
+    # PS-01..04 (migration 0564)
     client_payment_days: int | None = Field(default=None, ge=0, le=365, description="The client pays a bill in N days")
     contract_type: Literal["item_rate", "lump_sum", "cost_plus"] | None = None
     ld_pct_per_week: Decimal | None = _Pct

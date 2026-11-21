@@ -19,7 +19,7 @@ import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { inSandbox, takeSandboxStart, whenOpeningDone } from '@/lib/sandbox'
+import { inSandbox, peekSandboxStart, takeSandboxStart, whenOpeningDone } from '@/lib/sandbox'
 import {
   OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
@@ -367,9 +367,12 @@ export function WalkthroughRunner() {
   React.useEffect(() => () => setWalkthroughRunning(false), [])
   // "Start the guided project" from outside the sandbox loads the app inside it, then starts here (SS-67).
   React.useEffect(() => {
-    const id = takeSandboxStart()
-    // UX-72: after the sample company's opening scene, never under it.
-    if (id) return whenOpeningDone(() => startWalkthrough(id))
+    // UX-72: after the sample company's opening scene, never under it. Taken only when it starts (peekSandboxStart).
+    if (!peekSandboxStart()) return
+    return whenOpeningDone(() => {
+      const id = takeSandboxStart()
+      if (id) startWalkthrough(id)
+    })
   }, [])
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
@@ -615,6 +618,23 @@ export function WalkthroughRunner() {
     const timer = window.setInterval(look, 500)
     return () => window.clearInterval(timer)
   }, [shown, step])
+  // A step whose only ask is "open this project" (`pick`, nothing to light) has done its job when the project opens:
+  // it moves on by itself, never left asking for what was just done (20 Nov test: "Open Green Villa here" stayed
+  // up over Green Villa). A step with a target stays: what it shows is on the page the pick opened.
+  const wasPicking = React.useRef(false)
+  React.useEffect(() => {
+    if (holding === 'pick') {
+      wasPicking.current = true
+      return
+    }
+    if (holding === null && wasPicking.current) {
+      wasPicking.current = false
+      if (step?.pick && !step.target && !step.try && !step.ask) go(1)
+    }
+  }, [holding, step, go])
+  React.useEffect(() => {
+    wasPicking.current = false
+  }, [run?.index])
   // SS-69: while it waits for a pick, the list to pick from is lit, so the bubble sits beside it, never on it.
   const rect = useRect(shown && !dialogOpen ? (holding === 'pick' ? 'project.pick' : target) : undefined, run?.index ?? -1)
 
@@ -644,29 +664,30 @@ export function WalkthroughRunner() {
   }
 
   if (dialogOpen) {
-    // A small Spark in the corner while the person fills the real dialog.
+    // A small Spark in the corner while the person fills the real dialog. A "Your turn" on the page keeps the step's
+    // words beside it (the values to copy: the contract's figures), so nothing has to be remembered (20 Nov test).
+    const words = tryIt?.kind === 'here' ? (shownStep ?? step).text : ''
     return createPortal(
-      <div
-        className="pointer-events-auto fixed bottom-4 left-4 z-[70] flex items-center gap-2 rounded-full border bg-background py-1 pr-3 pl-1 text-sm shadow-lg"
-        style={{ pointerEvents: 'auto' }}
-        data-tour=""
-        role="status"
-      >
-        <Spark mood="look" size={36} quiet />
-        {tryIt?.kind === 'whatsapp'
+      <DialogCompanion
+        key={`${run.walk.id}-${run.index}`}
+        words={words}
+        line={tryIt?.kind === 'whatsapp'
           ? cardOnly
             ? 'Send it, look at the card, then tap Cancel. Close the box when done.'
             : "Send it, then tap Save on the card. I'm watching for it."
           : "Fill it in and save. I'm waiting."}
-      </div>,
+      />,
       document.body,
     )
   }
 
   const last = run.index === run.walk.steps.length - 1
   const chapters = chapterStarts(run.walk.steps)
+  // In a chapter, its own steps ("Set up Green Villa · 2 of 6"), not the whole project's: a first chapter that says
+  // "3 of 67" feels endless (20 Nov test). The chapter list says where the chapter sits in the project.
+  const inChapter = step.chapter ? run.walk.steps.flatMap((s, i) => (s.chapter === step.chapter ? [i] : [])) : []
   const counter = step.chapter
-    ? `${step.chapter} · ${run.index + 1} of ${run.walk.steps.length}`
+    ? `${step.chapter} · ${inChapter.indexOf(run.index) + 1} of ${inChapter.length}`
     : `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
@@ -758,5 +779,35 @@ export function WalkthroughRunner() {
         </div>
       )}
     </TourOverlay>
+  )
+}
+
+/** Beside a dialog the walkthrough opened: Spark's line, and the step's words to copy from (hidden with a tap). */
+function DialogCompanion({ line, words }: { line: string; words: string }) {
+  // On a phone the dialog fills the screen with its Save at the foot: the note sits at the top, folded until tapped.
+  const [open, setOpen] = React.useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 640px)').matches)
+  return (
+    <div
+      className="pointer-events-auto fixed top-2 left-4 z-[70] w-[min(20rem,calc(100vw-2rem))] rounded-2xl border bg-background p-2 text-sm shadow-lg sm:top-auto sm:bottom-4"
+      style={{ pointerEvents: 'auto' }}
+      data-tour=""
+      role="status"
+    >
+      <div className="flex items-center gap-2">
+        <Spark mood="look" size={36} quiet />
+        <span className="flex-1">{line}</span>
+        {words && (
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          >
+            {open ? 'Hide' : 'Show the steps'}
+          </button>
+        )}
+      </div>
+      {words && open && <p className="mt-1.5 border-t px-1 pt-1.5 text-[13px] leading-snug text-foreground select-text">{words}</p>}
+    </div>
   )
 }

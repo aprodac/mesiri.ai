@@ -82,7 +82,8 @@ const WAITING_VERB: Partial<Record<WaitingKind, (count: number) => string>> = {
   stock_count: (c) => `Approve ${plural(c, 'stock count')}`,
 }
 
-export function ThisWeek() {
+/** UX-75: `onCount` tells Home's header how many things wait and how many are urgent, once they are known. */
+export function ThisWeek({ onCount }: { onCount?: (count: { total: number; urgent: number }) => void } = {}) {
   const { me } = useAuth()
   const { scope } = useScope()
   const on = useModuleEnabled()
@@ -225,9 +226,12 @@ export function ThisWeek() {
   const urgent = items.filter((i) => i.tone === 'bad').length
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="home.week" aria-label="This week">
+    <section className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="home.week" aria-label="Needs you">
+      {onCount && <ReportCount total={items.length} urgent={urgent} loading={loading} onCount={onCount} />}
       <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-        <h2 className="text-[15px] font-semibold">This week</h2>
+        {/* UX-75: Home leads with this list ("what needs my attention"), so it is named for what it answers. */}
+        <h2 className="text-[15px] font-semibold">Needs you</h2>
+        <span className="text-xs text-muted-foreground">this week, worst first</span>
         {items.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">{items.length}</span>}
         {urgent > 0 && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">{urgent} urgent</span>}
         {projectId && scope.mode !== 'portfolio' && <span className="text-xs text-muted-foreground">{scope.projectName}</span>}
@@ -241,11 +245,11 @@ export function ThisWeek() {
           <CircleCheck className="size-4" aria-hidden /> Nothing waiting on you this week
         </p>
       ) : (
-        <ul className="grid lg:grid-cols-2">
+        <ul className="flex flex-col">
           {shown.map((it) => {
             const look = TONE[it.tone]
             return (
-              <li key={it.key} className="border-b last:border-b-0 lg:odd:border-r lg:[&:nth-last-child(2):nth-child(odd)]:border-b-0">
+              <li key={it.key} className="border-b last:border-b-0">
                 <Link
                   to={it.to}
                   className={cn("group relative flex items-center gap-3 px-4 py-2.5 pl-5 transition-colors before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-r before:content-[''] hover:bg-muted/40", look.edge)}
@@ -275,6 +279,14 @@ export function ThisWeek() {
       )}
     </section>
   )
+}
+
+/** Tells Home's header the counts once they are known (a child, so the list's early return never skips a hook). */
+function ReportCount({ total, urgent, loading, onCount }: { total: number; urgent: number; loading: boolean; onCount: (c: { total: number; urgent: number }) => void }) {
+  React.useEffect(() => {
+    if (!loading) onCount({ total, urgent })
+  }, [loading, total, urgent, onCount])
+  return null
 }
 
 function addDays(iso: string, days: number): string {

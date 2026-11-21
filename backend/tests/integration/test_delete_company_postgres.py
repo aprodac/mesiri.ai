@@ -5,6 +5,9 @@ material_usage_reverses_movement_id_fkey". The delete step cleared the rows that
 those rows can be pointed at too: a reversed receipt by its reversal (and the reversal of that reversal), an expense by
 its payments, a category by its sub-categories. Guard: a transfer between two accounts keeps both accounts (its CHECK
 refuses a half-empty transfer), so the step deletes pointing rows rather than emptying their links.
+
+LRN-F16 (20 Nov 2026): a sample company where the assistant had been used could not be reset: its site updates
+(progress_updates, two cascades from the company) point at the person who sent them, and the people go first.
 """
 
 from __future__ import annotations
@@ -87,6 +90,23 @@ async def _paid_expense_in_a_sub_category(conn, org: uuid.UUID, project: uuid.UU
         {"d": dt.date(2026, 11, 2), "u": user, "o": org, "f": office, "t": site_cash})
 
 
+async def _site_update(conn, org: uuid.UUID, project: uuid.UUID, user: uuid.UUID) -> None:
+    """A day's work and its update, said by a person (what the assistant saves for "plinth beam 24 m done")."""
+    site = (await conn.execute(text("SELECT id FROM sites WHERE project_id = :p LIMIT 1"), {"p": project})).scalar()
+    if site is None:
+        site = uuid.uuid4()
+        await conn.execute(text("INSERT INTO sites (id, organization_id, project_id, name) VALUES (:id, :o, :p, 'Annex')"),
+                           {"id": site, "o": org, "p": project})
+    activity = uuid.uuid4()
+    await conn.execute(text(
+        "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date, work_type, reported_by_user_id) "
+        "VALUES (:id, :o, :p, :s, :d, 'Plinth beam', :u)"), {"id": activity, "o": org, "p": project, "s": site,
+                                                                "d": dt.date(2026, 11, 16), "u": user})
+    await conn.execute(text(
+        "INSERT INTO progress_updates (id, activity_id, occurred_at, update_kind, narrative, reported_by_user_id) "
+        "VALUES (gen_random_uuid(), :a, now(), 'COMPLETED', 'Plinth beam 24 m done', :u)"), {"a": activity, "u": user})
+
+
 async def _gone(engine, org: uuid.UUID) -> None:
     async with engine.connect() as conn:
         for table in ("organizations", "users", "material_receipts", "material_usage", "expenses", "money_accounts"):
@@ -118,6 +138,23 @@ async def test_a_company_with_paid_expenses_categories_and_transfers_deletes(eng
     await _gone(engine, org)
 
 
+async def test_a_company_whose_people_sent_site_updates_deletes(engine) -> None:
+    """LRN-F16: the reported failure (Start over in a sample company after Tell Mesiri), with the earlier ones."""
+    from mesiri.application.organizations.delete_company import delete_company
+
+    org, project, user = await _company(engine)
+    async with engine.begin() as conn:
+        await _site_update(conn, org, project, user)
+        await _materials_reversed_twice(conn, org, project, user)
+    async with engine.begin() as conn:
+        await delete_company(conn, org)
+    await _gone(engine, org)
+    async with engine.connect() as conn:
+        left = (await conn.execute(text("SELECT count(*) FROM progress_updates WHERE reported_by_user_id = :u"),
+                                   {"u": user})).scalar()
+    assert left == 0
+
+
 async def test_guard_another_company_is_untouched(engine) -> None:
     from mesiri.application.organizations.delete_company import delete_company
 
@@ -127,6 +164,8 @@ async def test_guard_another_company_is_untouched(engine) -> None:
         await _materials_reversed_twice(conn, org, project, user)
         await _materials_reversed_twice(conn, other, other_project, other_user)
         await _paid_expense_in_a_sub_category(conn, other, other_project, other_user)
+        await _site_update(conn, org, project, user)
+        await _site_update(conn, other, other_project, other_user)
     async with engine.begin() as conn:
         await delete_company(conn, org)
     try:
@@ -139,6 +178,9 @@ async def test_guard_another_company_is_untouched(engine) -> None:
                 "SELECT count(*) FROM material_receipts WHERE organization_id = :o AND reverses_movement_id IS NOT NULL"),
                 {"o": other})).scalar()
             assert reversal == 1  # its reversal links are kept
+            updates = (await conn.execute(text("SELECT count(*) FROM progress_updates WHERE reported_by_user_id = :u"),
+                                          {"u": other_user})).scalar()
+            assert updates == 1  # the other company's site update and its person stay
     finally:
         async with engine.begin() as conn:
             await delete_company(conn, other)

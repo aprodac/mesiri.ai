@@ -2,7 +2,7 @@
 other cost head and provisional sums on a line.
 
 - ``work_package_planned_items.other_rate``: a fifth budget rate (temporary works, testing, small tools), beside labour,
-  material, subcontract and machinery (0564).
+  material, subcontract and machinery (0565).
 - ``work_package_planned_items.is_provisional``: a provisional sum (PS): an allowance agreed with the client and priced
   when the work is known ("lifts: ₹2,00,000").
 - ``boq_line_sites``: how much of a line each site has ("plastering 1,450 sqm: Villa 1 362.5, Villa 2 362.5 ..."); a
@@ -15,8 +15,8 @@ other cost head and provisional sums on a line.
 Additive: new nullable columns (``is_provisional`` NOT NULL with a constant default, no rewrite) and new tables; no row is
 changed. Downgrade drops them.
 
-Revision ID: 0565
-Revises: 0564
+Revision ID: 0566
+Revises: 0565
 Create Date: 2026-11-20
 """
 
@@ -24,8 +24,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0565"
-down_revision = "0564"
+revision = "0566"
+down_revision = "0565"
 branch_labels = None
 depends_on = None
 

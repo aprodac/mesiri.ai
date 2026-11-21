@@ -107,8 +107,8 @@ class LineCreate(BaseModel):
     labour_rate: Decimal | None = _Rate
     material_rate: Decimal | None = _Rate
     subcontract_rate: Decimal | None = _Rate
-    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0564)
-    other_rate: Decimal | None = _Rate  # PS phase 2b (0565)
+    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0565)
+    other_rate: Decimal | None = _Rate  # PS phase 2b (0566)
     is_provisional: bool = False
     #: PS phase 2b: the quantity split by site; adds up to ``planned_quantity``. Left out: the whole project.
     sites: list[SiteQuantity] | None = Field(default=None, max_length=200)
@@ -128,8 +128,8 @@ class LineUpdate(BaseModel):
     labour_rate: Decimal | None = _Rate
     material_rate: Decimal | None = _Rate
     subcontract_rate: Decimal | None = _Rate
-    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0564)
-    other_rate: Decimal | None = _Rate  # PS phase 2b (0565)
+    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0565)
+    other_rate: Decimal | None = _Rate  # PS phase 2b (0566)
     is_provisional: bool | None = None
     #: PS phase 2b: the split by site, replaced as a whole; [] makes it a whole-project line again.
     sites: list[SiteQuantity] | None = Field(default=None, max_length=200)

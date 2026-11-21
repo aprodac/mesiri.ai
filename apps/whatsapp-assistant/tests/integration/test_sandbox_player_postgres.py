@@ -61,7 +61,8 @@ async def test_the_whole_plan_plays_to_handover(world):
         moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
         assert not moved.failed, moved.failed[:3]
     assert moved.day == sample_plan.plan().last_day and not moved.waiting
-    assert [f.kind for f in moved.for_you] == ["stage"]  # handing Green Villa over is the person's
+    # The last day is the owner's: Green Villa's final running bill, then the handover (project bible D2).
+    assert [f.kind for f in moved.for_you] == ["ra_bill", "stage"]
     async with engine.connect() as conn:
         today = (await conn.execute(text("SELECT sandbox_today FROM organizations WHERE id = :o"),
                                     {"o": opened.organization_id})).scalar()
@@ -69,7 +70,7 @@ async def test_the_whole_plan_plays_to_handover(world):
                                           "AND status = 'played' AND entry_id NOT LIKE 'day:%'"),
                                      {"o": opened.organization_id})).scalar()
     assert today == opened.today + dt.timedelta(days=moved.day)
-    assert played == len(sample_plan.plan().entries) - 1
+    assert played == len(sample_plan.plan().entries) - len(moved.for_you)
     assert jwt.decode(moved.token, SECRET_KEY, algorithms=[ALGORITHM])["today"] == today.isoformat()
     with pytest.raises(sandbox.SandboxError):
         await player.next_day(engine, app, person, role="ADMIN", days=1)  # handed over: start over to play again
@@ -112,3 +113,100 @@ async def test_what_i_did_not_do_holds_up_what_needs_it(world):
     assert any(w["what"].startswith("Order ") for w in moved.waiting)
     with pytest.raises(sandbox.SandboxError):
         await player.next_day(engine, app, person, role="SITE_ENGINEER", days=player.MAX_DAYS + 1)
+
+
+async def test_the_month_end_count_plays_on_the_real_api(world):
+    """LRN-F23: on day 16 Ravi's count of the Main block is saved through the stock-count routes, 3 bags short
+    (wastage); approving it is the owner's own entry that day, left for the person playing the owner."""
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    for days in (1, 5, 6, 4):  # to day 16
+        moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
+        assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        counts = (await conn.execute(text(
+            "SELECT c.status, l.book_qty, l.counted_qty, l.reason FROM stock_counts c "
+            "JOIN stock_count_lines l ON l.count_id = c.id JOIN materials_catalog m ON m.id = l.material_id "
+            "JOIN sites s ON s.id = c.site_id WHERE c.organization_id = :o AND s.name = 'Main block' "
+            "AND m.name ILIKE 'cement%' AND l.counted_qty IS NOT NULL"), {"o": opened.organization_id})).mappings().all()
+    assert len(counts) == 1 and counts[0]["status"] == "open" and counts[0]["reason"] == "wastage"
+    assert float(counts[0]["book_qty"]) - float(counts[0]["counted_qty"]) == 3
+    assert "count_approve" in {f.kind for f in moved.for_you}
+
+
+async def test_playing_ravi_the_return_waits_for_his_delivery(world):
+    """Found recording episode 4: arriving on day 6 as Ravi, his delivery of Malabar's 190 bags is left for him; Anil's
+    return of the 6 torn bags must wait for it, never fail the day (next-day answered 500 before)."""
+    app, engine, person = world
+    await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=5)  # to day 5, the cast does it all
+    assert not moved.failed, moved.failed[:3]
+    moved = await player.next_day(engine, app, person, role="SITE_ENGINEER", days=1)  # lands on day 6 as Ravi
+    assert not moved.failed, moved.failed[:3]
+    assert any(f.kind == "delivery" and "190" in f.what for f in moved.for_you)
+    assert any(w["what"].startswith("Send back 6 torn bags") for w in moved.waiting)
+
+
+async def test_the_mixer_story_plays_on_the_real_api(world):
+    """LRN-F25 (episode 6): the Annex mixer on hire; day 5's breakdown in its log raises the problem itself, a task for
+    Ravi (get Kerala Earthmovers' mechanic there) fixes it on day 6 and the problem closes; the bill's 42 hours meet the 36 logged and are
+    corrected to them on day 9."""
+    from mesiri.application.learn import green_villa as gv
+
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    for days in (5, 4):  # to day 9
+        moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
+        assert not moved.failed, moved.failed[:3]
+    hire, o = gv.HIRE, {"o": opened.organization_id}
+    async with engine.connect() as conn:
+        async def rows(sql: str):
+            return (await conn.execute(text(sql), o)).mappings().all()
+
+        logs = await rows("SELECT ev.duration_hours, ev.breakdown_hours, ev.issue_id FROM equipment_events ev "
+                          "JOIN equipment m ON m.id = ev.equipment_id WHERE ev.organization_id = :o "
+                          "AND ev.event_type = 'day_log' AND m.ownership = 'hired' ORDER BY ev.occurred_date")
+        issues = await rows("SELECT id, status, issue_type, created_at::date AS raised, resolved_at::date AS closed "
+                            "FROM site_issues WHERE organization_id = :o AND narrative LIKE 'Concrete mixer breakdown%'")
+        day0 = (await conn.execute(text("SELECT sandbox_day0 FROM organizations WHERE id = :o"), o)).scalar_one()
+        tasks = await rows("SELECT t.status, t.site_issue_id, u.role FROM tasks t JOIN users u ON u.id = t.assignee_user_id "
+                           "WHERE t.organization_id = :o")
+        bills = await rows("SELECT billed_hours, amount FROM equipment_hire_bills WHERE organization_id = :o")
+    assert sum(float(x["duration_hours"]) for x in logs) == hire["logged_hours"] and len(logs) == len(hire["log"])
+    assert sum(float(x["breakdown_hours"] or 0) for x in logs) == hire["billed_hours"] - hire["logged_hours"]
+    # One breakdown, one problem, raised by the log; the task for the hire company fixes it, and it is closed.
+    assert len(issues) == 1 and issues[0]["status"] == "RESOLVED" and issues[0]["issue_type"] == "EQUIPMENT_BREAKDOWN"
+    assert [x["issue_id"] for x in logs if x["breakdown_hours"]] == [issues[0]["id"]]
+    # UX-90: dated on the sample company's day it was raised and closed, never the real date ("open 5 days" when new).
+    assert (issues[0]["raised"], issues[0]["closed"]) == (day0 + dt.timedelta(days=5), day0 + dt.timedelta(days=6))
+    assert len(tasks) == 1 and tasks[0]["status"] == "done" and tasks[0]["site_issue_id"] == issues[0]["id"]
+    assert str(tasks[0]["role"]).upper() == "SITE_ENGINEER"  # Ravi gets the mechanic there
+    # The bill, corrected to the log: Hire check finds nothing over now.
+    assert [(float(b["billed_hours"]), float(b["amount"])) for b in bills] == [
+        (hire["logged_hours"], hire["logged_hours"] * hire["rate_per_hour"])]
+
+
+async def test_a_role_i_left_is_never_played_late_on_another_day(world):
+    """Found recording episode 6: landing on day 5 as Ravi, saving his mixer line myself, then moving on as Anil, the
+    cast played Ravi's day-5 entries again on day 6 (a second breakdown, dated day 6). What a role I landed on did is
+    ticked, and what it left is mine, never the cast's later; the guard: the cast's own entries still play."""
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="SITE_ENGINEER", days=5)
+    assert not moved.failed, moved.failed[:3]
+    moved = await player.next_day(engine, app, person, role="PROJECT_MANAGER", days=1)
+    assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        day0 = (await conn.execute(text("SELECT sandbox_day0 FROM organizations WHERE id = :o"),
+                                   {"o": opened.organization_id})).scalar_one()
+        logs = (await conn.execute(text(
+            "SELECT occurred_date, duration_hours, breakdown_hours FROM equipment_events WHERE organization_id = :o "
+            "AND event_type = 'day_log' ORDER BY occurred_date"), {"o": opened.organization_id})).mappings().all()
+        late = (await conn.execute(text(
+            "SELECT count(*) FROM sandbox_played WHERE organization_id = :o AND entry_id LIKE 'd05-%' AND entry_id IN "
+            "(SELECT entry_id FROM sandbox_played WHERE organization_id = :o AND by_role = 'SITE_ENGINEER')"),
+            {"o": opened.organization_id})).scalar_one()
+    # Ravi's day 5 was mine and I did nothing: no day-5 log, and day 6's is the cast's own (7 hours, no breakdown).
+    assert [(x["occurred_date"] - day0).days for x in logs] == [2, 3, 4, 6]
+    assert float(logs[-1]["breakdown_hours"] or 0) == 0 and float(logs[-1]["duration_hours"]) == 7
+    assert late == 0

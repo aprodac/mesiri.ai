@@ -4,7 +4,7 @@ A BOQ line is a ``work_package_planned_items`` row: what (``work_type``), unit, 
 quantity, and up to four rates per unit (0508):
 
 - ``client_rate``: what the client pays per unit. quantity x client_rate = contract value.
-- ``labour_rate`` + ``material_rate`` + ``subcontract_rate`` + ``machinery_rate`` (0564): the internal budget per unit.
+- ``labour_rate`` + ``material_rate`` + ``subcontract_rate`` + ``machinery_rate`` (0565): the internal budget per unit.
   quantity x their sum = budget cost.
 - margin = contract value - budget cost.
 
@@ -24,7 +24,7 @@ from collections.abc import Iterable, Mapping
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-#: PS phase 2 (0564): machinery is the fourth budget rate (mixer, JCB, crane hire), beside labour, material, subcontract.
+#: PS phase 2 (0565): machinery is the fourth budget rate (mixer, JCB, crane hire), beside labour, material, subcontract.
 BUDGET_RATES = ("labour_rate", "material_rate", "subcontract_rate", "machinery_rate", "other_rate")
 _CENT = Decimal("0.01")
 
@@ -61,7 +61,9 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Totals over lines that already carry ``line_amounts``.
 
     ``margin`` is only given when every line has both a contract value and a budget cost;
-    otherwise the missing counts say why it is absent.
+    otherwise the missing counts say why it is absent. ``margin_priced`` is the margin of the lines that have both
+    (with their ``priced_contract_value``), so a half-priced BOQ can say "so far, on the priced lines, not final"
+    instead of nothing, and never counts an unpriced line's contract value as profit (test of 20 Nov 2026).
     """
     lines = list(lines)
     contract = [ln["contract_value"] for ln in lines if ln["contract_value"] is not None]
@@ -71,8 +73,8 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     contract_value = sum(contract, Decimal(0)) if contract else None
     budget_cost = sum(budget, Decimal(0)) if budget else None
     complete = lines and missing_client == 0 and missing_budget == 0
-    # PS phase 2: the margin of the lines priced both ways, said as "on N of M lines", so one unpriced line no longer
-    # hides the whole margin. ``margin`` itself keeps its meaning (every line priced).
+    # PS phase 2 / UX-77: the margin of the lines priced both ways, said as "on N of M lines", so one unpriced line no
+    # longer hides the whole margin. ``margin`` itself keeps its meaning (every line priced).
     priced = [ln for ln in lines if ln["contract_value"] is not None and ln["budget_cost"] is not None]
     progress = {}
     if any("earned" in ln for ln in lines):  # CC-04: lines that carry the work done
@@ -86,6 +88,8 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "margin": contract_value - budget_cost if complete else None,
         "priced_lines": len(priced),
         "priced_margin": sum((ln["contract_value"] - ln["budget_cost"] for ln in priced), Decimal(0)) if priced else None,
+        # UX-77 (main) names the same figure ``margin_priced``; both are kept so either reader works.
+        "margin_priced": sum((ln["contract_value"] - ln["budget_cost"] for ln in priced), Decimal(0)) if priced else None,
         "priced_contract_value": sum((ln["contract_value"] for ln in priced), Decimal(0)) if priced else None,
         "lines_without_client_rate": missing_client,
         "lines_without_budget_rate": missing_budget,
@@ -93,7 +97,7 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def with_overheads(total: dict[str, Any], overhead_pct: Any) -> dict[str, Any]:
-    """PS phase 2 (0564): the project's overheads (site office, supervision, insurance, interest) as a % of the BOQ's
+    """PS phase 2 (0565): the project's overheads (site office, supervision, insurance, interest) as a % of the BOQ's
     budget cost, and the margin left after them. No % set: nothing is added (never an assumed figure).
 
     Worked example: budget cost ₹67,34,500, overheads 8%: ₹5,38,760; margin ₹14,71,550 -> ₹9,32,790 after overheads.

@@ -349,7 +349,7 @@ export const WORKFLOWS: Walkthrough[] = [
         title: 'Try it: mark attendance',
         text: 'Send this. The card shows the team and how many came. This is practice: look at the card, then tap Cancel.', say: 'Try it. Send this message. The card shows the team and how many turned up. It\'s practice, so just look at the card, then tap Cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Suresh team: 4 masons, 2 helpers', tools: ['record_attendance'], save: false },
+        try: { kind: 'whatsapp', say: "Rahim's crew: 4 helpers, 2 masons", tools: ['record_attendance'], save: false },
       },
       { page: '/labour', target: 'labour.views', title: 'By day and by month', text: 'Attendance by day, and the muster roll for the month, fill from those messages.', say: 'Attendance by day, and the muster roll for the whole month, fill themselves from those messages. No register to copy out.' },
     ],
@@ -366,7 +366,7 @@ export const WORKFLOWS: Walkthrough[] = [
       {
         page: '/labour/wages',
         title: 'The wage sheet',
-        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it. On WhatsApp: \"What do I pay Suresh's team this week?\".", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Suresh\'s team this week?',
+        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it. On WhatsApp: \"What do I pay Rahim's crew this week?\".", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Rahim\'s crew this week?',
       },
       { page: '/labour/advances', title: 'Advances', text: 'Money given ahead is kept per person and comes off their next wages by itself.', say: 'When someone takes money in advance, it\'s kept against their name, and it comes off their next wages by itself. No more notebooks.' },
       {
@@ -698,11 +698,11 @@ const GV_SETUP: Walkthrough = {
     {
       page: '/planning/setup', waitFor: ['setup.steps'], pick: 'Green Villa', mood: 'hello', file: KIT_CONTRACT,
       title: "Green Villa: the office's turn",
-      text: 'Work started at Green Villa two weeks ago, but nobody set the project up in the office: no dates, no contract, no BOQ. You are the owner. Open Green Villa here; the contract summary has everything.',
-      say: 'Work at Green Villa started two weeks ago. But nobody set the project up in the office. No dates, no contract, no B O Q. You are the owner, so let us do it now. Open Green Villa. Everything you need is on the contract summary.',
+      text: 'Green Villa has been building for months: the Main block is up to its parapet, the Annex is on its footings. Two weeks ago Ravi started sending the site\'s day to Mesiri, but nobody set the project up in the office: no dates, no contract, no BOQ. You are the owner. Open Green Villa here; the contract summary has everything.',
+      say: 'Green Villa has been building for months. The Main block is up to its parapet, and the Annex is on its footings. Two weeks ago, Ravi started sending the site\'s day to Mesiri. But nobody set the project up in the office. No dates, no contract, no B O Q. You are the owner, so let us do it now. Open Green Villa. Everything you need is on the contract summary.',
       for: {
-        basics: { text: 'Site work began two weeks ago, but the office side was never filled in: when the job starts and ends, what the client agreed to pay, and the list of work (the BOQ). Open Green Villa here; the contract summary has it all.' },
-        expert: { text: 'Green Villa is running without dates, a contract or a BOQ. Project start lists what is missing; the contract summary has the figures.' },
+        basics: { text: 'Green Villa has been building for months, and for two weeks the site has sent its day to Mesiri. The office side was never filled in: when the job starts and ends, what the client agreed to pay, and the list of work (the BOQ). Open Green Villa here; the contract summary has it all.' },
+        expert: { text: 'Green Villa is mid-job (Main block at its parapet, Annex at footings), on Mesiri for two weeks, without dates, a contract or a BOQ. Project start lists what is missing; the contract summary has the figures.' },
       },
     },
     {
@@ -717,8 +717,8 @@ const GV_SETUP: Walkthrough = {
       page: '/planning/setup', target: 'setup.contract', mood: 'think', file: KIT_CONTRACT,
       try: { kind: 'here', poll: true, check: START_CHECK('contract') },
       title: 'Your turn: the contract',
-      text: 'Press "Set the client and contract". Client: Dr. Anand Krishnan. Contract value ₹82,06,050, agreement GV/2026/007, signed 20 October 2026, retention 5%, advance ₹8,20,605, recovery 10% a bill, GST 18%, defects 12 months.',
-      say: 'Now the contract. Press, set the client and contract. The client is Doctor Anand Krishnan. Everything else is on the contract summary: the value, the advance, the retention and the defects period.',
+      text: 'Press "Set the client and contract" (optional on the page for a small job; Green Villa has a signed one). Client: Dr. Anand Krishnan. Contract value ₹82,06,050, agreement GV/2026/007, signed 20 October 2026, retention 5%, advance ₹8,20,605, recovery 10% a bill, GST 18%, defects 12 months.',
+      say: 'Now the contract. The page calls it optional, for small jobs, but Green Villa has a signed one. Press, set the client and contract. The client is Doctor Anand Krishnan. Everything else is on the contract summary: the value, the advance, the retention and the defects period.',
       for: {
         basics: { text: 'The contract is what the client agreed to pay and how. Press "Set the client and contract" and copy from the summary: client Dr. Anand Krishnan, value ₹82,06,050, retention 5% (kept back until the defects period ends), advance ₹8,20,605 (paid at the start, taken back 10% from each bill), GST 18%, defects 12 months.' },
         expert: { text: 'Client Dr. Anand Krishnan, ₹82,06,050, GV/2026/007, retention 5%, advance ₹8,20,605 recovered at 10%, GST 18%, DLP 12 months. RA bills read these.' },
@@ -756,13 +756,29 @@ const GV_BOQ: Walkthrough = {
   steps: [
     {
       page: '/boq', target: 'boq.totals', waitFor: ['boq.lines'], pick: 'Green Villa', mood: 'look',
-      title: 'Green Villa in four numbers',
-      text: 'What the client pays, what it should cost you, the margin, and what the work done has earned. "Lines priced" says 3 lines have no cost yet, so the margin is not final.',
-      say: 'Green Villa in four numbers. What the client pays, what it should cost you, your margin, and what the work done has earned. Lines priced says three lines have no cost yet. So the margin is not final.',
+      title: 'Green Villa at a glance',
+      text: 'What the client pays, what it should cost you, the margin, and what the work done has earned. "Lines priced" says 3 lines have no cost yet, so the margin is only for the priced lines, and not final.',
+      say: 'Green Villa at a glance. What the client pays, what it should cost you, your margin, and what the work done has earned. Lines priced says three lines have no cost yet. So the margin counts only the priced lines, and it is not final.',
       for: {
-        basics: { text: 'The contract value is what the client pays for everything; the budget is what it should cost you; the margin is what you keep. "Lines priced" says 3 lines have no cost yet: the tiling and granite, waiting for the tiler\'s price.' },
-        expert: { text: 'Contract, budget, margin, earned. 3 lines unpriced (the tiling, for the subcontractor), so the margin is provisional.' },
+        basics: { text: 'The contract value is what the client pays for everything; the budget is what it should cost you; the margin is what you keep. "Lines priced" says 3 lines have no cost yet: the tiling and granite, waiting for the tiler\'s price. So the margin shown is for the other lines only.' },
+        expert: { text: 'Contract, budget, margin, earned. 3 lines unpriced (the tiling, for the subcontractor): the margin is on the priced lines and provisional.' },
       },
+    },
+    {
+      page: '/boq', target: 'boq.addall', mood: 'think',
+      try: { kind: 'here', poll: true, check: WORK_LEFT(3) },
+      title: 'Your turn: count the site\'s work',
+      text: 'The site sent 24 pieces of work before this BOQ existed. I matched 21 to their lines by name and unit. Press "Add all suggested".',
+      say: 'Your turn. The site sent twenty four pieces of work before this B O Q existed. I matched twenty one of them to their lines. Press, add all suggested.',
+      for: { basics: { text: 'Before the BOQ was in, the site already reported work on WhatsApp ("15 sqm partition walls"). I found the line each one belongs to. Press "Add all suggested" and each line shows how far the site has got.' } },
+    },
+    {
+      page: '/boq', target: 'boq.pick', mood: 'think',
+      try: { kind: 'here', poll: true, check: WORK_LEFT(0) },
+      title: 'Your turn: which plastering?',
+      text: 'The site said "plastering" three days running: the Main block\'s ground floor, inside. The BOQ has three plastering lines, so I did not guess. Pick 4.1 Plastering for each and press "Add to line".',
+      say: 'Your turn. The site said plastering, three days running. That is the Main block, inside, on the ground floor. But the B O Q has three plastering lines, so I did not guess. For each one, pick the inside plastering, line four point one, and press add to line.',
+      for: { expert: { text: 'Three plastering lines, so no suggestion. Pick 4.1 and Add to line, for all three.' } },
     },
     {
       page: '/boq', target: 'boq.lines', mood: 'think',
@@ -772,31 +788,15 @@ const GV_BOQ: Walkthrough = {
         wrong: 'Not that one. Look down the Margin column for red: it is the staircase.',
       },
       title: 'Quick check',
-      text: 'One line loses money on every unit it builds. Tap it.',
+      text: 'The site\'s work is on its lines now. One line loses money on every unit it builds. Tap it.',
       say: 'Quick check. One line loses money on every unit it builds. Can you find it? Tap it.',
       for: { basics: { text: 'One line costs more to build than the client pays for it. Its margin is in red. Tap that line.' } },
     },
     {
-      page: '/boq', target: 'boq.addall', mood: 'think',
-      try: { kind: 'here', poll: true, check: WORK_LEFT(3) },
-      title: 'Your turn: count the site\'s work',
-      text: 'The site sent 24 pieces of work before this BOQ existed. I matched 21 to their lines by name and unit. Press "Add all suggested".',
-      say: 'Your turn. The site sent twenty four pieces of work before this B O Q existed. I matched twenty one of them to their lines. Press, add all suggested.',
-      for: { basics: { text: 'Before the BOQ was in, the site already reported work on WhatsApp ("18 sqm block work"). I found the line each one belongs to. Press "Add all suggested" and each line shows how far the site has got.' } },
-    },
-    {
-      page: '/boq', target: 'boq.pick', mood: 'think',
-      try: { kind: 'here', poll: true, check: WORK_LEFT(2) },
-      title: 'Your turn: which plastering?',
-      text: 'The site said "plastering". The BOQ has three plastering lines, so I did not guess. Pick 4.1 Plastering (inside walls) for one of them and press "Add to line".',
-      say: 'Your turn. The site said plastering, but the B O Q has three plastering lines. So I did not guess. Pick the inside plastering, line four point one, and press add to line.',
-      for: { expert: { text: 'Three plastering lines, so no suggestion. Pick 4.1 and Add to line.' } },
-    },
-    {
       page: '/boq', target: 'boq.lines', mood: 'happy',
       title: 'Green Villa is set up',
-      text: 'Dates, contract, BOQ, and the site\'s two weeks of work on their lines. From now on every update from site counts here by itself.',
-      say: 'Green Villa is set up. The dates, the contract, the B O Q, and two weeks of site work on their lines. From now on, every update from site counts here by itself.',
+      text: 'Dates, contract, BOQ, and the site\'s two weeks on Mesiri on their lines. The months before are on paper, so "Earned so far" counts from here. From now on every update from site counts by itself.',
+      say: 'Green Villa is set up. The dates, the contract, the B O Q, and the site\'s two weeks on Mesiri, each on its line. The months before that are on paper, so earned so far counts from here. From now on, every update from site counts by itself.',
     },
   ],
 }
@@ -848,7 +848,7 @@ export const OUTCOMES: Outcome[] = [
   // The site engineer: mostly WhatsApp (plan 5.1).
   { id: 'day-in-one-message', roles: ENGINEERS, title: "Send the day's update in one message", why: 'Who came, what was done, what is stuck: one message, and the daily report writes itself.', walks: ['site-update'] },
   { id: 'material-on-time', roles: ENGINEERS, title: 'Get material on site on time', why: 'Ask on WhatsApp, then record it when it comes and when it is used.', walks: ['material-request', 'delivery'] },
-  { id: 'attendance-one-line', roles: ENGINEERS, title: 'Mark attendance in one line', why: '"Suresh team: 4 masons, 2 helpers", and the muster roll fills itself.', walks: ['attendance'] },
+  { id: 'attendance-one-line', roles: ENGINEERS, title: 'Mark attendance in one line', why: '"Rahim\'s crew: 4 helpers, 2 masons", and the muster roll fills itself.', walks: ['attendance'] },
   { id: 'problem-fixed', roles: ENGINEERS, title: 'Report a problem and get it fixed', why: 'Say what is wrong; it stays open until someone acts on it.', walks: ['issue'] },
   // The project manager (SS-48; plan 5.1: W6, W1, W2, W5, W9).
   { id: 'pm-start', roles: MANAGERS, title: 'Get a new project going', why: 'BOQ, schedule and site team set up, and the first report the same week.', walks: ['new-project'] },

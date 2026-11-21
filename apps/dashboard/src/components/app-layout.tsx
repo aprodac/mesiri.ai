@@ -1,6 +1,6 @@
 import * as React from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
-import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon, Pin } from 'lucide-react'
+import { Outlet, useLocation } from 'react-router-dom'
+import { ChevronRight, Map as MapIcon, Pin, Search } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
 import { ArrivalBack, ScopeNote } from '@/components/scope-note'
@@ -14,13 +14,15 @@ import { JumpBox } from '@/components/jump-box'
 import { usePageTracking } from '@/lib/page-usage'
 import { HelpButton } from '@/components/help-button'
 import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
-import { TellMesiriButton, TellMesiriDock } from '@/components/tell-mesiri/tell-mesiri-dock'
+import { TellMesiriDock } from '@/components/tell-mesiri/tell-mesiri-dock'
+import { NewButton } from '@/components/new-button'
+import { AllPagesPanel } from '@/components/all-pages'
+import { openJump } from '@/lib/jump'
 import { InboxBell } from '@/components/inbox-bell'
 import { PageGuide } from '@/components/page-guide'
 import { GuidedTour } from '@/components/tour'
 import { WalkthroughRunner } from '@/components/walkthrough'
 import { StartQuestionDialog } from '@/components/onboarding/start-question'
-import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { SidebarCustomise } from '@/components/sidebar-customise'
 import { openSidebarCustomise, usePinnable, useSidebarPrefs } from '@/lib/sidebar-prefs'
@@ -28,7 +30,6 @@ import { useTrial } from '@/lib/trial'
 import { usePlannedPreview } from '@/lib/preview'
 import { routeTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
-import { appNow } from '@/lib/clock'
 
 // Top bar (WEB-20): stays put while the page scrolls; a thin site-colour
 // stripe on top, the scope picker, today's date and the open-issues count.
@@ -87,9 +88,12 @@ function PinThisPage({ url, title }: { url: string; title: string }) {
 }
 
 function TopBar() {
-  const { drafts, openIssues } = useNavCounts()
   const [showPlanned, setShowPlanned] = usePlannedPreview()
-  const today = appNow().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
+  // UX-74 (asked 20 Nov 2026: "On WhatsApp, then a help, then an issues icon ... very messy"): only what is global
+  // stays here (SAP Fiori, Salt: a page's own actions belong on the page): where you are on the left; Search, the
+  // page's WhatsApp way in (an icon, only where the page has one), New (Tell Mesiri), Help and one bell on the right.
+  // The date chip went (the page says its day; the sample company's banner its own); open issues are the sidebar's
+  // red badge on Issues and in the bell.
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
@@ -110,39 +114,23 @@ function TopBar() {
               <MapIcon className="size-3.5" /> Preview
             </button>
           )}
-          <Link
-            to="/today"
-            className="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium text-foreground/80 hover:bg-muted sm:inline-flex"
-            title={drafts > 0 ? `${drafts} items to confirm today` : 'Today'}
+          <button
+            type="button"
+            onClick={openJump}
+            data-guide="app.search"
+            className="inline-flex h-8 items-center gap-2 rounded-full border bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-muted md:w-56"
+            title="Search pages, projects and records (Ctrl K)"
+            aria-label="Search"
           >
-            <CalendarDays className="size-3.5 text-yellow-700 dark:text-yellow-400" />
-            {today}
-            {drafts > 0 && (
-              <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white tabular-nums">{drafts}</span>
-            )}
-          </Link>
-          {/* Guided onboarding: what to send Mesiri for this page, as a chat preview. */}
-          <TellMesiriButton />
+            <Search className="size-4 shrink-0" aria-hidden />
+            <span className="hidden md:inline">Search</span>
+            <kbd className="ml-auto hidden rounded border px-1 text-[10px] md:inline">Ctrl K</kbd>
+          </button>
           <WhatsAppPageButton />
+          <NewButton />
           <HelpButton />
           {/* NXT-08: everything waiting for me, each opening its record. */}
           <InboxBell />
-          <Link
-            to="/issues"
-            className={cn(
-              'relative inline-flex size-8 items-center justify-center rounded-full hover:bg-muted',
-              openIssues > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground',
-            )}
-            title={openIssues > 0 ? `${openIssues} open issues` : 'No open issues'}
-            aria-label={openIssues > 0 ? `${openIssues} open issues` : 'Issues'}
-          >
-            <AlertCircle className="size-[18px]" />
-            {openIssues > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-4 text-white ring-2 ring-background tabular-nums">
-                {openIssues > 99 ? '99+' : openIssues}
-              </span>
-            )}
-          </Link>
         </div>
       </div>
     </header>
@@ -187,6 +175,7 @@ export function AppLayout() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarCustomise />
+        <AllPagesPanel />
         <SidebarInset>
           <TopBar />
           <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">

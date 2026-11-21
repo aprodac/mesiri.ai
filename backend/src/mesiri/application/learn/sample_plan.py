@@ -30,6 +30,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from mesiri.application.learn import green_villa as gv
 from mesiri.application.organizations import sample_story as story
 
 # --- Who and where ---------------------------------------------------------------------------------------------------
@@ -66,6 +67,12 @@ CREDIT_DAYS = 7
 #: The client pays a running bill this many days after it is sent.
 CLIENT_PAYS_AFTER = 12
 
+#: LRN-F18 (episode 4, "Cement runs short"): the Main block's first cement request plays the starter kit's paperwork
+#: (green_villa.CEMENT_STORY, the one source for the kit's papers and this plan).
+CEMENT_STORY: dict[str, Any] = {**gv.CEMENT_STORY,
+                                "lines": tuple((m, q) for m, _printed, _u, q in gv.CEMENT_STORY["lines"]),
+                                "quotes": tuple((v, ref, rates) for v, _where, ref, rates in gv.CEMENT_STORY["quotes"])}
+
 # --- What each site does next ----------------------------------------------------------------------------------------
 
 
@@ -97,7 +104,7 @@ STAGES: dict[str, tuple[Stage, ...]] = {
               by="Joy Tiling Works"),
         Stage("Putty and primer", "Wall putty and primer coat, inside", "sqm", 80, 6, (), 3),
         Stage("Painting", "Two coats of emulsion inside, exterior paint outside", "sqm", 90, 6, (), 3),
-        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 12, 2, (), 3),
+        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 6, 4, (), 3),  # LRN-F18: 4 days keeps the handover on day 62 (D1)
     ),
     "annex": (
         Stage("Plinth beam", "Plinth beam shuttering, steel and concrete", "rmt", 24, 3,
@@ -155,8 +162,13 @@ ISSUES = (
 ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30, "Vinod", 1000), (41, "Manoj", 2500))
 #: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention.
 TILING_RATE, TILING_RETENTION = 95, 5
+#: Units counted in whole pieces (work in nos, cement in bags): a day's share is a whole number (LRN-F14).
+WHOLE_UNITS = ("nos", "bags")
 #: Lake View's running bill to the client, sent by the owner on these days.
 RA_BILL_DAYS = (23, 51)
+#: Green Villa's running bill (project bible D2): monthly by its contract, so one in the 62 days, and the final bill on
+#: the day it is handed over. Its client pays each after ``green_villa.PAYS_AFTER`` days.
+GV_RA_BILL_DAYS = (30,)
 
 # --- The plan's entries ----------------------------------------------------------------------------------------------
 
@@ -181,6 +193,25 @@ KINDS: dict[str, Kind] = {
     "request": Kind(ENGINEER, (("POST", "/procurement/requests"),)),
     "delivery": Kind(ENGINEER, (("POST", "/materials/inflows"),)),
     "order": Kind(PM, (("POST", "/procurement/orders"),)),
+    # LRN-F18 (episode 4): the Main block's cement as the kit's paperwork has it.
+    "transfer": Kind(PM, (("POST", "/materials/transfers"),)),
+    "rfq": Kind(PM, (("POST", "/procurement/rfqs"),)),
+    "quote": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/quotes"),)),
+    "award": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/award"),)),
+    "return": Kind(PM, (("POST", "/procurement/returns"),)),
+    "return_settle": Kind(PM, (("POST", "/procurement/returns/{return_id}/settle"),)),
+    "bill_reverse": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/reverse"),)),
+    # LRN-F23: the month-end count at the Main block, and the owner's approval of its difference.
+    "stock_count": Kind(ENGINEER, (("POST", "/materials/stock-counts"), ("PUT", "/materials/stock-counts/{count_id}/lines"))),
+    "count_approve": Kind(OWNER, (("POST", "/materials/stock-counts/{count_id}/approve"),)),
+    # LRN-F25 (episode 6): the Annex mixer on hire, its day logs (a breakdown raises the problem), the task that fixes
+    # it, and the hire company's bill checked against the logs.
+    "machine": Kind(PM, (("POST", "/equipment"),)),
+    "machine_log": Kind(ENGINEER, (("POST", "/equipment/logs"),), routine=True),
+    "task": Kind(PM, (("POST", "/tasks"),)),
+    "task_status": Kind(PM, (("POST", "/tasks/{task_id}/status"),)),
+    "hire_bill": Kind(ACCOUNTS, (("POST", "/equipment/hire-bills"),)),
+    "hire_bill_fix": Kind(PM, (("PATCH", "/equipment/hire-bills/{bill_id}"),)),
     "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
     "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
     "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
@@ -195,6 +226,11 @@ KINDS: dict[str, Kind] = {
     "wage_approve": Kind(OWNER, (("GET", "/labour/wage-sheets/open"), ("POST", "/labour/wage-sheets/{sheet_id}/approve"))),
     "ra_bill": Kind(OWNER, (("POST", "/projects/{project_id}/ra-bills"), ("POST", "/billing/ra-bills/{bill_id}/submit"))),
     "stage": Kind(OWNER, (("PATCH", "/projects/{project_id}/start"),)),
+    # D2: Green Villa's contract and its estimate as the BOQ (the guided project's chapters 2 and 3 do the same; when the
+    # person did them, these find them done).
+    "contract": Kind(OWNER, (("GET", "/projects/{project_id}/contract"), ("PUT", "/projects/{project_id}/contract"))),
+    "boq_import": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("POST", "/projects/{project_id}/boq/sections"),
+                            ("POST", "/projects/{project_id}/boq/sections/{section_id}/lines"))),
 }
 #: Where each route lives, for the test that every route is real (each is mounted as it is, no extra prefix).
 ROUTER_MODULES = (
@@ -202,7 +238,8 @@ ROUTER_MODULES = (
     "mesiri.domains.progress.router", "mesiri.domains.progress.boq_router", "mesiri.domains.materials.router",
     "mesiri.domains.expenses.router", "mesiri.domains.procurement.router", "mesiri.domains.procurement.orders_router",
     "mesiri.domains.subcontracts.router", "mesiri.domains.vendors.router", "mesiri.domains.billing.router",
-    "mesiri.domains.schedule.router",
+    "mesiri.domains.schedule.router", "mesiri.domains.procurement.rfqs_router", "mesiri.domains.procurement.returns_router",
+    "mesiri.domains.materials.stock_count_router", "mesiri.domains.equipment.router", "mesiri.domains.tasks.router",
 )
 
 
@@ -379,13 +416,18 @@ def build() -> Plan:
     finished: dict[str, int] = {}                          # site -> day its last stage ended
     coming: dict[tuple[str, str], float] = defaultdict(float)   # asked for or ordered, not yet delivered
     to_order: list[tuple[int, Entry]] = []                 # (order on this day, its request)
-    to_deliver: list[tuple[int, Entry | None, str, str, float]] = []  # (day, order or None for the seed's, site, material, qty)
+    # (day, order or None for the seed's, site, material, qty, extra: rate, vendor, a note, what follows the delivery)
+    to_deliver: list[tuple[int, Entry | None, str, str, float, dict]] = []
+    story_due: dict[int, list[Any]] = defaultdict(list)    # LRN-F18: the cement story's office work, by day
+    story_used = False
     to_bill: list[tuple[int, Entry]] = []                  # (bill on this day, delivery)
     unpaid: dict[str, list[Entry]] = defaultdict(list)     # vendor -> bills
     week_work: dict[str, float] = defaultdict(float)       # tiling laid this week, to measure on Saturday
     tiling: dict[str, Entry] = {}                          # the work order, and the last measurement and bill
-    to_count: list[tuple[int, Entry]] = []                 # Lake View work to count on the BOQ, on this day
+    to_count: list[tuple[int, Entry]] = []                 # work to count on the BOQ, on this day
+    gv_setup: dict[str, Entry] = {}                        # D2: Green Villa's contract and BOQ entries
     issues: dict[int, list[Entry]] = defaultdict(list)     # day to close -> issue
+    machine_story: dict[str, Any] = {}                     # LRN-F25: the Annex mixer, its problem and task
     ra_bills: list[tuple[int, Entry]] = []                 # (client pays on this day, the bill)
     workers = {at: [(n, t, w) for n, t, w, home in story.DEMO_WORKERS if home == at] for at in range(len(SITES))}
     worker_site = {n: SITES[home][0] for n, _t, _w, home in story.DEMO_WORKERS}
@@ -409,6 +451,84 @@ def build() -> Plan:
             at += 1
         return total
 
+    def cement_story(day: int, request: Entry) -> None:
+        """LRN-F18: the Main block's first cement request, as the kit's paperwork has it (``CEMENT_STORY``)."""
+        cs = CEMENT_STORY
+        site, other = cs["site"], cs["from_site"]
+        move = min(cs["move"], math.floor(stock[(other, "cement")]))
+        b.add(day, "transfer", f"Move {move} bags cement from {SITE_NAME[other]} to {SITE_NAME[site]}, so its masons work",
+              site=site, data={"material": "cement", "quantity": move, "from_site": other}, needs=(request.id,))
+        stock[(other, "cement")] -= move
+        stock[(site, "cement")] += move
+        names = [v for v, _ref, _rates in cs["quotes"]]
+        lines = [{"material": m, "quantity": q} for m, q in cs["lines"]]
+        rfq = b.add(day, "rfq", f"Ask {', '.join(names[:-1])} and {names[-1]} for quotes: "
+                    + ", ".join(f"{_fmt(q)} {UNITS[m]} {m}" for m, q in cs["lines"]) + f" for {SITE_NAME[site]}",
+                    site=site, data={"lines": lines, "vendors": names}, needs=(request.id,))
+        for m, q in cs["lines"]:
+            coming[(site, m)] += q - (request.data["quantity"] if m == "cement" else 0)
+
+        def quotes_and_award(qday: int) -> None:
+            quotes = [b.add(qday, "quote", f"{v}'s quote {ref}: " + ", ".join(f"{m} {_amount(r)}" for m, r in rates.items()),
+                            site=site, data={"vendor": v, "their_ref": ref, "rates": rates, "gst_percent": 18,
+                                             "delivery_days": 2, "valid_days": 7}, needs=(rfq.id,))
+                      for v, ref, rates in cs["quotes"]]
+            best = {m: min(cs["quotes"], key=lambda vq, m=m: vq[2][m]) for m, _q in cs["lines"]}
+            award = b.add(qday, "award", "Order each line from its cheapest: "
+                          + ", ".join(f"{m} from {best[m][0]} at {_amount(best[m][2][m])}" for m, _q in cs["lines"]),
+                          site=site, data={"mode": "lowest_per_line", "request": request.id,
+                                           "lines": [{"material": m, "quantity": q, "vendor": best[m][0], "rate": best[m][2][m]}
+                                                     for m, q in cs["lines"]]},
+                          needs=tuple(q.id for q in quotes))
+            for m, q in cs["lines"]:
+                vendor, rate = best[m][0], best[m][2][m]
+                if m == "cement":
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m]), award, site, m, cs["sent"],
+                                       {"vendor": vendor, "rate": rate, "after": lorry,
+                                        "note": f" on challan {cs['challan']} ({_fmt(q)} ordered, {_fmt(q - cs['sent'])} to follow)"}))
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m] + 3), award, site, m, q - cs["sent"],
+                                       {"vendor": vendor, "rate": rate, "note": " (the rest of the order)"}))
+                else:
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m]), award, site, m, q, {"vendor": vendor, "rate": rate}))
+
+        def lorry(dday: int, delivery: Entry) -> None:
+            torn, rate, vendor = cs["torn"], delivery.data["rate"], delivery.data["vendor"]
+            lot = {"material": "cement", "vendor": vendor, "quantity": delivery.data["quantity"]}  # the player finds it
+            ret = b.add(dday, "return", f"Send back {torn} torn bags of cement to {vendor}: return note {cs['return_note']}, "
+                        f"{_amount(torn * rate)}", site=site,
+                        data={"material": "cement", "quantity": torn, "rate": rate, "vendor": vendor, "reason": "damaged",
+                              "note": cs["return_note"], "receipt": lot}, needs=(delivery.id,))
+            stock[(site, "cement")] -= torn
+
+            def wrong_bill(bday: int) -> None:
+                amount = round(delivery.data["quantity"] * cs["bill_rate"], 2)
+                wrong = b.add(bday, "supplier_bill", f"Bill from {vendor} {cs['bill']}: {_fmt(delivery.data['quantity'])} bags "
+                              f"cement at {_amount(cs['bill_rate'])}, {_amount(amount)}", site=site,
+                              data={"vendor": vendor, "amount": amount, "deliveries": [delivery.id], "bill_number": cs["bill"],
+                                    "receipt": lot},
+                              needs=(delivery.id,))
+                taken = b.add(bday, "bill_reverse", f"Take back {_of(vendor)} bill {cs['bill']}: {_amount(cs['bill_rate'] - rate)} "
+                              f"a bag above the order, and {torn} bags returned; ask for a corrected bill", site=site,
+                              data={"vendor": vendor, "bill_number": cs["bill"]}, needs=(wrong.id,))
+
+                def corrected(cday: int) -> None:
+                    kept = delivery.data["quantity"] - torn
+                    bill = b.add(cday, "supplier_bill", f"Corrected bill from {vendor} {cs['bill']}-R: {_fmt(kept)} bags cement "
+                                 f"at {_amount(rate)}, {_amount(round(kept * rate, 2))}", site=site,
+                                 data={"vendor": vendor, "amount": round(kept * rate, 2), "deliveries": [delivery.id],
+                                       "bill_number": f"{cs['bill']}-R", "returned": torn, "receipt": lot},
+                                 needs=(delivery.id, taken.id))
+                    unpaid[vendor].append(bill)
+                    b.add(cday, "return_settle", f"Settle return note {cs['return_note']} against {_of(vendor)} corrected bill",
+                          site=site, data={"vendor": vendor, "how": "credit", "bill_number": f"{cs['bill']}-R"},
+                          needs=(ret.id, bill.id))
+
+                story_due[_working_after(bday, 1)].append(corrected)
+
+            story_due[_working_after(dday, BILL_AFTER)].append(wrong_bill)
+
+        story_due[_working_after(day, 1)].append(quotes_and_award)
+
     day, last_day = 0, None
     while last_day is None:
         day += 1
@@ -418,6 +538,16 @@ def build() -> Plan:
             continue
         saturday = weekday(day) == 5
         if day == 2:
+            # D2: Green Villa's contract and its estimate as the BOQ, so its work counts and it can be billed.
+            c = gv.CONTRACT
+            gv_setup["contract"] = b.add(day, "contract", f"Set {_of(story.DEMO_PROJECT)} contract with {gv.CLIENT['name']}: "
+                                         f"{c['contract_no']}, {_amount(c['contract_value'])}, retention {c['retention_pct']}%",
+                                         project=GREEN_VILLA, data={"client": dict(gv.CLIENT), **{k: c[k] for k in (
+                                             "contract_no", "signed_on", "contract_value", "mobilisation_advance",
+                                             "advance_recovery_pct", "retention_pct", "gst_pct", "defect_liability_months",
+                                             "payment_terms")}})
+            gv_setup["boq"] = b.add(day, "boq_import", f"Put {_of(story.DEMO_PROJECT)} estimate in as its BOQ: "
+                                    f"{sum(len(r) for _h, r in gv.ESTIMATE)} lines", project=GREEN_VILLA)
             # The seeded weeks' last pay week (to day 0) is still to be approved and paid: the first thing on Monday.
             for project in (GREEN_VILLA, LAKE_VIEW):
                 approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for last week",
@@ -428,28 +558,38 @@ def build() -> Plan:
         # Morning: the lorries that are due.
         for due in [d for d in to_deliver if d[0] == day]:
             to_deliver.remove(due)
-            _d, order, site, material, qty = due
+            _d, order, site, material, qty, extra = due
             vendor, _size, rate = story.DEMO_SUPPLY[material]
+            vendor, rate = extra.get("vendor", vendor), extra.get("rate", rate)
             delivery = b.add(day, "delivery", f"Received {_fmt(qty)} {UNITS[material]} {material} from {vendor} at {SITE_NAME[site]}"
-                             + ("" if order else " (on the order placed before)"), site=site,
+                             + ("" if order else " (on the order placed before)") + extra.get("note", ""), site=site,
                              data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
                                    "against": order.id if order else "seeded order"},
                              needs=(order.id,) if order else ())
             stock[(site, material)] += qty
             coming[(site, material)] -= qty
-            to_bill.append((_working_after(day, BILL_AFTER), delivery))
+            if extra.get("after"):
+                extra["after"](day, delivery)
+            else:
+                to_bill.append((_working_after(day, BILL_AFTER), delivery))
 
         # The office: orders for yesterday's requests, bills that came, work to count, issues to close.
+        for act in story_due.pop(day, []):
+            act(day)
         for due in [t for t in to_order if t[0] == day]:
             to_order.remove(due)
             request = due[1]
             material, qty, site = request.data["material"], request.data["quantity"], request.site
+            if not story_used and site == CEMENT_STORY["site"] and material == "cement":
+                story_used = True
+                cement_story(day, request)
+                continue
             vendor, _size, rate = story.DEMO_SUPPLY[material]
             order = b.add(day, "order", f"Order {_fmt(qty)} {UNITS[material]} {material} from {vendor} for {SITE_NAME[site]} "
                           f"at {_amount(rate)} a {PER[material]}",
                           site=site, data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
                                            "expected_in_days": LEAD_DAYS[material]}, needs=(request.id,))
-            to_deliver.append((_working_after(day, LEAD_DAYS[material]), order, site, material, qty))
+            to_deliver.append((_working_after(day, LEAD_DAYS[material]), order, site, material, qty, {}))
         for due in [t for t in to_bill if t[0] == day]:
             to_bill.remove(due)
             delivery = due[1]
@@ -464,6 +604,12 @@ def build() -> Plan:
         for due in [t for t in to_count if t[0] == day]:
             to_count.remove(due)
             work = due[1]
+            if SITE_PROJECT[work.site] == GREEN_VILLA:  # D2: on the estimate's line (green_villa.STAGE_LINE)
+                line = gv.STAGE_LINE.get(work.data["work"], work.data["work"])
+                b.add(day, "boq_count", f"Count {_of(SITE_NAME[work.site])} {work.data['work'].lower()} of day {work.day} "
+                      f"on the BOQ line {line}", site=work.site, data={"work": work.data["work"], "line": line, "estimate": True},
+                      needs=(work.id, gv_setup["boq"].id))
+                continue
             b.add(day, "boq_count", f"Count {_of(SITE_NAME[work.site])} {work.data['work'].lower()} of day {work.day} on its BOQ line",
                   site=work.site, data={"work": work.data["work"], "line": f"{work.data['work']} · {SITE_NAME[work.site]}"},
                   needs=(work.id,))
@@ -490,6 +636,8 @@ def build() -> Plan:
             ratio = weather * can
             for m, q in want.items():
                 used = round(q * can, 2)
+                if UNITS[m] in WHOLE_UNITS:  # never more than the share: a bag is opened whole or not at all
+                    used = math.floor(used)
                 if used > 0:
                     stock[(site, m)] = round(stock[(site, m)] - used, 2)
                     b.add(day, "use", f"Used {_fmt(used)} {UNITS[m]} {m} for {s.work.lower()}", site=site,
@@ -505,9 +653,11 @@ def build() -> Plan:
                                                   "daily_wage": 700}})
             if ratio > 0:
                 qty = round(s.per_day * ratio, 2)
+                if s.unit in WHOLE_UNITS:  # LRN-F14: points and pieces are counted whole ("12 nos", never 12.1)
+                    qty = max(1, round(qty))
                 work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else ""), site=site,
                              data={"work": s.work, "narrative": s.narrative, "quantity": qty, "unit": s.unit, "by": s.by})
-                if (site, s.work) in boq_lines:
+                if (site, s.work) in boq_lines or (SITE_PROJECT[site] == GREEN_VILLA and gv.STAGE_LINE.get(s.work)):
                     to_count.append((_working_after(day, 1), work))
                 if s.by:
                     week_work[site] += qty
@@ -538,7 +688,7 @@ def build() -> Plan:
                     qty = min(seeded_left[(site, m)], size * max(1, math.ceil((need - have) / size)))
                     seeded_left[(site, m)] -= qty
                     coming[(site, m)] += qty
-                    to_deliver.append((_working_after(day, 1), None, site, m, qty))
+                    to_deliver.append((_working_after(day, 1), None, site, m, qty, {}))
                     continue
                 qty = size * max(1, math.ceil((need - have) / size))
                 request = b.add(day, "request", f"Ask for {_fmt(qty)} {UNITS[m]} {m} for {SITE_NAME[site]}", site=site,
@@ -546,6 +696,63 @@ def build() -> Plan:
                                       "needed_by_days": LEAD_DAYS[m] + 1, "purpose": nxt.work if nxt else s.work})
                 coming[(site, m)] += qty
                 to_order.append((_working_after(day, 1), request))
+
+        # LRN-F23: the month's end at the Main block: the store counted after the day's use, the difference approved.
+        if story_used and day == CEMENT_STORY["count_day"]:
+            cs, site = CEMENT_STORY, CEMENT_STORY["site"]
+            book = stock[(site, "cement")]
+            counted = b.add(day, "stock_count", f"Count {_of(SITE_NAME[site])} store: cement {_fmt(book - cs['count_short'])} bags "
+                            f"against {_fmt(book)} in the book, {cs['count_short']} short ({cs['count_reason']})", site=site,
+                            data={"material": "cement", "short": cs["count_short"], "reason": cs["count_reason"], "book": book})
+            b.add(day, "count_approve", f"Approve {_of(SITE_NAME[site])} stock count: {cs['count_short']} bags cement written off "
+                  f"({cs['count_reason']})", site=site, data={"material": "cement"}, needs=(counted.id,))
+            stock[(site, "cement")] -= cs["count_short"]
+
+        # LRN-F25 (episode 6): the Annex mixer (green_villa.HIRE).
+        hire, mixer_site = gv.HIRE, "annex"
+        if day == hire["on_day"]:
+            machine_story["machine"] = b.add(
+                day, "machine", f"Put the {hire['short_name'].lower()} from {hire['vendor']} on hire at {SITE_NAME[mixer_site]}, "
+                f"{_amount(hire['rate_per_hour'])} an hour", site=mixer_site,
+                data={"machine": hire["short_name"], "type": hire["machine"], "vendor": hire["vendor"],
+                      "rate": hire["rate_per_hour"]})
+        if day in hire["log"] and "machine" in machine_story:
+            worked, broke = hire["log"][day]
+            said = f"{hire['short_name']} {_fmt(worked)} hr{'' if worked == 1 else 's'}" + (f", broke down {_fmt(broke)} hrs: {hire['breakdown_reason']}" if broke else "")
+            log = b.add(day, "machine_log", said, site=mixer_site,
+                        data={"machine": hire["short_name"], "worked": worked, "breakdown": broke,
+                              "reason": hire["breakdown_reason"] if broke else None},
+                        needs=(machine_story["machine"].id,))
+            if broke:
+                # The log raises the problem itself (equipment's breakdown rule), in these words.
+                narrative = f"{hire['short_name']} breakdown, {_fmt(broke)} hrs: {hire['breakdown_reason']}"
+                machine_story["problem"] = log
+                machine_story["narrative"] = narrative
+                machine_story["task"] = b.add(
+                    day, "task", f"Task for {WHO[ENGINEER]}: {hire['task']}, due tomorrow", site=mixer_site,
+                    data={"title": hire["task"], "for": ENGINEER, "due_days": hire["task_due_days"],
+                          "narrative": narrative}, needs=(log.id,))
+            elif "task" in machine_story and "fixed" not in machine_story:
+                fixed = b.add(day, "task_status", f"Done: {hire['task']} ({hire['fixed']})", site=mixer_site,
+                              data={"title": hire["task"], "status": "done", "note": hire["fixed"]},
+                              needs=(machine_story["task"].id,))
+                machine_story["fixed"] = fixed
+                b.add(day, "issue_resolve", f"Close: {machine_story['narrative']}", site=mixer_site,
+                      data={"narrative": machine_story["narrative"], "resolution_notes": hire["fixed"]},
+                      needs=(machine_story["problem"].id, fixed.id))
+        if day == hire["bill_day"] and "machine" in machine_story:
+            days = sorted(hire["log"])
+            billed = hire["billed_hours"] * hire["rate_per_hour"]
+            bill = b.add(day, "hire_bill", f"Bill {hire['bill']} from {hire['vendor']}: {hire['short_name'].lower()}, "
+                         f"days {days[0]} to {days[-1]}, {hire['billed_hours']} hours, {_amount(billed)}", site=mixer_site,
+                         data={"machine": hire["short_name"], "bill_ref": hire["bill"], "from_day": days[0], "to_day": days[-1],
+                               "hours": hire["billed_hours"], "amount": billed},
+                         needs=tuple(e.id for e in b.entries if e.kind == "machine_log" and e.site == mixer_site))
+            agreed = hire["logged_hours"] * hire["rate_per_hour"]
+            b.add(day, "hire_bill_fix", f"Correct bill {hire['bill']} to the {hire['logged_hours']} hours logged, "
+                  f"{_amount(agreed)}: {hire['agreed']}", site=mixer_site,
+                  data={"bill_ref": hire["bill"], "hours": hire["logged_hours"], "amount": agreed, "note": hire["agreed"]},
+                  needs=(bill.id,))
 
         # Issues seen today (closed on their day).
         for issue_day, site, kind, severity, narrative, close_day, note in ISSUES:
@@ -612,13 +819,23 @@ def build() -> Plan:
             bill = b.add(day, "ra_bill", f"Send {_of(PROJECT_NAME[LAKE_VIEW])} running bill to the client, work up to today",
                          project=LAKE_VIEW, data={"period_to_day": day})
             ra_bills.append((day + CLIENT_PAYS_AFTER, bill))
+        # D2: Green Villa's running bill, by its contract (needs the contract and the BOQ in).
+        if day in GV_RA_BILL_DAYS:
+            bill = b.add(day, "ra_bill", f"Send {_of(story.DEMO_PROJECT)} running bill to {gv.CLIENT['name']}, work up to today",
+                         project=GREEN_VILLA, data={"period_to_day": day},
+                         needs=(gv_setup["contract"].id, gv_setup["boq"].id))
+            ra_bills.append((day + gv.PAYS_AFTER, bill))
         for due in [t for t in ra_bills if t[0] <= day]:
             ra_bills.remove(due)
-            b.add(day, "client_receipt", f"{story.DEMO_CLIENT['name']} paid the running bill of day {due[1].day}",
-                  project=LAKE_VIEW, data={"bill": due[1].id, "client": story.DEMO_CLIENT["name"]}, needs=(due[1].id,))
+            client = gv.CLIENT["name"] if due[1].project == GREEN_VILLA else story.DEMO_CLIENT["name"]
+            b.add(day, "client_receipt", f"{client} paid the running bill of day {due[1].day}",
+                  project=due[1].project, data={"bill": due[1].id, "client": client}, needs=(due[1].id,))
 
-        # Green Villa done: the owner hands it over.
+        # Green Villa done: its final bill, then the owner hands it over.
         if all(site in finished for site, project, _n in SITES if project == GREEN_VILLA):
+            b.add(day, "ra_bill", f"Send {_of(story.DEMO_PROJECT)} final bill to {gv.CLIENT['name']}: all the work, measured",
+                  project=GREEN_VILLA, data={"period_to_day": day, "final": True},
+                  needs=(gv_setup["contract"].id, gv_setup["boq"].id))
             b.add(day, "stage", f"{story.DEMO_PROJECT} handed over to the client", project=GREEN_VILLA,
                   data={"stage": "handover"})
             last_day = day
@@ -707,6 +924,7 @@ def _site_day(routine: list[Entry]) -> str:
     if used:
         parts.append("used " + ", ".join(used))
     parts += [f"spent {_amount(e.data['amount'])} ({e.data['description'].lower()})" for e in of("expense")]
+    parts += [e.what.lower() for e in of("machine_log")]  # LRN-F25: the mixer's hours
     parts += [e.what.lower() for e in of("conditions")]
     return "; ".join(parts)
 

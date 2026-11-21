@@ -206,8 +206,8 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
         spend = sum((cost_rate(r) * Decimal(r["quantity"]) for r in list_), Decimal(0))
         rates = [cost_rate(r) for r in list_]
         last = list_[-1]
-        prev = list_[-2] if len(list_) > 1 else before.get(material_id)
         last_rate = cost_rate(last)
+        prev = _previous_rate(list_, before.get(material_id), last_rate)
         prev_rate = cost_rate(prev) if prev else None
 
         vendors: dict[str, dict] = {}
@@ -265,6 +265,24 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
                         "vendor_key": vendor_key(r)} for r in list_],
         })
     return out
+
+
+def _differs(rate: Decimal, other: Decimal) -> bool:
+    return other > 0 and abs(rate - other) / other * 100 > STEADY_PCT
+
+
+def _previous_rate(list_: list[dict], before: dict | None, last_rate: Decimal) -> dict | None:
+    """The purchase the last rate is compared with: the latest one at a different rate (beyond STEADY_PCT), in the
+    period or, failing that, the one before it; with none different, the purchase just before the last ("same").
+
+    UX-81 (20 Nov 2026): comparing only with the purchase just before the last read a rise that then held as "same"
+    (M sand ₹1,650, then ₹1,750 for its last loads)."""
+    for r in reversed(list_[:-1]):
+        if _differs(last_rate, cost_rate(r)):
+            return r
+    if before is not None and _differs(last_rate, cost_rate(before)):
+        return before
+    return list_[-2] if len(list_) > 1 else before
 
 
 def _trend(new: Decimal, old: Decimal | None) -> str | None:

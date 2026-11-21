@@ -183,7 +183,8 @@ ALLOWED: tuple[Allowed, ...] = (
             "One RFQ's comparison sheet (rfq_id from rfqs, or its number RFQ-0003): as rfqs, for one."),
     Allowed("ask_for_quotes", "POST", "/procurement/rfqs",
             "Prepare asking suppliers for quotes (the office: admin, owner, project manager): lines (material_id, "
-            "quantity, unit_id) or request_id for a site's request ('get quotes for Arun's cement'), suppliers in "
+            "quantity, unit_id) or request_id for a site's request ('get quotes for Arun's cement'; with lines too when "
+            "they quote for more than it asks or add items for the same site: every item of the request stays), suppliers in "
             "their words, the site, due_date when they said by when, needed_by when the site needs it." + _WRITE,
             hide=("vendor_ids",)),
     Allowed("record_quote", "POST", "/procurement/rfqs/{rfq_id}/quotes",

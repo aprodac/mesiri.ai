@@ -1,0 +1,407 @@
+{
+  "episode": 5,
+  "title": "Wages week",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Recorded from real entries in the sample company (days 4 and 7, as Meera and the owner); the words follow the screens.",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 5's objective); the 62-day plan's first full week, days 2 to 7 (backend/.../learn/sample_plan.py; docs/plans/sample-plan.md): Green Villa's attendance and work at both sites, Suresh's advance on day 4, the wage sheet approved and paid on day 7; the wage rules (backend/.../domains/workforce/pay.py: days 1, 1/2, 0; a contractor's crew paid through the contractor; advances taken back from the week's pay); the BOQ's labour rates (green_villa.py). Figures said are the plan's; read them off the screen when recording.",
+  "objective": "By the end you can run the weekly labour cycle: the morning attendance, the muster roll, the wage sheet, the owner's approval, Meera's payment; an advance given and taken back; and compare what labour was paid with the work it did.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 5",
+      "title": "Wages week",
+      "beats": [
+        "Saturday, five in the evening. At the Main block and the Annex, the crews wait to be paid.",
+        "About fifteen people across two sites, six days. Seventy-five thousand rupees for one week at Green Villa.",
+        "Who came, which days, at what wage, what was already given in advance, and was it worth it? This episode is that Saturday, and the six mornings before it."
+      ],
+      "lines": [
+        {
+          "at": 1,
+          "text": "Green Villa · 6 days · Rs 75,000"
+        },
+        {
+          "at": 2,
+          "text": "Attendance → muster → wage sheet → approve → pay"
+        }
+      ]
+    },
+    {
+      "id": "how",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "How a site's labour is paid",
+      "beats": [
+        "Two kinds of people work on a site like Green Villa.",
+        "The company's own workers, on a daily wage: a mason at eleven hundred rupees, a helper at seven fifty. Paid every Saturday, for the days they came.",
+        "And a labour contractor's crew: here, Rahim's helpers. The company counts heads each day, and pays Rahim for the crew; Rahim pays his people.",
+        "In between, someone always needs money before Saturday: a hospital visit, a festival. That is an advance, and it comes back out of the next pay.",
+        "Underneath it all is one register: who came, each day. Everything else is that register, multiplied."
+      ],
+      "steps": [
+        {
+          "at": 1,
+          "module": "Own workers",
+          "text": "Daily wage, paid Saturday for the days they came"
+        },
+        {
+          "at": 2,
+          "module": "Contractor's crew",
+          "text": "Heads counted daily; the contractor paid for the crew"
+        },
+        {
+          "at": 3,
+          "module": "Advance",
+          "text": "Money before Saturday, taken back from the pay"
+        },
+        {
+          "at": 4,
+          "module": "The register",
+          "text": "Who came, each day: the rest is arithmetic"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "A wrong register is a wrong payroll, every week."
+      }
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "One week, five people",
+      "title": "Who does what",
+      "beats": [
+        "Who does what?",
+        "Ravi says who came, every morning, as you saw in episode three.",
+        "Meera gives advances, and pays on Saturday. Ramesh approves the week's sheet before a rupee goes out.",
+        "Anil watches whether the labour bought the work. And Rahim collects for his crew."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Ravi, site engineer",
+          "worry": "Who came, every morning",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Meera, accounts",
+          "worry": "Advances; pay on Saturday",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 2,
+          "who": "Ramesh Nair, owner",
+          "worry": "Approve the week before it is paid",
+          "tone": "#facc15"
+        },
+        {
+          "at": 3,
+          "who": "Anil, project manager",
+          "worry": "Did the labour buy the work?",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 3,
+          "who": "Rahim, labour contractor",
+          "worry": "My crew's money",
+          "tone": "#93c5fd"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "One register, read by four people."
+      }
+    },
+    {
+      "id": "advance",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Advances · Wednesday",
+      "title": "Two thousand rupees before Saturday",
+      "beats": [
+        "Wednesday. Suresh, a mason at the Main block, needs two thousand rupees before Saturday.",
+        "Meera gives it from the Main block's petty cash, and puts it in Mesiri: Suresh, two thousand, today, from that cash box.",
+        "Now it is owed. Suresh's balance shows it, and so will Saturday's sheet. Nobody has to remember it on a slip of paper."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/labour/advances?project={Green Villa}",
+          "show": "Advances: nothing outstanding yet",
+          "mark": "Give advance"
+        },
+        {
+          "at": 1,
+          "do": "Give an advance: Suresh, Rs 2,000, Main block, from Petty cash · Main block",
+          "show": "the form filled, before Give",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Give",
+          "show": "Rs 2,000 outstanding, to be taken back from the next wages",
+          "mark": "the outstanding figure"
+        }
+      ],
+      "record": "As Meera (FINANCE) on day 4: the plan's entry 'Advance of Rs 2,000 to Suresh' is hers; do it on screen (steps-05.cjs).",
+      "as": "FINANCE",
+      "day": 4,
+      "play": "FINANCE"
+    },
+    {
+      "id": "muster",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Muster roll",
+      "title": "The register, without a register",
+      "beats": [
+        "The muster roll is the register, made from Ravi's mornings. Each worker, each day: present, half day, or absent.",
+        "At the Main block this week, Sunil was away on Thursday, Prakash on Friday, Joseph on Saturday. Nobody kept a register; Ravi said who came.",
+        "Rahim's crew is a count, not names: two helpers most days, four once the ceiling plastering began."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/labour?view=muster&project={Green Villa}",
+          "do": "Site: Green Villa › Main block",
+          "show": "the Main block's month, each worker, each day",
+          "mark": "the grid"
+        },
+        {
+          "at": 1,
+          "show": "Sunil's row: absent Thursday 19",
+          "mark": "Sunil's row"
+        },
+        {
+          "at": 2,
+          "show": "the helpers' headcount, 2 then 4",
+          "mark": "the headcount row"
+        }
+      ],
+      "record": "As the owner on day 7, before approving. Say only the absences the screen shows.",
+      "as": "ADMIN",
+      "day": 7,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "sheet",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Wages · Saturday",
+      "title": "The wage sheet makes itself",
+      "beats": [
+        "Saturday. The week's wage sheet is already made from the attendance: each person's days, times their wage. Eighty-seven man-days across both sites.",
+        "Suresh: six days at eleven hundred, six thousand six hundred. Less the two thousand from Wednesday: four thousand six hundred to pay.",
+        "Rahim's crew is one line: forty-three man-days at seven hundred, thirty thousand one hundred, paid to Rahim.",
+        "Ramesh reads it: seventy-five thousand of wages, two thousand taken back, seventy-three thousand to pay. He approves. Until he does, nothing can be paid."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/labour/wages?project={Green Villa}",
+          "show": "the draft sheet, 15 to 21 Nov, a row per person",
+          "mark": "the figures"
+        },
+        {
+          "at": 1,
+          "show": "Suresh: 6 days, Rs 6,600, advance back Rs 2,000, Rs 4,600",
+          "mark": "Suresh's row"
+        },
+        {
+          "at": 2,
+          "show": "Bengal crew (Rahim): 43 man-days, Rs 30,100",
+          "mark": "the crew's row"
+        },
+        {
+          "at": 3,
+          "do": "Approve",
+          "show": "Approved · to pay; Rs 73,000",
+          "mark": "the figures"
+        }
+      ],
+      "record": "As the owner (ADMIN) on day 7: the plan's 'Approve Green Villa's wage sheet for the week' is his. Read every figure off the sheet; the Rs 75,000 is the plan's gross for both sites, days 2 to 7.",
+      "as": "ADMIN",
+      "day": 7,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "pay",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Paying",
+      "title": "Paid, and written down as it is paid",
+      "beats": [
+        "Then Meera pays every row still due, from the bank account, in one go: seventy-three thousand rupees.",
+        "Each payment is a record: who, how much, from which account, on which day. The bank goes down by exactly that, and the sheet says paid.",
+        "Rahim's thirty thousand one hundred goes to Rahim, and he pays his crew. Everyone else, by name."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/labour/wages?project={Green Villa}",
+          "do": "Pay Rs 73,000",
+          "show": "the pay dialog: from the Federal Bank current account",
+          "mark": "the dialog"
+        },
+        {
+          "at": 1,
+          "do": "Pay",
+          "show": "every row paid",
+          "mark": "the figures"
+        },
+        {
+          "at": 2,
+          "show": "Rahim's row, paid",
+          "mark": "the crew's row"
+        }
+      ],
+      "record": "As Meera (FINANCE) on day 7: the plan's 'Pay Green Villa's wages for the week' is hers.",
+      "as": "FINANCE",
+      "day": 7,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "worth",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep05-green-red",
+      "url": "/cost/green-red?project={Green Villa}",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · Green / red",
+      "title": "Did the labour buy the work?",
+      "beats": [
+        "Paying the right people the right amount is half of it. The other half: did that labour buy the work?",
+        "The BOQ already says what each unit of work should cost in labour. Green / red puts, line by line, the labour spent beside the labour the work earned, this week.",
+        "The plinth beam at the Annex: thirty thousand rupees of labour earned, ten and a half thousand spent. Green.",
+        "The electrical conduits at the Main block: eleven thousand three hundred spent, for six thousand nine hundred earned. Red: more people than the work allows. Anil's question for Monday: the masons are waiting for the plastering. Start it, or send two of them to the Annex.",
+        "And Mesiri says what it cannot judge: thirty-seven thousand rupees of the week's labour is on no BOQ line yet. Until it is put on its lines, nobody can say whether it was worth it."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 2,
+          "mark": "plinth",
+          "pad": 0.08
+        },
+        {
+          "at": 3,
+          "mark": "conduits",
+          "pad": 0.08
+        },
+        {
+          "at": 4,
+          "mark": "off",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "plinth"
+        },
+        {
+          "at": 3,
+          "until": 4,
+          "mark": "conduits"
+        },
+        {
+          "at": 4,
+          "mark": "off"
+        }
+      ],
+      "record": "As the owner on day 7, the week Sun 15 to Sat 21 Nov (Last 7 days). Figures from the screen, 20 Nov: plinth beam earned Rs 30,240, spent Rs 10,650; conduits spent Rs 11,281, earned Rs 6,930; off the lines Rs 37,730.",
+      "as": "ADMIN",
+      "day": 7,
+      "marks": {
+        "plinth": "[data-guide=\"gr.lines\"] tr:has-text(\"Plinth beam\")",
+        "conduits": "[data-guide=\"gr.lines\"] tr:has-text(\"Electrical conduits\")",
+        "off": ":text(\"labour not on a BOQ line\")"
+      },
+      "scroll": ":text(\"labour not on a BOQ line\")"
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a payroll leaks",
+      "beats": [
+        "Five ways a payroll leaks.",
+        "A name in the register for someone who did not come. Copied forward every day, it is a wage every week for nobody.",
+        "A contractor paid for six heads when four were counted.",
+        "An advance given in cash and never taken back, because it was on a slip that went missing.",
+        "And the biggest, because it looks like work: a full crew, paid in full, on a site where the work does not move."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "Names, not people",
+          "eg": "Present on paper, not on site"
+        },
+        {
+          "at": 2,
+          "title": "Crew over-billed",
+          "eg": "6 billed, 4 counted"
+        },
+        {
+          "at": 3,
+          "title": "Advance forgotten",
+          "eg": "Rs 2,000 on a lost slip"
+        },
+        {
+          "at": 4,
+          "title": "Paid, not productive",
+          "eg": "Rs 11,281 spent for Rs 6,930 of work"
+        },
+        {
+          "at": 4,
+          "title": "Paid before approved",
+          "eg": "Nobody checked the total"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Who came, what they did, what they were paid: one register."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: Suresh worked six days at eleven hundred, and took two thousand on Wednesday. What is he paid on Saturday? Four thousand six hundred.",
+        "Two: how is Rahim's crew paid? As one line on the sheet, their days at the crew's rate, paid to Rahim.",
+        "Three: the Main block's crew was present every day and paid in full. Why is its conduit line red? Because the work it did earned less labour than it was paid: eleven thousand three hundred spent for six thousand nine hundred earned.",
+        "Next: problems and machines. A problem from WhatsApp to closed, and a machine's day. Now play a wages week yourself: chapter six of the guided project."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "6 days at Rs 1,100, Rs 2,000 advance: paid?"
+        },
+        {
+          "at": 2,
+          "text": "How is Rahim's crew paid?"
+        },
+        {
+          "at": 3,
+          "text": "Present every day, yet red: why?"
+        }
+      ]
+    }
+  ]
+}

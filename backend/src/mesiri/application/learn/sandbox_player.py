@@ -30,6 +30,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from mesiri.application.learn import green_villa as gv
 from mesiri.application.learn import sample_plan as sp
 from mesiri.application.learn import sandbox_days as sd
 from mesiri.application.learn.sandbox import (
@@ -48,8 +49,7 @@ _log = logging.getLogger(__name__)
 #: Most days at once (D-GC5).
 MAX_DAYS = 7
 #: The company's bank account in the sample, opened the first time days pass, with enough in it for the project.
-BANK_ACCOUNT = "Federal Bank current account"
-OPENING_BALANCE = 2500000
+BANK_ACCOUNT, _BANK_NAME, OPENING_BALANCE = sp.story.DEMO_BANK  # the seed opens it (D5); here only if it is missing
 
 # --- Where the sample is -----------------------------------------------------------------------------------------
 
@@ -123,7 +123,14 @@ PAGE = {
     "measurement": "/subcontract/work-orders", "supplier_bill": "/finance/vendors", "supplier_payment": "/finance/vendors",
     "sub_bill": "/subcontract/bills", "sub_payment": "/subcontract/bills", "advance": "/labour/advances",
     "wage_pay": "/labour/wages", "client_receipt": "/accounts/receivables", "wage_approve": "/labour/wages",
-    "ra_bill": "/billing/ra-bills", "stage": "/planning/setup",
+    "ra_bill": "/billing/ra-bills", "stage": "/planning/setup", "contract": "/planning/setup", "boq_import": "/boq",
+    # LRN-F18: the Main block's cement, as the kit's paperwork has it.
+    "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
+    "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
+    "bill_reverse": "/finance/vendors", "stock_count": "/materials/counts", "count_approve": "/materials/counts",
+    # LRN-F25: the Annex mixer.
+    "machine": "/equipment", "machine_log": "/equipment/log", "task": "/tasks?view=all", "task_status": "/tasks?view=all",
+    "hire_bill": "/equipment/hire", "hire_bill_fix": "/equipment/hire",
 }
 
 #: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
@@ -150,6 +157,15 @@ _DONE: dict[str, tuple[str, str, str, str, tuple[str, str] | None]] = {
     "client_receipt": ("client_receipts", "created_by", "created_at", "count(*)", ("project", "project_id")),
     "wage_approve": ("wage_sheets", "approved_by", "approved_at", "count(*)", ("project", "project_id")),
     "ra_bill": ("ra_bills", "submitted_by", "submitted_at", "count(*)", ("project", "project_id")),
+    "transfer": ("material_movements", "recorded_by_user_id", "created_at", "count(DISTINCT source_id)", ("site", "site_id")),
+    "rfq": ("rfqs", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "quote": ("rfq_vendors", "quoted_by", "quoted_at", "count(*)", None),
+    "award": ("rfqs", "status_by", "status_at", "count(*)", ("site", "site_id")),
+    "return": ("material_returns", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "return_settle": ("material_returns", "status_by", "settled_on", "count(*)", ("site", "site_id")),
+    # LRN-F23: the month-end count, and its approval.
+    "stock_count": ("stock_counts", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "count_approve": ("stock_counts", "approved_by", "approved_at", "count(*)", ("site", "site_id")),
 }
 
 
@@ -168,6 +184,32 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
         return bool(await scalar("SELECT count(*) FROM daily_reports WHERE organization_id = :o AND site_id = :s "
                                  "AND report_date = :d AND (weather IS NOT NULL OR tomorrow_plan IS NOT NULL)",
                                  s=ids["site"].get(e.site or ""), d=date))
+    if e.kind == "contract":  # D2: the project has its contract (here, or in the guided project's chapter 2)
+        return bool(await scalar("SELECT count(*) FROM project_contracts WHERE organization_id = :o AND project_id = :p",
+                                 p=ids["project"].get(e.project or "")))
+    if e.kind == "boq_import":  # D2: the project has a BOQ (here, or imported in the guided project's chapter 3)
+        return bool(await scalar("SELECT count(*) FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+                                 "WHERE w.organization_id = :o AND w.project_id = :p", p=ids["project"].get(e.project or "")))
+    if e.kind == "bill_reverse":  # LRN-F18: the supplier's bill of that number was taken back
+        return bool(await scalar("SELECT count(*) FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                                 "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status <> 'confirmed'",
+                                 n=e.data["bill_number"]))
+    # LRN-F25: the Annex mixer's story, known by what it leaves (whoever saved it, here or on WhatsApp).
+    if e.kind == "machine":
+        return bool(await scalar("SELECT count(*) FROM equipment WHERE organization_id = :o AND name = :n", n=e.data["machine"]))
+    if e.kind == "machine_log":
+        return bool(await scalar("SELECT count(*) FROM equipment_events ev JOIN equipment m ON m.id = ev.equipment_id "
+                                 "WHERE ev.organization_id = :o AND m.name = :n AND ev.event_type = 'day_log' "
+                                 "AND ev.occurred_date = :d", n=e.data["machine"], d=date))
+    if e.kind in ("task", "task_status"):
+        status = "('done', 'cancelled')" if e.kind == "task_status" else "('open', 'doing', 'blocked', 'done', 'cancelled')"
+        return bool(await scalar(f"SELECT count(*) FROM tasks WHERE organization_id = :o AND title = :t AND status IN {status}",  # noqa: S608
+                                 t=e.data["title"]))
+    if e.kind in ("hire_bill", "hire_bill_fix"):
+        sql = "SELECT count(*) FROM equipment_hire_bills WHERE organization_id = :o AND bill_ref = :r"
+        if e.kind == "hire_bill_fix":
+            sql += " AND billed_hours <= :h"
+        return bool(await scalar(sql, r=e.data["bill_ref"], **({"h": e.data["hours"]} if e.kind == "hire_bill_fix" else {})))
     if e.kind == "boq_count":  # nothing of that work left off its BOQ line
         return not await scalar(
             "SELECT count(*) FROM activities a JOIN activity_quantities q ON q.activity_id = a.id "
@@ -224,7 +266,7 @@ class _World:
         if self.account is None:
             # The company's bank account, the first time days pass: suppliers, wages and the client go through it.
             made = await self.call(OWNER, "POST", "/finance/accounts", json={
-                "name": BANK_ACCOUNT, "account_type": "bank", "bank_name": "Federal Bank",
+                "name": BANK_ACCOUNT, "account_type": "bank", "bank_name": _BANK_NAME,
                 "opening_balance": OPENING_BALANCE})
             if made.ok and isinstance(made.body, dict) and made.body.get("id"):
                 self.account = str(made.body["id"])
@@ -282,6 +324,21 @@ def _ok(res: Any, what: str) -> dict[str, Any]:
 
 
 # --- Making each kind of entry -----------------------------------------------------------------------------------
+
+
+async def _story_receipt(w: _World, e: sp.Entry, want: dict[str, Any]) -> Any:
+    """LRN-F18: the delivery a story entry is about: the supplier's latest delivery of that material at the site (the
+    lorry of the given quantity, when said). Not saved yet (the person plays Ravi and has not recorded it): the entry waits,
+    as every entry whose record is not there yet does, instead of failing the whole day."""
+    mid, _uid = w.materials[want["material"]]
+    got = await w.one("SELECT id FROM material_receipts WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
+                       "AND material_id = :m AND reverses_movement_id IS NULL AND quantity > 0 "
+                       + ("AND quantity = :q " if want.get("quantity") else "") + "ORDER BY occurred_date DESC, created_at DESC LIMIT 1",
+                       s=w.sites[e.site][1], v=w.vendors[want["vendor"]], m=mid,
+                       **({"q": want["quantity"]} if want.get("quantity") else {}))
+    if not got:
+        raise _Wait(f"no delivery of {want['material']} from {want['vendor']} yet")
+    return got
 
 
 async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 -- one branch per kind
@@ -382,18 +439,95 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             "unit_cost": d["rate"], "total_cost": round(qty * d["rate"], 2), "purchase_order_line_id": str(line["id"])}), e.kind)
     if e.kind == "supplier_bill":
         vid = w.vendors.get(d["vendor"])
-        mine = await w.all("SELECT id, total_cost FROM material_receipts WHERE organization_id = :o AND vendor_id = :v "
-                           "AND site_id = :s AND invoice_id IS NULL AND reverses_movement_id IS NULL AND quantity > 0 "
-                           "ORDER BY occurred_date, created_at LIMIT 1", v=vid, s=site)
-        if not mine:
+        if d.get("receipt"):  # LRN-F18: the bill is for one delivery (the lorry of a given day), whatever came before
+            mine = [await _story_receipt(w, e, d["receipt"])]
+        else:
+            mine = await w.all("SELECT id, total_cost FROM material_receipts WHERE organization_id = :o AND vendor_id = :v "
+                               "AND site_id = :s AND invoice_id IS NULL AND reverses_movement_id IS NULL AND quantity > 0 "
+                               "ORDER BY occurred_date, created_at LIMIT 1", v=vid, s=site)
+        if not mine or not mine[0]:
             raise _Wait("no delivery to bill")
-        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/bills", json={
-            "receipt_ids": [str(r["id"]) for r in mine], "bill_number": d["bill_number"], "bill_date": iso}), e.kind)
+        body = {"receipt_ids": [str(r["id"]) for r in mine], "bill_number": d["bill_number"], "bill_date": iso}
+        if d.get("receipt"):
+            body["amount"] = d["amount"]  # what the supplier billed, which may not be what came (the check shows it)
+        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/bills", json=body), e.kind)
+    if e.kind == "transfer":
+        mid, uid = material(d["material"])
+        _from = w.sites[d["from_site"]][1]
+        return _ok(await w.call(role, "POST", "/materials/transfers", json={
+            "from_site_id": _from, "to_site_id": site, "material_id": mid, "unit_id": uid, "quantity": d["quantity"],
+            "occurred_date": iso, "notes": e.what}), e.kind)
+    if e.kind == "rfq":
+        lines = []
+        for line in d["lines"]:
+            mid, uid = material(line["material"])
+            req = await w.one("SELECT l.id FROM material_request_lines l JOIN material_requests r ON r.id = l.request_id "
+                              "WHERE r.organization_id = :o AND r.site_id = :s AND l.material_id = :m AND r.status = 'waiting' "
+                              "ORDER BY r.created_at LIMIT 1", s=site, m=mid)
+            lines.append({"material_id": mid, "unit_id": uid, "quantity": line["quantity"],
+                          **({"request_line_id": str(req["id"])} if req else {})})
+        return _ok(await w.call(role, "POST", "/procurement/rfqs", json={
+            "project_id": project, "site_id": site, "lines": lines, "vendor_ids": [w.vendors[v] for v in d["vendors"]],
+            "due_date": (w.date + dt.timedelta(days=1)).isoformat()}), e.kind)
+    if e.kind in ("quote", "award"):
+        rfq = await w.one("SELECT id FROM rfqs WHERE organization_id = :o AND site_id = :s AND status IN ('open', 'ready') "
+                          "ORDER BY created_at DESC LIMIT 1", s=site)
+        if not rfq:
+            raise _Wait("no request for quotes yet")
+        if e.kind == "award":
+            return _ok(await w.call(role, "POST", f"/procurement/rfqs/{rfq['id']}/award", json={
+                "mode": d["mode"], "expected_date": (w.date + dt.timedelta(days=2)).isoformat(),
+                "confirm_duplicate": True}), e.kind)
+        return _ok(await w.call(role, "POST", f"/procurement/rfqs/{rfq['id']}/quotes", json={
+            "vendor_id": w.vendors[d["vendor"]], "their_ref": d["their_ref"], "gst_percent": d["gst_percent"],
+            "delivery_days": d["delivery_days"], "valid_until": (w.date + dt.timedelta(days=d["valid_days"])).isoformat(),
+            "lines": [{"material_id": material(m)[0], "rate": r} for m, r in d["rates"].items()]}), e.kind)
+    if e.kind == "return":
+        got = await _story_receipt(w, e, d.get("receipt") or {"material": d["material"], "vendor": d["vendor"]})
+        return _ok(await w.call(role, "POST", "/procurement/returns", json={
+            "vendor_id": w.vendors[d["vendor"]], "project_id": project, "site_id": site, "returned_on": iso,
+            "notes": f"Return note {d['note']}",
+            "lines": [{"quantity": d["quantity"], "reason": d["reason"], "rate": d["rate"], "receipt_id": str(got["id"])}]}), e.kind)
+    if e.kind == "stock_count":  # LRN-F23: started at the site (the book frozen now), then what was counted
+        mid, uid = material(d["material"])
+        made = _ok(await w.call(role, "POST", "/materials/stock-counts", json={"site_id": site, "scope": "all",
+                                                                            "notes": "Month end"}), e.kind)
+        book = next((x["book"] for x in made.get("lines", []) if str(x.get("material_id")) == str(mid)), None)
+        if not made.get("id") or book is None:
+            raise _Failed(f"the count has no {d['material']} line")
+        return _ok(await w.call(role, "PUT", f"/materials/stock-counts/{made['id']}/lines", json={"lines": [{
+            "material_id": mid, "unit_id": uid, "counted": max(0.0, float(book) - d["short"]), "reason": d["reason"]}]}), e.kind)
+    if e.kind == "count_approve":
+        count = await w.one("SELECT id FROM stock_counts WHERE organization_id = :o AND site_id = :s AND status = 'open' "
+                            "ORDER BY created_at DESC LIMIT 1", s=site)
+        if not count:
+            raise _Wait("no count to approve")
+        return _ok(await w.call(role, "POST", f"/materials/stock-counts/{count['id']}/approve"), e.kind)
+    if e.kind in ("machine", "machine_log", "task", "task_status", "hire_bill", "hire_bill_fix"):
+        return await _machine_story(w, e, role, site, project, iso)
+    if e.kind == "bill_reverse":
+        bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                           "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "
+                           "ORDER BY i.created_at DESC LIMIT 1", n=d["bill_number"])
+        if not bill:
+            raise _Wait("no bill of that number")
+        return _ok(await w.call(role, "POST", f"/expenses/{bill['expense_id']}/reverse"), e.kind)
+    if e.kind == "return_settle":
+        ret = await w.one("SELECT id FROM material_returns WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
+                          "AND status IN ('waiting', 'sent') ORDER BY created_at LIMIT 1", s=site, v=w.vendors[d["vendor"]])
+        bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                           "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "
+                           "ORDER BY i.created_at DESC LIMIT 1", n=d["bill_number"])
+        if not ret or not bill:
+            raise _Wait("no return or bill to settle it against")
+        return _ok(await w.call(role, "POST", f"/procurement/returns/{ret['id']}/settle", json={
+            "how": d["how"], "expense_id": str(bill["expense_id"]), "settled_on": iso}), e.kind)
     if e.kind in ("supplier_payment", "sub_payment"):
         vid = w.vendors.get(d["vendor"])
         bills = await w.all("SELECT e.id, e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
                             "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) AS due FROM expenses e "
                             "WHERE e.organization_id = :o AND e.vendor_id = :v AND e.occurred_date <= :d "
+                            "AND e.workflow_status = 'confirmed' "  # a bill taken back is never paid (LRN-F18)
                             "AND e.amount > COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
                             "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) ORDER BY e.occurred_date",
                             v=vid, d=w.date - dt.timedelta(days=sp.CREDIT_DAYS if e.kind == "supplier_payment" else 0))
@@ -428,7 +562,9 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
         if not items:
             return {"counted": 0, "already_on_line": len(mine)}
         boq = await w.call(role, "GET", f"/projects/{pid}/boq")
-        line = _boq_line(boq.body if boq.ok else None, d["work"], sp.SITE_NAME[e.site])
+        # D2: Green Villa's lines are the estimate's (sections by trade), found by the line's own work name.
+        line = (_estimate_line(boq.body if boq.ok else None, d["line"]) if d.get("estimate")
+                else _boq_line(boq.body if boq.ok else None, d["work"], sp.SITE_NAME[e.site]))
         if not line:
             raise _Failed(f"no BOQ line for {d['work']} at {sp.SITE_NAME[e.site]}")
         for item in items:
@@ -492,7 +628,80 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             "account_id": w.account, "method": "bank"}), e.kind)
     if e.kind == "stage":
         return _ok(await w.call(role, "PATCH", f"/projects/{project}/start", json={"stage": d["stage"]}), e.kind)
+    if e.kind == "contract":  # D2: set by the person in the guided project already? then nothing to do
+        have = await w.call(role, "GET", f"/projects/{project}/contract")
+        if have.ok and isinstance(have.body, dict) and have.body.get("contract"):
+            return {"already": True}
+        body = {k: v for k, v in d.items() if k != "client"}
+        return _ok(await w.call(role, "PUT", f"/projects/{project}/contract", json={"new_client": d["client"], **body}), e.kind)
+    if e.kind == "boq_import":  # D2: imported in the guided project's chapter 3 already? then nothing to do
+        boq = await w.call(role, "GET", f"/projects/{project}/boq")
+        if boq.ok and any((sec.get("lines") or []) for sec in (boq.body or {}).get("sections") or []):
+            return {"already": True}
+        lines = 0
+        for heading, rows in gv.ESTIMATE:
+            section = _ok(await w.call(role, "POST", f"/projects/{project}/boq/sections", json={"name": heading}), "BOQ section")
+            for code, work, unit, qty, client, labour, material in rows:
+                _ok(await w.call(role, "POST", f"/projects/{project}/boq/sections/{section['id']}/lines", json={
+                    "work": work, "unit": unit, "planned_quantity": qty, "boq_code": code, "client_rate": client,
+                    "labour_rate": labour, "material_rate": material}), "BOQ line")
+                lines += 1
+        return {"lines": lines}
     raise _Failed(f"unknown kind {e.kind}")
+
+
+async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str, iso: str) -> Any:
+    """LRN-F25 (episode 6): the Annex mixer on hire, its day logs, the task for its breakdown, its hire bill."""
+    d = e.data
+    machine = None
+    if e.kind != "machine" and "machine" in d:
+        machine = await w.one("SELECT id FROM equipment WHERE organization_id = :o AND name = :n ORDER BY created_at LIMIT 1",
+                              n=d["machine"])
+        if not machine:
+            raise _Wait("the machine is not on hire yet")
+    if e.kind == "machine":
+        if await w.one("SELECT id FROM equipment WHERE organization_id = :o AND name = :n", n=d["machine"]):
+            return {"already": True}  # put on hire by the person, on screen
+        return _ok(await w.call(role, "POST", "/equipment", json={
+            "name": d["machine"], "type": d["type"], "kind": "machine", "ownership": "hired",
+            "vendor_id": w.vendors.get(d["vendor"]), "hire_company": d["vendor"], "rate": d["rate"], "rate_unit": "hour",
+            "site_id": site, "on_hire_from": iso}), e.kind)
+    if e.kind == "machine_log":
+        line: dict[str, Any] = {"equipment_id": str(machine["id"]), "site_id": site, "worked_hours": d["worked"]}
+        if d["breakdown"]:
+            line |= {"breakdown_hours": d["breakdown"], "breakdown_reason": d["reason"]}
+        return _ok(await w.call(role, "POST", "/equipment/logs", json={
+            "occurred_date": iso, "lines": [line], "source": "whatsapp"}), e.kind)
+    if e.kind == "task":
+        if await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t", t=d["title"]):
+            return {"already": True}  # given by the person, on screen
+        issue = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
+                            "ORDER BY created_at DESC LIMIT 1", n=d["narrative"])
+        if not issue:
+            raise _Wait("the breakdown has not raised its problem yet")
+        due = (dt.date.fromisoformat(iso) + dt.timedelta(days=d["due_days"])).isoformat()
+        return _ok(await w.call(role, "POST", "/tasks", json={
+            "project_id": project, "site_id": site, "title": d["title"], "due_date": due, "priority": "high",
+            "assignee_user_id": str(w.users[d["for"]][0]), "site_issue_id": str(issue["id"])}), e.kind)
+    if e.kind == "task_status":
+        task = await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t ORDER BY created_at DESC LIMIT 1",
+                           t=d["title"])
+        if not task:
+            raise _Wait("no task to close")
+        return _ok(await w.call(role, "POST", f"/tasks/{task['id']}/status",
+                                json={"status": d["status"], "note": d["note"]}), e.kind)
+    day0 = dt.date.fromisoformat(iso) - dt.timedelta(days=e.day)
+    if e.kind == "hire_bill":
+        return _ok(await w.call(role, "POST", "/equipment/hire-bills", json={
+            "equipment_id": str(machine["id"]), "period_from": (day0 + dt.timedelta(days=d["from_day"])).isoformat(),
+            "period_to": (day0 + dt.timedelta(days=d["to_day"])).isoformat(), "billed_hours": d["hours"],
+            "amount": d["amount"], "bill_ref": d["bill_ref"], "bill_date": iso}), e.kind)
+    bill = await w.one("SELECT id FROM equipment_hire_bills WHERE organization_id = :o AND bill_ref = :r "
+                       "ORDER BY created_at DESC LIMIT 1", r=d["bill_ref"])
+    if not bill:
+        raise _Wait("no hire bill of that number")
+    return _ok(await w.call(role, "PATCH", f"/equipment/hire-bills/{bill['id']}", json={
+        "billed_hours": d["hours"], "amount": d["amount"], "notes": d["note"]}), e.kind)
 
 
 def _boq_line(boq: Any, work: str, site_name: str) -> str | None:
@@ -502,6 +711,17 @@ def _boq_line(boq: Any, work: str, site_name: str) -> str | None:
     for section in boq.get("sections") or []:
         if site_name not in str(section.get("name") or ""):
             continue
+        for line in section.get("lines") or []:
+            if str(line.get("work") or line.get("description") or "") == work:
+                return str(line["id"])
+    return None
+
+
+def _estimate_line(boq: Any, work: str) -> str | None:
+    """D2: the BOQ line with this work name in any section (Green Villa's BOQ is the estimate, sections by trade)."""
+    if not isinstance(boq, dict):
+        return None
+    for section in boq.get("sections") or []:
         for line in section.get("lines") or []:
             if str(line.get("work") or line.get("description") or "") == work:
                 return str(line["id"])
@@ -542,6 +762,11 @@ async def _record(engine: Any, org: uuid.UUID, e: sp.Entry | None, status: str, 
             {"o": org, "e": entry_id or e.id, "d": day if day is not None else e.day, "s": status,
              "r": role or (e.role if e else None), "rec": json.dumps(record, default=str) if record is not None else None,
              "err": error})
+
+
+def _yours(played: dict[str, str]) -> set[tuple[int, str]]:
+    """(day, role) the person landed on: that role's entries of that day are theirs, done by them or not at all."""
+    return {(int(k.split(":")[1]), k.split(":")[2]) for k in played if k.startswith("you:")}
 
 
 def _day_mark(day: int) -> str:
@@ -712,10 +937,17 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
         await _save(engine, org, start, day0)
     w = _World(engine, app, org, person.organization_id)
     await w.load()
-    # What the person left undone today stays theirs; what they did is ticked first.
+    # What the person left undone today stays theirs; what they did is ticked first. That holds for every role they
+    # landed on a day as (``_yours``), not only the one they move on as: someone who switched role (Ravi's message,
+    # then Anil's task) has the first role's day ticked, and its undone entries are never played late by the cast,
+    # dated another day (found recording episode 6: Ravi's day-5 mixer line played again on day 6).
     me = w.users.get(role, (None, ""))[0]
-    if me:
-        await _tick(engine, org, role, me, start, day0)
+    async with engine.connect() as conn:
+        yours = _yours(await _played(conn, org))
+    for r in {role} | {r for _d, r in yours}:
+        uid = w.users.get(r, (None, ""))[0]
+        if uid:
+            await _tick(engine, org, r, uid, start, day0)
     summary: dict[tuple[str, str], int] = {}
     failed: list[dict[str, Any]] = []
     played_now: list[sp.Entry] = []
@@ -727,7 +959,8 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played = await _played(conn, org)
             yours_today = day == target
             due = [e for e in p.entries if e.day <= day and e.id not in played
-                   and not (e.role == role and (yours_today or e.day < start + 1))]
+                   and not (e.role == role and (yours_today or e.day < start + 1))
+                   and (e.day, e.role) not in yours]
             for e in due:
                 try:
                     record = await _play(w, e)
@@ -742,17 +975,21 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played_now.append(e)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
+            if yours_today:  # the day's entries of this role are the person's from now on (``_yours``), saved with it
+                await _record(engine, org, None, "done", entry_id=f"you:{day:03d}:{role}", day=day, role=role)
             # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
             await _save(engine, org, day, day0)
         async with engine.begin() as conn:
             await conn.execute(sa.text("UPDATE organizations SET sandbox_today = :d WHERE id = :o AND sandbox_of IS NOT NULL"),
                                {"d": day0 + dt.timedelta(days=target), "o": org})
+
     finally:
         await w.close()
     async with engine.connect() as conn:
         played = await _played(conn, org)
     waiting = [{"id": e.id, "day": e.day, "who": sp.WHO[e.role], "what": e.what}
-               for e in p.entries if e.day <= target and e.id not in played and e.role != role]
+               for e in p.entries if e.day <= target and e.id not in played and e.role != role
+               and (e.day, e.role) not in _yours(played)]
     for_you = await _tick(engine, org, role, me, target, day0) if me else []
     finale = None
     if target >= p.last_day:

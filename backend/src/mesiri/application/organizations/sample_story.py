@@ -24,6 +24,8 @@ import datetime as dt
 import uuid
 from typing import Any
 
+from mesiri.application.learn import lake_view
+
 #: The first project and its sites: the company is created with them (``create_company``).
 DEMO_PROJECT = "Green Villa"
 DEMO_SITES = ("Main block", "Annex")
@@ -38,30 +40,64 @@ DEMO_VENDORS = (
     ("Sri Hardwares", "MG Road, Thrissur"), ("Kerala Steels", "Industrial Estate, Kalamassery"),
     ("Malabar Cements Agency", "Palakkad"), ("Periyar Sand & Aggregates", "Aluva"), ("Thrissur Blocks", "Ollur"),
     ("Hi-Tech Electricals", "Ernakulam"), ("City Plywood", "Perumbavoor"),
+    # LRN-F25: the Annex mixer's hire company (episode 6; the kit's hire bill, green_villa.HIRE).
+    ("Kerala Earthmovers & Equipments", "Thrissur"),
 )
 #: SS-65: a subcontractor, so the guided demo's subcontract chapter (work order, measurement, bill) has one to give
 #: work to. In the vendor register as kind ``subcontractor``; no work order yet (the chapter writes it).
 DEMO_SUBCONTRACTORS = (("Joy Tiling Works", "Angamaly", "Tiling and flooring, own crew of 6"),)
-#: The worker register: name, trade, daily wage, the site they work at (index into the four sites).
+#: The worker register: name, trade, daily wage, the site they work at (index into the four sites). The first mason is
+#: Rajan, not Ravi: Ravi is the site engineer (project bible D3, 20 Nov 2026).
 DEMO_WORKERS = (
-    ("Ravi", "mason", 1100, 0), ("Suresh", "mason", 1100, 0), ("Manoj", "mason", 1050, 1), ("Biju", "mason", 1100, 2),
+    ("Rajan", "mason", 1100, 0), ("Suresh", "mason", 1100, 0), ("Manoj", "mason", 1050, 1), ("Biju", "mason", 1100, 2),
     ("Shibu", "mason", 1050, 2), ("Joseph", "carpenter", 1000, 0), ("Thomas", "carpenter", 1000, 2),
     ("Rajesh", "bar bender", 1000, 2), ("Dinesh", "bar bender", 950, 3), ("Prakash", "electrician", 1200, 0),
     ("Satheesh", "plumber", 1150, 1), ("Sunil", "helper", 750, 0), ("Vinod", "helper", 750, 1), ("Shaji", "helper", 700, 2),
     ("Babu", "helper", 700, 3),
 )
-#: Per site: the work done, oldest first (each entry runs for a few days), with a quantity per day.
-#: (work_type, narrative, unit, quantity per day)
-DEMO_WORK = (
-    (("Block work", "First floor block work, east and north walls", "sqm", 18), ("Lintel concreting", "First floor lintel and sunshade cast", "cum", 2.5),
-     ("Plastering", "Ground floor internal plastering", "sqm", 40), ("Electrical conduits", "First floor conduit and box fixing", "nos", 22)),
-    (("Excavation", "Footing excavation for the annex", "cum", 14), ("PCC", "PCC below footings", "cum", 3),
-     ("Footing concreting", "Footings F1 to F6 cast", "cum", 5), ("Plinth beam", "Plinth beam shuttering and steel", "rmt", 24)),
-    (("Column casting", "Third floor columns cast", "cum", 4), ("Slab shuttering", "Third floor slab shuttering", "sqm", 60),
-     ("Slab reinforcement", "Third floor slab steel tying", "kg", 900), ("Slab concreting", "Third floor slab poured, 48 cum RMC", "cum", 16)),
-    (("Excavation", "Basement excavation, grid A to D", "cum", 40), ("Raft reinforcement", "Raft bottom mesh tying", "kg", 1400),
-     ("Raft concreting", "Raft pour, first half", "cum", 30), ("Retaining wall", "Retaining wall shuttering, north side", "sqm", 35)),
+#: Per site: the work done, oldest first. Each stage runs for as many working days as it has quantities (one a day,
+#: never the same every day: a site's output varies), and uses only the materials it names (None: all the site's).
+#: (work_type, narrative, unit, quantity each day, materials used)
+#: The two weeks are month 7 of Green Villa (project bible D1): the Main block's frame is finished, so it is on its
+#: parapet, partitions, plastering and conduits (the 62-day plan carries on from there to handover); the Annex starts
+#: from the ground, in the order a site does it: clearance and setting out, excavation, anti-termite in the pits, PCC,
+#: footings (the plan carries on with its plinth beam).
+DEMO_WORK: tuple[tuple[tuple[str, str, str, tuple[float, ...], tuple[str, ...] | None], ...], ...] = (
+    (("Parapet wall", "Terrace parapet wall, block work", "rmt", (10, 12, 11), ("cement", "solid blocks", "m sand")),
+     ("Brick work in partitions", "First floor partition walls, bathrooms and store", "sqm", (14, 16, 15),
+      ("cement", "solid blocks", "m sand")),
+     ("Plastering", "Ground floor internal plastering", "sqm", (38, 42, 40), ("cement", "m sand", "p sand")),
+     ("Electrical conduits", "First floor conduit and box fixing", "nos", (20, 24, 22), ("cement", "m sand"))),
+    (("Site clearance", "Site clearance and setting out for the annex", "sqm", (65, 55), ()),
+     ("Excavation", "Footing excavation for the annex", "cum", (12, 15, 14), ()),
+     ("Anti-termite treatment", "Anti-termite treatment of the footing pits", "sqm", (45, 35), ()),
+     ("PCC", "PCC below footings", "cum", (3, 3.5), ("cement", "m sand", "aggregate 20mm")),
+     ("Footing concreting", "Footings F1 to F6 cast", "cum", (4, 5, 3.5), ("cement", "m sand", "aggregate 20mm", "steel"))),
+    (("Column casting", "Third floor columns cast", "cum", (4, 4.5, 3.5), None),
+     ("Slab shuttering", "Third floor slab shuttering", "sqm", (55, 65, 60), None),
+     ("Slab reinforcement", "Third floor slab steel tying", "kg", (850, 950, 900), None),
+     ("Slab concreting", "Third floor slab poured, 48 cum RMC", "cum", (16, 16, 16), None)),
+    (("Excavation", "Basement excavation, grid A to D", "cum", (38, 42, 40), None),
+     ("Raft reinforcement", "Raft bottom mesh tying", "kg", (1300, 1500, 1400), None),
+     ("Raft concreting", "Raft pour, first half", "cum", (30, 28, 32), None),
+     ("Retaining wall", "Retaining wall shuttering, north side", "sqm", (30, 35, 40), None)),
 )
+
+
+def stage_on(at: int, index: int) -> tuple[str, str, str, float, tuple[str, ...] | None]:
+    """What site ``at`` does on the seed's ``index``-th working day: (work, narrative, unit, that day's quantity,
+    materials used). Past the last stage's days the site carries on with its last stage."""
+    left = index
+    for work, narrative, unit, days, uses in DEMO_WORK[at]:
+        if left < len(days):
+            return work, narrative, unit, days[left], uses
+        left -= len(days)
+    work, narrative, unit, days, uses = DEMO_WORK[at][-1]
+    return work, narrative, unit, days[-1], uses
+
+
+#: Materials counted in whole pieces, so a day's use of them is a whole number (LRN-F14).
+DEMO_WHOLE = ("cement", "solid blocks")
 #: Per site, daily use: (material, how much a day). Deliveries keep each site stocked; Main block's cement runs low.
 DEMO_USE = (
     (("cement", 22), ("m sand", 1.5), ("solid blocks", 260), ("p sand", 1.2)),
@@ -87,7 +123,7 @@ DEMO_SPENDS = (
 DEMO_ISSUES = (
     (2, "DRAWING_PENDING", "HIGH", "Third floor slab steel drawing not received from the structural consultant",
      ("resolve", "Revised drawing received on WhatsApp, work restarted")),
-    (0, "EQUIPMENT_BREAKDOWN", "MEDIUM", "Concrete mixer motor burnt, lintel work stopped", ("resolve", "Motor rewound, mixer back on site")),
+    (0, "EQUIPMENT_BREAKDOWN", "MEDIUM", "Mixer motor burnt, parapet work stopped", ("resolve", "Motor rewound, mixer back on site")),
     (3, "OTHER", "MEDIUM", "Rain flooded the excavation pit; pumping out water", ("resolve", "Water pumped out, sides shored")),
     (1, "LABOUR_SHORTAGE", "MEDIUM", "Only 2 masons came, footing work slow", ("acknowledge", None)),
     (2, "INSPECTION_WAITING", "HIGH", "Waiting for engineer's inspection before slab pour", ("open", None)),
@@ -109,20 +145,18 @@ DEMO_ORDERS = ((2, "cement", 800, 410), (3, "steel", 24000, 68))
 DEMO_RATE_NOW = {(2, "cement"): (420, 2), (None, "m sand"): (1750, 3)}  # None: at every site
 #: A supplier's bill for more than its deliveries come to: (vendor, how many of its first deliveries, extra billed).
 DEMO_BILL = ("Thrissur Blocks", 1, 2400, "TB/2611")
-#: The estimate (BOQ) of the second project, per work of DEMO_WORK: planned quantity, client rate, labour rate,
-#: material rate. The work recorded on site is counted on these lines, except the newest day's (the office's tap).
-DEMO_BOQ = {
-    "Column casting": (60, 9800, 1900, 5600), "Slab shuttering": (900, 620, 260, 210), "Slab reinforcement": (14000, 92, 12, 70),
-    "Slab concreting": (240, 8900, 900, 6100), "Excavation": (600, 480, 300, 0), "Raft reinforcement": (22000, 90, 11, 70),
-    "Raft concreting": (380, 8700, 850, 6000), "Retaining wall": (520, 640, 270, 220),
-}
 #: Bags of cement a cubic metre of concrete uses (the lines whose work is concreting).
 DEMO_CEMENT_PER_CUM = 8
 #: Advances still out: (worker, amount, days back).
-DEMO_ADVANCES = (("Ravi", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
-#: The second project's client and contract.
-DEMO_CLIENT = {"name": "Lake View Builders", "contact_person": "Mr. Varghese", "address": "Kakkanad, Kochi"}
-DEMO_CONTRACT = {"contract_no": "LVB/2026/014", "contract_value": 42000000, "retention_pct": 5, "gst_pct": 18}
+DEMO_ADVANCES = (("Rajan", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
+#: LRN-F5 (project bible D5, 20 Nov 2026): where the company's money is kept, from the start, so payments have an
+#: account and the Money page is not empty: the bank account (name, bank, opening balance) and a petty-cash box per
+#: site (opening float). The sample company's player uses the same bank account (learn/sandbox_player.py).
+DEMO_BANK = ("Federal Bank current account", "Federal Bank", 2500000)
+DEMO_PETTY_FLOAT = 20000
+#: The second project's client and contract: Lake View's own paperwork (learn/lake_view.py, also the 62-day plan's).
+DEMO_CLIENT = lake_view.CLIENT
+DEMO_CONTRACT = lake_view.CONTRACT
 
 
 async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[dict[str, int], list[str]]:
@@ -172,6 +206,15 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                                                                 "notes": notes})
         if made and made.get("id"):
             vendors[name] = str(made["id"])
+    # D5: the bank account and each site's petty cash, before anything is paid.
+    await post("money account", "/finance/accounts", {"name": DEMO_BANK[0], "account_type": "bank", "bank_name": DEMO_BANK[1],
+                                                      "opening_balance": DEMO_BANK[2]})
+    site_names = (*DEMO_SITES, *DEMO_SITES_2)
+    for i, (project_id, site_id) in enumerate(sites):
+        site_name = site_names[i] if i < len(site_names) else f"site {i + 1}"
+        await post("money account", "/finance/accounts", {"name": f"Petty cash · {site_name}", "account_type": "cash",
+                                                          "opening_balance": DEMO_PETTY_FLOAT, "project_id": project_id,
+                                                          "site_id": site_id})
     workers: list[tuple[dict, str, str, int, int]] = []  # (worker, name, trade, wage, site index)
     for name, trade, wage, at in DEMO_WORKERS:
         made = await post("worker", "/labour/workers", {"name": name, "trade": trade, "default_daily_wage": wage})
@@ -247,13 +290,17 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                 low = stock.get((at, name), 0) < per_day * 3
                 if index == 0 or (low and not (at == 0 and name == "cement" and back <= 4)):
                     await receive(at, name, day)
-            # Use.
+            # Use: what the day's work takes, from what the site keeps.
+            work_type, _narrative, _unit, _qty, uses = stage_on(at, index)
             for name, per_day in DEMO_USE[at]:
+                if uses is not None and name not in uses:
+                    continue
                 found = material(name)
                 use = round(per_day * (0.5 if rained else 1) * (1 + ((index + at) % 3 - 1) * 0.1), 2)
+                if name in DEMO_WHOLE:  # LRN-F14: cement in whole bags, blocks in whole pieces
+                    use = float(round(use))
                 if not found or stock.get((at, name), 0) < use:
                     continue
-                work_type = DEMO_WORK[at][min(index * len(DEMO_WORK[at]) // len(days), len(DEMO_WORK[at]) - 1)][0]
                 if await post("material used", "/materials/outflows", {
                         "project_id": project, "site_id": site, "material_id": found[0], "unit_id": found[1], "quantity": use,
                         "occurred_date": iso, "work_item": work_type}):
@@ -272,7 +319,7 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
             await post("attendance", "/labour/attendance", {"project_id": project, "site_id": site, "occurred_date": iso,
                                                             "recorded_via": "whatsapp_text", "lines": lines})
             # Work done: the stage this site is at, with the day's quantity.
-            work_type, narrative, unit, qty = DEMO_WORK[at][min(index * len(DEMO_WORK[at]) // len(days), len(DEMO_WORK[at]) - 1)]
+            work_type, narrative, unit, qty, _uses = stage_on(at, index)
             qty = round(qty * (0.5 if rained else 1), 2)
             await post("work done", "/progress/activities", {
                 "project_id": project, "site_id": site, "activity_date": iso, "source": "whatsapp_text", "work_type": work_type,
@@ -286,7 +333,7 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
             if rained:
                 conditions["hours_lost"] = DEMO_RAIN[1]
             if back == 0:
-                conditions["tomorrow_plan"] = DEMO_WORK[at][-1][1]
+                conditions["tomorrow_plan"] = stage_on(at, index + 1)[1]
             await call("site conditions", "PATCH", f"/dpr/site-days/{site}/conditions", conditions, params={"date": iso})
         # A transfer between the villa's two sites, a few days ago.
         if back == 4 and len(sites) > 1 and material("cement") and stock.get((1, "cement"), 0) >= 20:
@@ -344,26 +391,30 @@ async def _stories(call: Any, post: Any, *, sites: list[tuple[str, str]], projec
 
     if len(projects) < 2:
         return
-    # The second project's estimate: a section per site, a line per work, the site's work counted on its line.
+    # The second project's estimate, the whole of it (learn/lake_view.py): site works, then per tower its
+    # substructure, structure, and masonry and plaster; the site's work counted on its own tower's line.
     project = projects[1]
     lines: dict[tuple[str, str], str] = {}  # (site id, work) -> line id
     cement = material("cement")
-    for at, (site_project, site) in enumerate(sites):
-        if site_project != project:
+    tower_site = {name: site for at, (site_project, site) in enumerate(sites)
+                  if site_project == project for name in [(DEMO_SITES + DEMO_SITES_2)[at]]}
+    for name, tower, rows in lake_view.ESTIMATE:
+        site = tower_site.get(tower) if tower else None
+        if tower and not site:
             continue
         section = await post("estimate section", f"/projects/{project}/boq/sections",
-                             {"name": f"Structure · {(DEMO_SITES + DEMO_SITES_2)[at]}", "site_id": site})
+                             {"name": name, **({"site_id": site} if site else {})})
         if not section or not section.get("id"):
             continue
-        for work, _narrative, unit, _per_day in DEMO_WORK[at]:
-            planned, client_rate, labour_rate, material_rate = DEMO_BOQ[work]
+        for work, unit, planned, client_rate, labour_rate, material_rate in rows:
             line = await post("estimate line", f"/projects/{project}/boq/sections/{section['id']}/lines", {
                 "work": work, "unit": unit, "planned_quantity": planned, "client_rate": client_rate,
                 "labour_rate": labour_rate, "material_rate": material_rate})
             if not line or not line.get("id"):
                 continue
-            lines[(site, work)] = str(line["id"])
-            if cement and unit == "cum" and "concreting" in work.lower() or work == "Column casting" and cement:
+            if site:
+                lines[(site, work)] = str(line["id"])
+            if cement and unit == "cum" and ("concreting" in work.lower() or work in ("Column casting", "PCC")):
                 await call("estimate norm", "PUT", f"/projects/{project}/boq/lines/{line['id']}/norms",
                            {"norms": [{"material_id": cement[0], "quantity_per_unit": DEMO_CEMENT_PER_CUM, "wastage_pct": 3}]})
     recorded = await call("work to count", "GET", f"/projects/{project}/boq/work", params={"unlinked": True, "limit": 500})
@@ -374,8 +425,9 @@ async def _stories(call: Any, post: Any, *, sites: list[tuple[str, str]], projec
             await call("work counted", "PUT", f"/projects/{project}/boq/work/{item['id']}", {"line_id": line})
 
     # The client, the contract, and a first bill sent for the work measured up to a week ago.
-    if await call("contract", "PUT", f"/projects/{project}/contract", {"new_client": DEMO_CLIENT, **DEMO_CONTRACT,
-                                                                       "signed_on": (today - dt.timedelta(days=30)).isoformat()}):
+    if await call("contract", "PUT", f"/projects/{project}/contract", {
+            "new_client": DEMO_CLIENT, **DEMO_CONTRACT,
+            "signed_on": (today - dt.timedelta(days=lake_view.SIGNED_DAYS_AGO)).isoformat()}):
         week_ago = (today - dt.timedelta(days=7)).isoformat()
         bill = await post("client bill", f"/projects/{project}/ra-bills", {"bill_date": week_ago, "period_to": week_ago})
         if bill and bill.get("id"):

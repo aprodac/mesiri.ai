@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import {
-  catchUp, goBackTo, openingDone, passDays, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
+  catchUp, dayTitle, goBackTo, openingDone, passDays, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
 } from '@/lib/sandbox'
 import { ArrivalIris, Briefing, DayPassScene, EndCredits, OpeningScene, type SceneMode } from '@/components/sandbox-scenes'
 import { prefersReducedMotion } from '@/lib/timeline'
@@ -148,7 +148,7 @@ export function SandboxClock() {
           <CalendarClock className="size-4" aria-hidden />
           {c ? (
             <>
-              Day {c.day} of {c.last_day} · {dayName(c.date)}
+              {c.day > 0 ? `Day ${c.day} of ${c.last_day}` : `${dayTitle(c.day)} · ${c.last_day} days to handover`} · {dayName(c.date)}
             </>
           ) : (
             'Day …'
@@ -199,7 +199,7 @@ export function SandboxClock() {
               </DropdownMenuLabel>
               {saved.map((p) => (
                 <DropdownMenuItem key={p.day} onSelect={() => void back(p.day, p.date)}>
-                  {c && p.day === c.day ? 'Try today again' : `Day ${p.day} · ${dayName(p.date)}`}
+                  {c && p.day === c.day ? 'Try today again' : `${dayTitle(p.day)} · ${dayName(p.date)}`}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

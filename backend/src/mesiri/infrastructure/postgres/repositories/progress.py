@@ -37,6 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.dpr import fact_review
+from mesiri.domains.shared import clock
 
 # site_issue_type / site_issue_status enum members (migration 0430) — kept
 # here rather than in domains/progress/validation.py because that file only
@@ -373,7 +374,7 @@ class PostgresProgressReadRepository:
         self, organization_id: uuid.UUID, user_id: uuid.UUID, payload: dict[str, Any]
     ) -> dict[str, Any]:
         issue_id = uuid.uuid4()
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         issue_type = payload.get("issue_type") or "OTHER"
         severity = payload.get("severity") or "MEDIUM"
         if issue_type not in VALID_ISSUE_TYPES:
@@ -434,7 +435,7 @@ class PostgresProgressReadRepository:
         """OPEN -> ACKNOWLEDGED only. Mirrors resolve_issue's shape but
         narrower: acknowledging an already-ACKNOWLEDGED/RESOLVED/WONT_FIX
         issue is a no-op (returns False), same as re-resolving one does."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         query = """
             UPDATE site_issues
             SET status = 'ACKNOWLEDGED', updated_at = :now
@@ -454,7 +455,7 @@ class PostgresProgressReadRepository:
         WONT_FIX issue to OPEN (see progress_execution.py's
         _ALLOWED_CURRENT_STATUS_BY_ACTION). This REST path simply does not
         offer that transition -- the dashboard has no reopen button."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         query = """
             UPDATE site_issues
             SET status = 'WONT_FIX', resolved_at = :now, resolution_notes = :notes, updated_at = :now
@@ -477,7 +478,7 @@ class PostgresProgressReadRepository:
         REST counterpart of the WhatsApp `cancel` close-out action (same
         allowed statuses, same columns, same event), added for rejecting a
         draft issue (BE-09)."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         query = """
             UPDATE site_issues
             SET status = 'CANCELLED', resolved_at = :now, resolution_notes = :notes, updated_at = :now
@@ -495,7 +496,7 @@ class PostgresProgressReadRepository:
     async def resolve_issue(
         self, organization_id: uuid.UUID, issue_id: uuid.UUID, notes: str | None
     ) -> bool:
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         query = """
             UPDATE site_issues
             SET status = 'RESOLVED', resolved_at = :now, resolution_notes = :notes, updated_at = :now
@@ -725,7 +726,7 @@ class PostgresProgressReadRepository:
             return None
 
         set_clauses: list[str] = []
-        params: dict[str, Any] = {"id": activity_id, "now": datetime.datetime.now(datetime.UTC)}
+        params: dict[str, Any] = {"id": activity_id, "now": clock.at(datetime.datetime.now(datetime.UTC))}
         corrections: list[tuple[str, Any, Any]] = []
         for field, new_value in changes.items():
             old_value = current[field]
@@ -805,7 +806,7 @@ class PostgresProgressReadRepository:
         ):
             return "this activity is already part of an approved daily report and cannot be undone"
 
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         res = await self._conn.execute(
             text(
                 "UPDATE activities SET deleted_at = :now, updated_at = :now "
@@ -1032,7 +1033,7 @@ class PostgresProgressReadRepository:
         ):
             return "this update is already part of an approved daily report and cannot be undone"
 
-        now = datetime.datetime.now(datetime.UTC)
+        now = clock.at(datetime.datetime.now(datetime.UTC))
         res = await self._conn.execute(
             text("UPDATE progress_updates SET deleted_at = :now WHERE id = :id"),
             {"id": update_id, "now": now},

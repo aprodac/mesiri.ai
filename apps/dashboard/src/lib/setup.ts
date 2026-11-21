@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchSetupProgress, type SetupProgress } from './api'
 import { useAuth } from './AuthContext'
 import { useStartMode } from './start-mode'
+import { guideLink } from './guide-links'
 
 // The getting-started checklist (SS-07, SS-19), read once and shared by the
 // card on Today and the sidebar's "Finish setup" link.
@@ -66,3 +67,28 @@ export function setupCounts(p: SetupProgress, guide?: GuideSteps): { done: numbe
 
 /** Where the sidebar's "Finish setup" goes: Today, with the card shown. */
 export const SETUP_URL = '/home?setup=1'
+
+/** UX-74: the setup steps as the sidebar shows them while a company is setting up: a short name and where each is
+ *  done, in setupSteps' order (the card on Home keeps the longer words and the in-place choices). */
+export interface SetupNavStep {
+  key: string
+  title: string
+  url: string
+  done: boolean
+}
+
+export function setupNavSteps(p: SetupProgress, guide?: GuideSteps): SetupNavStep[] {
+  const done = setupSteps(p, guide)
+  const project = p.first_project ? `/projects/${p.first_project.id}?tab=reporting` : SETUP_URL
+  const steps: Omit<SetupNavStep, 'done'>[] = [
+    { key: 'site', title: 'Add your first site', url: guideLink('/projects') },
+    { key: 'team', title: 'Add your site engineer', url: guideLink('/team') },
+    { key: 'update', title: 'First update from site', url: SETUP_URL },
+    { key: 'time', title: 'Daily report time', url: SETUP_URL },
+    { key: 'logo', title: 'Your logo on the report', url: guideLink('/company?tab=letterhead') },
+    { key: 'dpr', title: 'First daily report sent', url: project },
+  ]
+  if (guide?.dataSteps) steps.push({ key: 'vendors', title: 'Bring vendors and materials', url: guideLink('/bring-data') }, { key: 'boq', title: 'Bring your BOQ', url: guideLink('/bring-data') })
+  if (guide?.whereThingsAre) steps.push({ key: 'where', title: 'Where things are', url: SETUP_URL })
+  return steps.map((s, i) => ({ ...s, done: !!done[i] }))
+}

@@ -19,10 +19,12 @@ import { usePreferences, type Preferences } from './start-mode'
 export const ORDERABLE: NavSection[] = ['tasks', 'plan', 'site', 'buy', 'money']
 
 /** Pages that are always at the top of the sidebar, so never pinned. */
-export const EVERYDAY = ['/home', '/today', '/reports', '/issues', '/live']
+export const EVERYDAY = ['/home', '/today', '/reports', '/issues']
 
 /** At most this many pinned pages: past it the pinned list stops being a shortcut. */
-export const MAX_PINS = 12
+// UX-74: 8, so the sidebar never scrolls (everyday rows + pins + All pages fit a laptop screen); everything else is
+// one click away in All pages.
+export const MAX_PINS = 8
 
 /** Each role's first pinned pages: the ones that role opens most days, in the order of their day. */
 export const ROLE_PINS: Record<string, string[]> = {

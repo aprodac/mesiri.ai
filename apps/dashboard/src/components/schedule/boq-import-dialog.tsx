@@ -289,7 +289,10 @@ const COLUMN_MEANING: Record<string, string> = {
 function WhatCameIn({ report }: { report: BoqImportReport }) {
   const contract = Number(report.contract_value || 0)
   const budget = Number(report.budget_cost || 0)
-  const margin = contract && budget ? contract - budget : null
+  // Only the lines with both rates have a margin: an unpriced line's value is not profit (20 Nov test).
+  const unpriced = report.lines_without_budget_rate ?? 0
+  const pricedContract = report.priced_contract_value !== undefined ? Number(report.priced_contract_value) : contract
+  const margin = report.margin_priced !== undefined ? (budget ? Number(report.margin_priced) : null) : contract && budget ? contract - budget : null
   const cols = Object.keys(report.columns).filter((k) => COLUMN_MEANING[k])
   return (
     <section className="flex flex-col gap-2 rounded-lg border border-info/30 bg-info-soft/40 p-3 text-sm" aria-label="What came in">
@@ -312,8 +315,11 @@ function WhatCameIn({ report }: { report: BoqImportReport }) {
           {budget > 0 && (
             <> Quantity × your own rates: it costs you <span className="font-semibold tabular-nums">{formatRupees(report.budget_cost)}</span>.</>
           )}
-          {margin !== null && (
+          {margin !== null && unpriced === 0 && (
             <> What is left, <span className={margin < 0 ? 'font-semibold text-destructive' : 'font-semibold'}>{formatRupees(String(margin))}</span>, is your margin ({Math.round((margin / contract) * 100)}%).</>
+          )}
+          {margin !== null && unpriced > 0 && (
+            <> {unpriced} {unpriced === 1 ? 'line has' : 'lines have'} no cost of your own yet, so on the lines that do, your margin so far is <span className={margin < 0 ? 'font-semibold text-destructive' : 'font-semibold'}>{formatRupees(String(margin))}</span>{pricedContract ? ` (${Math.round((margin / pricedContract) * 100)}%)` : ''}. Not final until every line has a cost.</>
           )}
         </p>
       )}

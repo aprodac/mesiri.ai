@@ -22,7 +22,9 @@ import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-40: ask suppliers for quotes. From a site's request it opens filled in (its site and what is still to buy, each
 // line linked so the request follows the order the award makes); from Rates with the item. Suppliers are picked as
-// chips from the company's list (the ones who sold this category before first) or typed new.
+// chips from the company's list (the ones who sold this category before first) or typed new. UX-85: from a request the
+// office can quote for more than it asks (never less than is still to buy) and add items for the same site; the
+// request's items stay, linked to it.
 
 export interface RfqPrefill {
   project_id?: string
@@ -34,7 +36,8 @@ export interface RfqPrefill {
   suppliers?: string[]
 }
 
-type Line = { key: number; materialId: string; quantity: string }
+/** `atLeast`: an item of the site's request: its material stays, its quantity never below what is still to buy. */
+type Line = { key: number; materialId: string; quantity: string; atLeast?: string }
 type Due = 'today' | 'tomorrow' | 'three' | 'pick'
 
 function iso(d: Date): string {
@@ -76,7 +79,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
     if (!open) return
     setProjectId(prefill?.project_id ?? scopedProject)
     setSiteId(prefill?.site_id ?? scopedSite)
-    setLines(prefill?.lines?.length ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity })) : [{ key: 1, materialId: '', quantity: '' }])
+    setLines(prefill?.lines?.length ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, atLeast: prefill?.request_id ? l.quantity : undefined })) : [{ key: 1, materialId: '', quantity: '' }])
     setSuppliers(prefill?.suppliers ?? [])
     setTyped('')
     setDue('tomorrow')
@@ -103,6 +106,8 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
   const suggested = React.useMemo(() => vendors.filter((v) => v.status === 'active' && !suppliers.some((s) => s.toLowerCase() === v.name.toLowerCase())).slice(0, 8), [vendors, suppliers])
 
   const ready = lines.filter((l) => l.materialId && Number(l.quantity) > 0)
+  const short = lines.find((l) => l.atLeast && Number(l.quantity) < Number(l.atLeast))
+  const linesOut = () => ready.map((l) => ({ material_id: l.materialId, quantity: l.quantity, unit_id: materials.find((m) => m.id === l.materialId)?.default_unit_id ?? '' }))
   const addSupplier = (name: string) => {
     const clean = name.trim()
     if (clean && !suppliers.some((s) => s.toLowerCase() === clean.toLowerCase())) setSuppliers((all) => [...all, clean])
@@ -112,10 +117,10 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
 
   const save = useMutation({
     mutationFn: () => createRfq(fromRequest
-      ? { request_id: prefill!.request_id, suppliers, due_date: dueDate(due, picked), needed_by: neededBy || null, terms: terms.trim() || null }
+      ? { request_id: prefill!.request_id, suppliers, due_date: dueDate(due, picked), needed_by: neededBy || null, terms: terms.trim() || null, lines: linesOut() }
       : {
         project_id: projectId, site_id: siteId, suppliers, due_date: dueDate(due, picked), needed_by: neededBy || null, terms: terms.trim() || null,
-        lines: ready.map((l) => ({ material_id: l.materialId, quantity: l.quantity, unit_id: materials.find((m) => m.id === l.materialId)?.default_unit_id ?? '' })),
+        lines: linesOut(),
       }),
     onSuccess: (rfq) => {
       queryClient.invalidateQueries({ queryKey: ['procurement'] })
@@ -128,7 +133,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
       setError(typeof detail === 'string' ? detail : 'Not saved. Try again.')
     },
   })
-  const canSave = (fromRequest || (!!projectId && !!siteId && ready.length > 0)) && suppliers.length > 0 && !save.isPending && (due !== 'pick' || !!picked)
+  const canSave = !short && (fromRequest || (!!projectId && !!siteId && ready.length > 0)) && suppliers.length > 0 && !save.isPending && (due !== 'pick' || !!picked)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,7 +162,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
           )}
 
           <div className="flex flex-col gap-2">
-            <Label>Items{fromRequest ? <span className="font-normal text-muted-foreground"> · what {prefill?.request_ref} still needs, at {prefill?.site_name}</span> : null}</Label>
+            <Label>Items{fromRequest ? <span className="font-normal text-muted-foreground"> · what {prefill?.request_ref} still needs, at {prefill?.site_name}: quote for more or add items for the site</span> : null}</Label>
             {lines.map((line) => {
               const material = materials.find((m) => m.id === line.materialId)
               const main = material?.category_id ? paths.get(material.category_id)?.main.name ?? null : null
@@ -165,21 +170,20 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
                 <div key={line.key} className="flex flex-wrap items-center gap-2 rounded-xl border p-2.5">
                   <CategoryTile mainCategory={main} />
                   <div className="min-w-[180px] flex-1">
-                    <Combobox options={options} value={line.materialId} onValueChange={(v) => update(line.key, { materialId: v })} placeholder="Item" searchPlaceholder="Name or size" emptyText="Not in your list. Add it in Materials > Items." disabled={fromRequest} />
+                    <Combobox options={options} value={line.materialId} onValueChange={(v) => update(line.key, { materialId: v })} placeholder="Item" searchPlaceholder="Name or size" emptyText="Not in your list. Add it in Materials > Items." disabled={!!line.atLeast} />
                   </div>
                   <div className="flex w-36 items-center rounded-md border focus-within:ring-2 focus-within:ring-ring">
-                    <Input aria-label="Quantity" inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={line.quantity} placeholder="0" disabled={fromRequest} onChange={(e) => update(line.key, { quantity: e.target.value.replace(/[^0-9.]/g, '') })} />
+                    <Input aria-label="Quantity" inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={line.quantity} placeholder="0" onChange={(e) => update(line.key, { quantity: e.target.value.replace(/[^0-9.]/g, '') })} />
                     <span className="pr-2.5 text-xs text-muted-foreground">{material?.default_unit ?? ''}</span>
                   </div>
-                  {lines.length > 1 && !fromRequest && <Button type="button" variant="ghost" size="icon" aria-label="Remove item" onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}><X className="size-4" /></Button>}
+                  {line.atLeast && <span className={cn('text-xs', Number(line.quantity) < Number(line.atLeast) ? 'text-destructive' : 'text-muted-foreground')}>at least {line.atLeast}: the site still needs it</span>}
+                  {lines.length > 1 && !line.atLeast && <Button type="button" variant="ghost" size="icon" aria-label="Remove item" onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}><X className="size-4" /></Button>}
                 </div>
               )
             })}
-            {!fromRequest && (
-              <Button type="button" variant="outline" className="h-10 justify-start gap-2 border-dashed text-muted-foreground" onClick={() => setLines((all) => [...all, { key: Math.max(0, ...all.map((l) => l.key)) + 1, materialId: '', quantity: '' }])}>
-                <Plus className="size-4" /> Add item
-              </Button>
-            )}
+            <Button type="button" variant="outline" className="h-10 justify-start gap-2 border-dashed text-muted-foreground" onClick={() => setLines((all) => [...all, { key: Math.max(0, ...all.map((l) => l.key)) + 1, materialId: '', quantity: '' }])}>
+              <Plus className="size-4" /> Add item
+            </Button>
           </div>
 
           <div className="flex flex-col gap-2">

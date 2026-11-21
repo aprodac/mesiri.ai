@@ -148,6 +148,64 @@ Rules:
 - **Search / jump (⌘K):** one box that finds any page, project, site, supplier or worker. This needs `cmdk`, which
   DESIGN_SYSTEM.md already recommended. It is the only new library, and it is optional (decision D-UX4).
 
+### 4.4 UX-74: what you need now, one screen (20 Nov 2026)
+
+Asked: *"what that user needs at that particular time only should be there ... when setting up a project, only that
+... the need to scroll the sidebar should not be there. The sidebar should look very simple"*, and the top bar *"has
+On WhatsApp, then a help, then an issues icon. A lot of things. It's very messy"*; then *"do the recommended things
+and make it simpler and easy UX for everyone"*. Researched first (practitioner guides, NN/g, SAP Fiori, Salt,
+Procore, Odoo, Zoho): navigate by job, keep the visible list short; hide what a role may never use, show
+locked-with-a-reason what is coming; the top bar holds only global things; search holds the rest.
+
+**Sidebar** (`components/app-sidebar.tsx`), top to bottom, never scrolling (checked at 900, 650 and 600 px tall for
+every role):
+
+| Part | What | Who |
+|---|---|---|
+| Set up | progress (`2 of 6`), the next step, "N more steps" to Home's checklist (`lib/setup.ts setupNavSteps`, the card's order) | a company admin while steps remain |
+| Every day | Home, Today, Daily reports, Issues (site engineer: no Home; accounts: Home, Issues). Until a site's first update, Today, Daily reports and Issues show **locked**: a tap says "Opens when your first site update arrives" | everyone |
+| Your pages | the person's pins (UX-65), at most 8; on a short screen the ones that don't fit wait in All pages ("+N pinned") | everyone, once updates come |
+| All pages | `components/all-pages.tsx`: every page the role may open, as cards (section · module), a filter, a pin on each page | everyone |
+| Foot | Learn Mesiri, Settings; the person's name opens one menu: light/dark, Customise, (platform admin: planned modules), Log out | |
+
+Gone from the sidebar: Live (a presenter's page for demos: from Learn, or its address), the Plan/Site/Buy/Money
+drawers (now All pages), "Show all +13", Bring your data (a setup step), Finish setup (the Set up group), the separate
+Customise, Search, + New, Signed in and Log out rows.
+
+**Top bar** (`components/app-layout.tsx`): where you are (project picker and breadcrumb, kept at the top left: it is
+already the root of the breadcrumb, the Vercel/GitHub pattern) · Search (Ctrl K) · the page's WhatsApp way in (an
+icon, only where the page has one) · **New** (`components/new-button.tsx`: "Tell Mesiri anything", then the role's
+starters; one yellow button where there were two doors to the same assistant) · Help (icon) · one bell. Gone: the date
+chip (each page says its day) and the issues icon (the sidebar's red badge on Issues, and the bell).
+
+The app tour (`lib/tours.ts` APP_TOUR, version 2) tells the new sidebar: what you need now, your pages, All pages.
+Not done here: Home and Today themselves (next), and the project's stage (planning / running / handover) shaping the
+rows: today the stage is the company's setup only.
+
+### 4.5 UX-75: Home and Today, redesigned (20 Nov 2026)
+
+Asked: *"the home page is the one with the worst designs. Home page and today"*, then *"yes start the home and today
+redesign"*. Research (dashboard guidance from Domo, UX Pilot's summary of Tableau eye-tracking, field-ops patterns):
+lead with what needs attention, keep a handful of figures with red/amber/green beside it rather than a row of equal
+cards (the last cards in a row of five are barely seen), and show many sites as a status list, not a grid of cards.
+
+**Home** (`pages/HomePage.tsx`):
+
+| Where | What |
+|---|---|
+| Header | the greeting, the date, and one status pill from Needs you: "3 urgent things need you, 2 more this week" (red), "N things need you this week" (amber), "Nothing needs you right now" (green). No buttons: New is in the top bar, Today in the sidebar |
+| Getting started | the full checklist only while no site has sent its first update, or when asked (`/home?setup=1`, the sidebar's "N more steps"); otherwise the sidebar's Set up carries the next step |
+| Left | **Needs you** (was This week: one column, worst first, each line its amount and its page), then **Your projects** ("Today on site" is now a link) |
+| Right | **At a glance**: the role's figures as rows with a coloured dot (`RoleHome list`, the same tiles and rules, drawn small), then tasks, what waits on suppliers and bills, time saved |
+
+**Today** (`pages/TodayPage.tsx`, `components/home/today-hero.tsx`): the five figure cards became one strip (sites
+reported leads, with its bar and the time to the cutoff; workers, work done, photos, open issues follow); each site is
+one row in its project's list: its state, who sent the last update and when, the day's figures inline (zeros faded),
+the latest words or what is missing, and Review / No work today. The page's Tell Mesiri button and the Tell box at the
+bottom went (the top bar's New). Issues stay on the right, worst first.
+
+Tours: Home's (version 2) names Needs you and At a glance; Today's (version 4) drops the Tell step.
+
 ## 4b. A home for each role (UX-11)
 
 **Today becomes Home**, one address (`/today`) with a different first screen per role. The page is built from tiles

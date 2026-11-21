@@ -14,7 +14,6 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { FirstReportMoment } from '@/components/first-report-moment'
-import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -117,49 +116,53 @@ function SiteCard({
     { icon: Package, n: site.materials, label: 'material' },
     { icon: Camera, n: site.photos, label: 'photos' },
   ]
+  // UX-75: one row per site (a status list scans faster than a grid of cards when there are many sites): its state,
+  // who sent the last update and when, the day's figures inline (zeros faded), the latest words, and its action.
+  const line =
+    site.site_working === 'none' ? (
+      <span className="text-muted-foreground">Marked as no work today</span>
+    ) : drafts > 0 ? (
+      <span className="font-semibold text-draft">{plural(drafts, 'item')} still to confirm</span>
+    ) : missing && !done ? (
+      <span className={cn(site.missing_sections?.blocking.length ? 'text-draft' : 'text-muted-foreground')}>{missing}</span>
+    ) : site.latest_update ? (
+      <span className="text-foreground/75 italic">“{site.latest_update}”</span>
+    ) : site.open_issues ? (
+      <span className="text-destructive">{plural(site.open_issues, 'open issue')}</span>
+    ) : quiet ? (
+      <span className="text-muted-foreground">Waiting for the first update</span>
+    ) : (
+      <span className="text-muted-foreground">{done ? 'Day confirmed' : 'Updates coming in'}</span>
+    )
   return (
-    <li className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md" data-record-id={site.site_id}>
-      <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', look.bar)} />
-      <div className="flex items-start gap-2.5 px-4 pt-3.5 pl-5">
-        <look.icon className={cn('mt-0.5 size-5 shrink-0', look.iconClass)} aria-hidden />
+    <li className="group relative flex flex-col gap-2 py-3 pr-3 pl-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:gap-4" data-record-id={site.site_id}>
+      <span aria-hidden className={cn('absolute inset-y-2 left-0 w-1 rounded-r', look.bar)} />
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        <look.icon className={cn('mt-0.5 size-4.5 shrink-0', look.iconClass)} aria-hidden />
         <div className="min-w-0 flex-1">
-          <Link to={siteDayPath(site.site_id, date)} className="block truncate text-[15px] font-semibold after:absolute after:inset-0 hover:underline">
-            {site.site_name}
-          </Link>
-          <p className="truncate text-xs text-muted-foreground">
-            {lastAt ? `Last at ${lastAt}${site.last_update_by ? ` · ${site.last_update_by}` : ''}` : 'Nothing received yet'}
-          </p>
-        </div>
-        <span className={cn(CHIP, 'shrink-0', status.className)}>{status.label}</span>
-      </div>
-      <div className="mt-3 grid grid-cols-4 gap-1 px-4 pl-5">
-        {figures.map((f) => (
-          <div key={f.label} className={cn('flex flex-col items-start rounded-lg px-2 py-1.5', f.n ? 'bg-muted/60' : 'bg-muted/25')} title={`${f.n} ${f.label}`}>
-            <f.icon className={cn('size-3.5', f.n ? 'text-foreground/70' : 'text-muted-foreground/50')} aria-hidden />
-            <span className={cn('mt-0.5 text-lg leading-tight font-semibold tabular-nums', !f.n && 'text-muted-foreground/40')}>{f.n || '–'}</span>
-            <span className="text-[10px] text-muted-foreground">{f.label}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <Link to={siteDayPath(site.site_id, date)} className="truncate text-[15px] font-semibold after:absolute after:inset-0 hover:underline">
+              {site.site_name}
+            </Link>
+            <span className={cn(CHIP, 'shrink-0', status.className)}>{status.label}</span>
+            <span className="text-xs text-muted-foreground">
+              {lastAt ? `${lastAt}${site.last_update_by ? ` · ${site.last_update_by}` : ''}` : 'Nothing yet'}
+            </span>
           </div>
-        ))}
-      </div>
-      <div className="mt-3 flex min-h-11 flex-1 items-center gap-2 border-t bg-muted/20 px-4 py-2 pl-5">
-        <div className="min-w-0 flex-1 text-xs">
-          {site.site_working === 'none' ? (
-            <span className="text-muted-foreground">Marked as no work today</span>
-          ) : drafts > 0 ? (
-            <span className="font-semibold text-draft">{plural(drafts, 'item')} still to confirm</span>
-          ) : missing && !done ? (
-            <span className={cn('line-clamp-1', site.missing_sections?.blocking.length ? 'text-draft' : 'text-muted-foreground')}>{missing}</span>
-          ) : site.latest_update ? (
-            <span className="line-clamp-1 text-foreground/75 italic">“{site.latest_update}”</span>
-          ) : site.open_issues ? (
-            <span className="text-destructive">{plural(site.open_issues, 'open issue')}</span>
-          ) : quiet ? (
-            <span className="text-muted-foreground">Waiting for the first update</span>
-          ) : (
-            <span className="text-muted-foreground">{done ? 'Day confirmed' : 'Updates coming in'}</span>
-          )}
+          <p className="mt-0.5 line-clamp-1 text-xs">{line}</p>
         </div>
-        <div className="relative z-10 flex shrink-0 items-center gap-1.5 empty:hidden">
+      </div>
+      <div className="flex shrink-0 items-center gap-3 pl-7 sm:pl-0">
+        <div className="flex items-center gap-3 text-xs">
+          {figures.map((f) => (
+            <span key={f.label} className={cn('inline-flex items-center gap-1 tabular-nums', f.n ? 'text-foreground' : 'text-muted-foreground/45')} title={`${f.n} ${f.label}`}>
+              <f.icon className="size-3.5" aria-hidden />
+              <span className="font-semibold">{f.n || '–'}</span>
+              <span className="hidden text-muted-foreground lg:inline">{f.label}</span>
+            </span>
+          ))}
+        </div>
+        <div className="relative z-10 flex items-center gap-1.5 empty:hidden">
           {canMarkNoWork && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" disabled={busy} onClick={() => onNoWork(site)}>
               No work today
@@ -333,8 +336,6 @@ export default function TodayPage() {
         onToday={() => shiftDay(daysBack)}
         onRefresh={refresh}
         refreshing={daysQuery.isFetching}
-        showLive={isToday && projects.length > 0}
-        canTell={!readOnly}
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -405,7 +406,7 @@ export default function TodayPage() {
                       )}
                     </div>
                   </header>
-                  <ul className="grid gap-3 sm:grid-cols-2">
+                  <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
                     {projectSites.map((site) => (
                       <SiteCard key={site.site_id} site={site} date={date} busy={busySite === site.site_id} onNoWork={markNoWork} />
                     ))}
@@ -413,7 +414,6 @@ export default function TodayPage() {
                 </section>
               )
             })}
-            {isToday && <div data-guide="today.tell"><TellMesiri className="rounded-xl border bg-card px-4 py-3" /></div>}
           </div>
       )}
         </div>

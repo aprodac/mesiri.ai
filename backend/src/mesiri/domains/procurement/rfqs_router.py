@@ -250,21 +250,44 @@ async def _lines(conn: AsyncConnection, auth: AuthorizationContext, project_id: 
     return out
 
 
+def _with_request(ref: str, asked: list[RfqLineIn], said: list[RfqLineIn]) -> list[RfqLineIn]:
+    """UX-85: the request's items (linked to its lines), each at the office's quantity when it said one (never less
+    than what is still to buy), then the office's other items."""
+    if not said:
+        return asked
+    by_material = {line.material_id: line for line in said}
+    out = []
+    for line in asked:
+        mine = by_material.pop(line.material_id, None)
+        if mine is None:
+            raise HTTPException(status_code=422, detail=f"Keep every item of {ref} on the quotes: it is what the site asked for.")
+        if mine.unit_id == line.unit_id and mine.quantity < line.quantity:
+            raise HTTPException(status_code=422, detail=f"{ref} still needs {line.quantity.normalize():f} of an item: "
+                                                        "quote for at least that.")
+        out.append(RfqLineIn(material_id=line.material_id, unit_id=mine.unit_id, quantity=mine.quantity,
+                             request_line_id=line.request_line_id, notes=mine.notes))
+    return out + [RfqLineIn(material_id=x.material_id, unit_id=x.unit_id, quantity=x.quantity, notes=x.notes)
+                  for x in by_material.values()]
+
+
 @router.post("", status_code=201)
 async def create_rfq(body: RfqCreate, auth_context: AuthorizationContext = Depends(get_auth_context),
                      conn: AsyncConnection = Depends(get_db_conn)):
-    """Ask suppliers for quotes. From a site's request (``request_id``): its site, and per item what is still to buy."""
+    """Ask suppliers for quotes. From a site's request (``request_id``): its site, and per item what is still to buy.
+
+    UX-85: with ``lines`` too, the office quotes for more than the site asked (the month's need, another item for the
+    same site): every item of the request stays on it, linked to its request line, at no less than what is still to
+    buy; other lines are added as they are."""
     _office(auth_context)
     if body.request_id is not None:
-        if body.lines:
-            raise HTTPException(status_code=422, detail="Quotes for a request take its items from the request.")
         req = await one_request(conn, auth_context, body.request_id)
         if req["status"] not in (request_store.WAITING, "ordered"):
             raise HTTPException(status_code=409, detail=f"{req['ref']} is {req['status']}; it is not bought now.")
         body.project_id, body.site_id = uuid.UUID(req["project_id"]), uuid.UUID(req["site_id"])
-        body.lines = [RfqLineIn(material_id=uuid.UUID(x["material_id"]), unit_id=uuid.UUID(x["unit_id"]),
-                                quantity=Decimal(x["to_buy"]) if Decimal(x["to_buy"]) > 0 else Decimal(x["quantity"]),
-                                request_line_id=uuid.UUID(x["id"])) for x in req["lines"]]
+        asked = [RfqLineIn(material_id=uuid.UUID(x["material_id"]), unit_id=uuid.UUID(x["unit_id"]),
+                           quantity=Decimal(x["to_buy"]) if Decimal(x["to_buy"]) > 0 else Decimal(x["quantity"]),
+                           request_line_id=uuid.UUID(x["id"])) for x in req["lines"]]
+        body.lines = _with_request(req["ref"], asked, body.lines)
         if body.needed_by is None and req.get("needed_by"):
             body.needed_by = datetime.date.fromisoformat(req["needed_by"])
     if not body.lines:

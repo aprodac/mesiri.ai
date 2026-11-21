@@ -33,7 +33,7 @@ class ProjectDTO:
     auto_generate_dpr: bool = False
     dpr_send_deadline: str = "21:00"
     required_report_types: list[str] | None = None
-    # PS-05 (migration 0563): the project's kind and size.
+    # PS-05 (migration 0564): the project's kind and size.
     project_type: str | None = None
     built_up_area_sqft: float | None = None
     floors: int | None = None

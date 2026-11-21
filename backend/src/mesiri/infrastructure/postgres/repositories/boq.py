@@ -347,7 +347,7 @@ class PostgresBoqRepository:
             text("UPDATE work_package_planned_items SET superseded_by_id = :new WHERE id = :old"),
             {"new": new_id, "old": line["id"]},
         )
-        # PS phase 2b (0565): so does the line's split by site.
+        # PS phase 2b (0566): so does the line's split by site.
         await self.conn.execute(
             text("UPDATE boq_line_sites SET planned_item_id = :new, updated_at = now() WHERE planned_item_id = :old"),
             {"new": new_id, "old": line["id"]},

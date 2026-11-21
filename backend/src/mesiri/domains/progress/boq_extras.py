@@ -1,4 +1,4 @@
-"""The BOQ the way construction ERPs keep it (PS phase 2b, migration 0565). Every function takes the request's
+"""The BOQ the way construction ERPs keep it (PS phase 2b, migration 0566). Every function takes the request's
 connection and never commits.
 
 - **Quantities per site** (``boq_line_sites``): "plastering 1,450 sqm" split into Villa 1..4. A line with no split is for

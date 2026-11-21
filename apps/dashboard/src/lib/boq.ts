@@ -8,6 +8,10 @@ export interface BoqTotals {
   contract_value: string | null
   budget_cost: string | null
   margin: string | null
+  /** The margin of the lines with both rates, and their contract value: shown, marked not final, while some lines
+   *  have no rate (`margin` waits for every line). */
+  margin_priced?: string | null
+  priced_contract_value?: string | null
   lines_without_client_rate: number
   lines_without_budget_rate: number
   /** CC-04: budget earned by the work done; null when no priced line has work. */
@@ -15,8 +19,7 @@ export interface BoqTotals {
   /** PS phase 2: the margin of the lines priced both ways ("on 31 of 34 lines"); `margin` needs every line priced. */
   priced_lines?: number
   priced_margin?: string | null
-  priced_contract_value?: string | null
-  /** PS phase 2 (0564): the project's overheads (% of budget cost) and the margin after them; null when not set. */
+  /** PS phase 2 (0565): the project's overheads (% of budget cost) and the margin after them; null when not set. */
   overhead_pct?: string | null
   overhead_cost?: string | null
   margin_after_overheads?: string | null
@@ -34,9 +37,9 @@ export interface BoqLine {
   labour_rate: string | null
   material_rate: string | null
   subcontract_rate: string | null
-  /** PS phase 2 (0564): machines (mixer, JCB, crane hire) per unit, the fourth budget rate. */
+  /** PS phase 2 (0565): machines (mixer, JCB, crane hire) per unit, the fourth budget rate. */
   machinery_rate?: string | null
-  /** PS phase 2b (0565): the fifth budget rate (temporary works, testing, small tools), and a provisional sum. */
+  /** PS phase 2b (0566): the fifth budget rate (temporary works, testing, small tools), and a provisional sum. */
   other_rate?: string | null
   is_provisional?: boolean
   /** PS phase 2b: the quantity split by site, with each site's work done; empty = the whole project. */

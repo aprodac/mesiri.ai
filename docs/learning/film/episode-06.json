@@ -1,0 +1,463 @@
+{
+  "episode": 6,
+  "title": "Problems and machines",
+  "status": "DRAFT for Ilan's review (21 Nov 2026). Recorded from real entries in the sample company (days 4, 5, 6 and 9); the words follow the screens.",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 6's objective); EPISODE_06_PLAN.md; the 62-day plan's mixer story (green_villa.HIRE, LRN-F25): on hire day 2, logged days 2 to 7, broken down day 5, fixed day 6, billed day 9. Figures said are the plan's; read them off the screen when recording.",
+  "objective": "By the end you can follow a problem from WhatsApp to fixed (a log, a problem, a task for someone, closed), and a machine's day (log, breakdown, hire check), and say why idle time costs money.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 6",
+      "title": "Problems and machines",
+      "beats": [
+        "Thursday, half past ten, at the Annex. The plinth filling is half done, and the mixer goes quiet.",
+        "The motor has burnt out. Eight people, a day's concrete to mix, and a machine the company pays for by the hour.",
+        "Who writes down that it stopped? Who gets it fixed, and by when? And when the hire company's bill comes, who makes sure we do not pay for the hours it stood still? This episode is that week."
+      ],
+      "lines": [
+        {
+          "at": 1,
+          "text": "Annex · day 5 · the mixer stops"
+        },
+        {
+          "at": 2,
+          "text": "Log → problem → task → fixed → bill checked"
+        }
+      ]
+    },
+    {
+      "id": "how",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "What stops a site",
+      "beats": [
+        "Five things stop a site: a machine, a drawing, a material, a person, the weather.",
+        "Each one costs twice. The work that does not get done, and the people who are paid to wait for it.",
+        "A hired machine costs a third way. The hire company bills by the hour, from its own operator's log. If nobody on site writes down the hours it stood still, those hours are on the bill.",
+        "So a problem on site needs three things: someone to say it, someone to own the fix by a day, and a record that it was fixed. And a hired machine needs one more: its hours, every evening."
+      ],
+      "steps": [
+        {
+          "at": 0,
+          "module": "What stops a site",
+          "text": "Machine, drawing, material, people, weather"
+        },
+        {
+          "at": 1,
+          "module": "Twice the cost",
+          "text": "The work not done, and the crew paid to wait"
+        },
+        {
+          "at": 2,
+          "module": "Hired machines",
+          "text": "Billed by the hour, from the hire company's log"
+        },
+        {
+          "at": 3,
+          "module": "What a problem needs",
+          "text": "Said, owned by a day, closed; and the machine's hours"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "A problem nobody owns stays open. A machine nobody logs is billed in full."
+      }
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "One breakdown, five people",
+      "title": "Who does what",
+      "beats": [
+        "Who does what?",
+        "Ravi logs the mixer every evening, and says when it stops.",
+        "Anil owns the fix: he makes it a task, with a person and a day. Ravi gets the mechanic there.",
+        "Meera checks the hire company's bill against the log before it is paid. And Ramesh sees what is stuck, every morning."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Ravi, site engineer",
+          "worry": "The mixer's hours; says when it stops",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Anil, project manager",
+          "worry": "Owns the fix: a task, a person, a day",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 2,
+          "who": "Kerala Earthmovers",
+          "worry": "Their mixer, their mechanic, their bill",
+          "tone": "#93c5fd"
+        },
+        {
+          "at": 3,
+          "who": "Meera, accounts",
+          "worry": "The bill against the hours logged",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 3,
+          "who": "Ramesh Nair, owner",
+          "worry": "What is stuck, and who has it",
+          "tone": "#facc15"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "One machine's day, read by four people."
+      }
+    },
+    {
+      "id": "machines",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Equipment · Wednesday",
+      "title": "A machine on hire",
+      "beats": [
+        "On Monday Anil put the mixer on hire for the Annex: Kerala Earthmovers, four hundred and fifty rupees an hour.",
+        "Since then, Ravi's evening message has carried one more line: the mixer's hours. Seven on Monday, seven on Tuesday, seven today: twenty-one this month.",
+        "That daily log is the only record on our side of the hours the mixer worked. Keep it in mind: it matters on the day the bill comes."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/equipment",
+          "show": "Machines: the concrete mixer, hired, at the Annex",
+          "mark": "the mixer's row"
+        },
+        {
+          "at": 1,
+          "url": "/equipment/log",
+          "show": "Daily log: the mixer's hours, day by day",
+          "mark": "the day's log"
+        },
+        {
+          "at": 2,
+          "url": "/equipment",
+          "show": "the mixer this month: hours worked, idle, broken down",
+          "mark": "the month's hours"
+        }
+      ],
+      "record": "As the owner on day 4 (Wednesday): the cast put the mixer on hire on day 2 and logged days 2 to 4. Say only the hours the screen shows.",
+      "as": "ADMIN",
+      "day": 4,
+      "keep": true,
+      "play": "ADMIN"
+    },
+    {
+      "id": "breakdown",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "Thursday · Annex · evening",
+      "title": "The mixer stops",
+      "beats": [
+        "Thursday evening. Ravi tells Mesiri what the mixer did: one hour, then the motor burnt out, and it stood for six.",
+        "Mesiri sends back the machine's day as a card: one hour worked, six hours broken down. Ravi taps Save.",
+        "And because it broke down, Mesiri opens a problem by itself, on the Annex, with the hours in its words. Ravi did not have to report it twice."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "Annex mixer worked only 1 hour today. Motor burnt out mid-morning, stopped 6 hours"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Machine log · Annex · Thursday",
+            "rows": [
+              "Concrete mixer: 1 hr worked",
+              "Breakdown 6 hrs: motor burnt out"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "The machine found in the register by its name"
+        },
+        {
+          "at": 2,
+          "text": "A breakdown raises a problem, once"
+        }
+      ],
+      "note": "Mesiri's own reply, recorded in the sample company.",
+      "capture": {
+        "via": "Tell Mesiri (same assistant as WhatsApp)",
+        "as": "Site engineer (Ravi)",
+        "day": 5,
+        "send": "Annex mixer worked only 1 hour today. Motor burnt out mid-morning, stopped 6 hours",
+        "tap": "Save",
+        "role": "SITE_ENGINEER",
+        "real": "Send these words in the sample company as Ravi on day 5; the real card replaces this one."
+      }
+    },
+    {
+      "id": "problem",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Issues · Thursday",
+      "title": "A problem becomes a task",
+      "beats": [
+        "Anil sees it on Issues: the mixer's breakdown, high, open, on the Annex.",
+        "A problem is not fixed by being seen. Anil makes it a task: get Kerala Earthmovers' mechanic to the Annex before eight tomorrow. For Ravi, due tomorrow.",
+        "The task is linked to the problem. Whoever opens one sees the other: who has it, and by when."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/issues",
+          "show": "Issues: the mixer's breakdown, open",
+          "mark": "the problem"
+        },
+        {
+          "at": 1,
+          "do": "Open it → Make a task: Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am · For Ravi · Due tomorrow",
+          "show": "the task form, from the problem",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Give task",
+          "show": "the problem with its task",
+          "mark": "the linked task"
+        }
+      ],
+      "record": "As Anil (PROJECT_MANAGER) on day 5, after Ravi's message.",
+      "as": "PROJECT_MANAGER",
+      "day": 5,
+      "keep": true,
+      "after": true
+    },
+    {
+      "id": "owner",
+      "kind": "steps",
+      "part": "What the owner sees",
+      "eyebrow": "What the owner sees · Thursday night",
+      "title": "What is stuck, and who has it",
+      "beats": [
+        "Thursday night, Ramesh opens Mesiri.",
+        "Green Villa's row on Home counts its open problems. One tap shows them.",
+        "The mixer: high, raised from Ravi's log, and who is on it: Ravi, due tomorrow morning. Ramesh does not have to phone anyone to find out. If tomorrow evening it is still open, that is the call he makes."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/",
+          "show": "Home as the owner"
+        },
+        {
+          "at": 1,
+          "show": "Green Villa's open problems",
+          "mark": "Green Villa's row"
+        },
+        {
+          "at": 2,
+          "url": "/issues",
+          "show": "the mixer's problem: who is on it, and by when",
+          "mark": "who is on it"
+        }
+      ],
+      "record": "As the owner on day 5, after Anil's task.",
+      "as": "ADMIN",
+      "day": 5,
+      "keep": true,
+      "after": true
+    },
+    {
+      "id": "fixed",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Tasks · Friday",
+      "title": "Fixed, and closed",
+      "beats": [
+        "Friday, before eight. Kerala Earthmovers' mechanic rewinds the motor; by eight the mixer is running.",
+        "Anil marks the task done.",
+        "And closes the problem, with what was done. The mixer worked its seven hours on Friday, and Ravi's log says so."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/tasks?view=all",
+          "show": "the task, due today",
+          "mark": "the task"
+        },
+        {
+          "at": 1,
+          "do": "Done",
+          "show": "the task done",
+          "mark": "the task"
+        },
+        {
+          "at": 2,
+          "url": "/issues",
+          "do": "the problem → Mark fixed: Mechanic rewound the motor before work; mixer running from 8 am",
+          "show": "the problem fixed",
+          "mark": "the problem"
+        }
+      ],
+      "record": "As Anil on day 6: his task_status and issue_resolve are his to do on screen.",
+      "as": "PROJECT_MANAGER",
+      "day": 6,
+      "keep": true,
+      "play": "PROJECT_MANAGER"
+    },
+    {
+      "id": "bill",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Hire check · Monday",
+      "title": "The bill meets the log",
+      "beats": [
+        "Monday. Kerala Earthmovers' bill for the week: forty-two hours, eighteen thousand nine hundred rupees.",
+        "Forty-two is six days at seven hours: as if the mixer never stopped. Meera enters it in Hire check.",
+        "Mesiri puts it beside Ravi's log: thirty-six hours recorded on site. The bill asks for six hours more: two thousand seven hundred rupees, and the GST on it."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/equipment/hire",
+          "show": "Hire check: the mixer, its hours this month",
+          "mark": "the mixer"
+        },
+        {
+          "at": 1,
+          "do": "Enter a bill: Monday to Saturday, 42 hours, Rs 18,900, KEE/2027/0118",
+          "show": "the bill form",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Check the bill",
+          "show": "Over: Bill says 42 hours; 36 recorded on site",
+          "mark": "the check"
+        }
+      ],
+      "record": "As Meera (FINANCE) on day 9: the hire bill is hers.",
+      "as": "FINANCE",
+      "day": 9,
+      "keep": true,
+      "play": "FINANCE"
+    },
+    {
+      "id": "agreed",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · Hire check · Monday",
+      "title": "Paid for the hours it worked",
+      "beats": [
+        "Anil phones Kerala Earthmovers with the log in front of him. Six hours, motor burnt out, their mechanic came on Friday. They agree.",
+        "Meera removes the first bill and enters the corrected one: thirty-six hours, sixteen thousand two hundred rupees.",
+        "Now it matches the hours recorded. Without Thursday's line in Ravi's message, nobody could have asked."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "show": "the bill over the log",
+          "mark": "the check"
+        },
+        {
+          "at": 1,
+          "do": "Remove; Enter a bill: 36 hours, Rs 16,200",
+          "show": "the corrected bill",
+          "mark": "the form"
+        },
+        {
+          "at": 2,
+          "do": "Check the bill",
+          "show": "matches the hours recorded",
+          "mark": "the check"
+        }
+      ],
+      "record": "As Meera on day 9, after the first bill (kept).",
+      "as": "FINANCE",
+      "day": 9,
+      "keep": true,
+      "play": "FINANCE"
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a problem costs more",
+      "beats": [
+        "Five ways a problem costs more than it should.",
+        "A machine with no daily log: the hire company's bill is the only record, and it is paid as it is.",
+        "A problem everyone saw and nobody owned: it is still open on Monday.",
+        "A task closed with the problem still open, or a problem closed with nothing done.",
+        "And the crew waiting beside a broken machine, paid in full, with nobody asking where else they could work."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "No log",
+          "eg": "42 hours billed, nothing to check against"
+        },
+        {
+          "at": 2,
+          "title": "Nobody owns it",
+          "eg": "Seen by all, fixed by none"
+        },
+        {
+          "at": 3,
+          "title": "Closed on paper",
+          "eg": "Task done, problem still open"
+        },
+        {
+          "at": 4,
+          "title": "Paid to wait",
+          "eg": "A crew beside a broken mixer"
+        },
+        {
+          "at": 4,
+          "title": "Bill paid as sent",
+          "eg": "Rs 2,700 + GST for hours it stood"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Say it, own it by a day, close it; log the machine every evening."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: the mixer worked seven hours on five days and one hour on the sixth. What should the week's bill be at four fifty an hour? Thirty-six hours: sixteen thousand two hundred rupees.",
+        "Two: who owns a problem's fix? A person, with a day: here, Ravi by eight on Friday, given by Anil.",
+        "Three: how did Mesiri know the mixer had broken down? From Ravi's evening line: the breakdown hours raised the problem by themselves.",
+        "Next: the subcontractor. Paying Joy Tiling only for the work that was measured."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "7 hrs × 5 days + 1 hr, at Rs 450: the bill?"
+        },
+        {
+          "at": 2,
+          "text": "Who owns a problem's fix?"
+        },
+        {
+          "at": 3,
+          "text": "How did the problem get raised?"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-"""PS-05 (migration 0563): a project's kind and size, for both project routers (the backend's and the assistant's,
+"""PS-05 (migration 0564): a project's kind and size, for both project routers (the backend's and the assistant's,
 which production serves), so the two cannot drift.
 
 ``project_type`` groups projects (reports, cost per sq ft by kind); ``built_up_area_sqft`` gives cost per sq ft;
@@ -22,7 +22,7 @@ class ProjectSize(BaseModel):
     projectType: str | None = None
     builtUpAreaSqft: float | None = Field(default=None, gt=0, le=100_000_000)
     floors: int | None = Field(default=None, ge=1, le=200)
-    #: PS phase 2 (0564): site and office overheads as a % of the BOQ budget cost.
+    #: PS phase 2 (0565): site and office overheads as a % of the BOQ budget cost.
     overheadPct: float | None = Field(default=None, ge=0, le=100)
 
     @field_validator("projectType")

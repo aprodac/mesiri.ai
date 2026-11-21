@@ -175,7 +175,8 @@ export default function OperationsIssuesPage() {
   // The tasks that fix an issue (TSK-03), when Tasks is switched on; a failure only hides them.
   const tasksOn = isEnabled('tasks')
   const tasksQuery = useQuery({
-    queryKey: ['issue-tasks', projectId ?? null, siteId ?? null],
+    // Under ['tasks'] (UX-89): every task change (made from this panel, done or cancelled on Tasks) refreshes it.
+    queryKey: ['tasks', 'by-issue', projectId ?? null, siteId ?? null],
     queryFn: () => fetchTasks({ project_id: projectId, site_id: siteId, status: 'all' }),
     enabled: tasksOn,
     retry: false,
@@ -327,7 +328,7 @@ export default function OperationsIssuesPage() {
     else toast.error(failed, bad === ids.length ? 'Please try again.' : `${ids.length - bad} done, ${bad} could not be changed.`)
     setPicked(new Set())
     reload()
-    queryClient.invalidateQueries({ queryKey: ['issue-tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'by-issue'] })
   }
   const label = (ids: string[]) => {
     if (ids.length !== 1) return `${ids.length} issues`

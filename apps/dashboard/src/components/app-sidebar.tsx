@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { SETTINGS_PATHS, urlWithScope } from '@/lib/scope-url'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -7,8 +6,6 @@ import {
   LogOut,
   ArrowLeft,
   House,
-  Activity,
-  BarChart3,
   FileText,
   ChevronRight,
   CalendarDays,
@@ -17,21 +14,20 @@ import {
   Clock,
   AlertCircle,
   ListChecks,
+  Circle,
+  LayoutGrid,
+  Lock,
   Map as MapIcon,
-  Radio,
-  Search,
   Settings as SettingsIcon,
-  Upload,
   GraduationCap,
   ChevronsUpDown,
   Plus,
   Pin,
   PinOff,
   SlidersHorizontal,
-  EyeOff,
   X,
 } from 'lucide-react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Sidebar,
   SidebarContent,
@@ -43,40 +39,37 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/lib/AuthContext'
-import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
+import { useScope } from '@/lib/ScopeContext'
 import { fetchBranding, logout, type Me } from '@/lib/api'
 import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
-import { SETUP_URL, setupCounts, useGuideSteps, useSetupProgress } from '@/lib/setup'
+import { SETUP_URL, setupCounts, setupNavSteps, useGuideSteps, useSetupProgress } from '@/lib/setup'
 import { useTrial } from '@/lib/trial'
-import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
-import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useNavCounts, useTaskCounts, useWaitingCounts } from '@/lib/nav-counts'
-import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, type ModuleGroup, type NavSection } from '@/lib/module-map'
-import { openJump } from '@/lib/jump'
+import { MODULE_GROUPS, findPage, pagePath } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
-import { useShowEverything, useStartMode } from '@/lib/start-mode'
+import { useStartMode } from '@/lib/start-mode'
 import { initialsOf } from '@/lib/initials'
-import { EVERYDAY, openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
+import { EVERYDAY, MAX_PINS, openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
 import { SUGGEST_DAYS, SUGGEST_SCORE, dismissSuggestion, dismissedSuggestions, usePageUsage } from '@/lib/page-usage'
+import { openAllPages } from '@/lib/all-pages'
 
 type NavItem = {
   title: string
   url: string
   icon: React.ComponentType<{ className?: string }>
-  requiredScope?: ScopeKind
   requiredRole?: string
   // Shown only to these roles (SEC-01: who may read expenses).
   allowedRoles?: readonly string[]
@@ -84,74 +77,50 @@ type NavItem = {
   module?: ModuleKey
   // Which live count to show as a badge (WEB-20).
   badge?: 'drafts' | 'issues'
-  // A page's own live count (TSK-06), as on a drawer's page.
+  // A page's own live count (TSK-06).
   count?: SubCount
-  // Lit only on its own view (?view=), as a drawer's page is: a section's flat rows (Tasks).
+  // Lit only on its own view (?view=).
   exact?: boolean
-  // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
-  note?: string
   // A planned page (WEB-72), shown only with the preview on.
   soon?: boolean
 }
 
-// A collapsible module in the sidebar (WEB-72): its pages come from lib/module-map.ts.
-// A live count on a drawer's page (TSK-06): `tone` is the badge colour, `label` what the number means.
+// A live count on a row (TSK-06): `tone` is the badge colour, `label` what the number means.
 type SubCount = { n: number; tone: keyof typeof BADGE; label: string }
-type SubItem = { title: string; url: string; soon?: boolean; phase?: string; count?: SubCount }
-/** UX-65: pin or unpin a page from its row (mouse only; on a phone, "Customise sidebar"). */
-type PinControl = { pinned: (url: string) => boolean; canPin: (url: string) => boolean; toggle: (url: string, title: string) => void }
-type NavCategory = {
-  key: string
-  title: string
-  icon: React.ElementType
-  items: SubItem[]
-}
 
 const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 
-/** Tasks' views reached from the page's own tabs, not the sidebar (UX-70). */
-const TASK_TABS_ONLY = ['/tasks?view=all', '/tasks?view=done']
-
-// The sidebar tells the project's story (UX-04, docs/plans/ui-story-plan.md section 4): the daily pages, then
-// PLAN, SITE, BUY and MONEY (in the order the role reaches for them, lib/module-map.ts sectionOrder), then
-// Settings. Each page has one home; a module with one page is a link, with several a drawer. Modules a
-// company has not switched on (WEB-02) and pages a role may not see are hidden.
-const PRIMARY_ITEMS: NavItem[] = [
-  { title: 'Home', url: '/home', icon: House },
-  { title: 'Today', url: '/today', icon: CalendarDays, badge: 'drafts' },
-  { title: 'Daily reports', url: '/reports', icon: FileText },
-  { title: 'Issues', url: '/issues', icon: AlertCircle, badge: 'issues' },
-  { title: 'Live', url: '/live', icon: Radio },
-]
-
-// Site records live in the SITE section.
-const RECORD_ITEMS: NavItem[] = [
-  { title: 'Site log', url: '/site-log', icon: Activity },
-  { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-]
+// UX-74 (asked 20 Nov 2026: "what that user needs at that particular time only should be there ... the need to scroll
+// the sidebar should not be there. The sidebar should look very simple"; docs/plans/ui-story-plan.md section 4.4):
+// the sidebar shows what this person needs now, never scrolls, and everything else is one click away in All pages.
+//   1. Set up (a company still setting up, its admin): the setup steps still to do, the next one marked;
+//   2. the everyday pages of this role (EVERYDAY_BY_ROLE); while no site has sent an update yet the pages that
+//      need one are shown locked, with why (hidden would hide what is coming; disabled with no reason feels broken);
+//   3. Your pages: the person's pins (UX-65), at most MAX_PINS;
+//   4. All pages (components/all-pages.tsx): every page this role may open, by section and module;
+//   then Learn and Settings at the foot, and one menu on the person's name (theme, Customise, Log out).
+// Live (WEB-37) is a presenter's page for demos, reached from Learn, not a row here.
+const EVERYDAY_ITEMS: Record<string, NavItem> = {
+  '/home': { title: 'Home', url: '/home', icon: House },
+  '/today': { title: 'Today', url: '/today', icon: CalendarDays, badge: 'drafts' },
+  '/reports': { title: 'Daily reports', url: '/reports', icon: FileText },
+  '/issues': { title: 'Issues', url: '/issues', icon: AlertCircle, badge: 'issues' },
+}
+/** Each role's everyday pages, in the order of its day (UX-68: site engineers land on Today; accounts on Home). */
+const EVERYDAY_BY_ROLE: Record<string, string[]> = {
+  SITE_ENGINEER: ['/today', '/reports', '/issues'],
+  FINANCE: ['/home', '/issues'],
+}
+const EVERYDAY_DEFAULT = ['/home', '/today', '/reports', '/issues']
+/** Pages with nothing to show until a site has sent its first update (locked during setup, with this reason). */
+const NEEDS_FIRST_UPDATE = new Set(['/today', '/reports', '/issues'])
+const LOCKED_WHY = 'Opens when your first site update arrives'
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Settings', url: '/settings', icon: SettingsIcon, requiredRole: 'ADMIN' },
-  // WEB-31: the inbox APIs answer admins only. Others who have Automations
-  // get that view of the WhatsApp page on its own.
+  // WEB-31: the inbox APIs answer admins only. Others who have Automations get that view of the WhatsApp page.
   { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES },
 ]
-
-// UX-16: "+ New" next to Search. Each line opens Tell Mesiri (the same assistant as WhatsApp) with its first words
-// typed in, so the person finishes the sentence instead of hunting for a form. Only what the role records, and only
-// in switched-on modules.
-const OFFICE = ['ADMIN', 'OWNER', 'SUPER_ADMIN'] as const
-type NewAction = { key: string; label: string; example: string; starter: string; roles: readonly string[]; module?: ModuleKey }
-const NEW_ACTIONS: NewAction[] = [
-  { key: 'update', label: 'Site update', example: '6 masons, slab shuttering done', starter: 'Today at site: ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE], module: 'dpr' },
-  { key: 'request', label: 'Material request', example: 'Need 50 bags cement by Thursday', starter: 'Need ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE], module: 'materials' },
-  { key: 'issue', label: 'Report an issue', example: 'Water tank leaking near block B', starter: 'Problem: ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE] },
-  { key: 'task', label: 'Task', example: 'Ravi: fix the shuttering by Friday', starter: 'Task for ', roles: ['PROJECT_MANAGER', ...OFFICE], module: 'tasks' },
-  { key: 'expense', label: 'Expense', example: 'Paid 2,400 for diesel at Lake View', starter: 'Paid ', roles: ['FINANCE', 'PROJECT_MANAGER', ...OFFICE], module: 'finance' },
-  // WEB-100: who may make one (mayCreateProject); the form itself is New project on Projects & Sites and Project start.
-  { key: 'project', label: 'Project', example: 'Lake View for Mr Thomas at Kakkanad, starts 1 Dec', starter: 'New project ', roles: ['ADMIN', 'PROJECT_MANAGER'] },
-]
-
 
 function roleLabel(role: string | undefined): string {
   if (!role) return ''
@@ -209,11 +178,14 @@ const BADGE = {
 } as const
 
 const NAV_LINK_BASE =
-  'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
+  'group/row flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors'
 
 // Settings' pages keep their own addresses (UX-04); the Settings row lights up on any of them (lib/scope-url.ts).
+// A page whose address sits under another module (a project's BOQ under /projects) lights its own row, never
+// Settings: the same table the breadcrumb reads (module-map `SAME_AS`).
 
-function checkIsItemActive(pathname: string, itemUrl: string): boolean {
+function checkIsItemActive(rawPathname: string, itemUrl: string): boolean {
+  const pathname = pagePath(rawPathname)
   if (pathname === itemUrl) return true
   if (itemUrl === '/settings') return SETTINGS_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   if (itemUrl === '/home' && pathname === '/') return true
@@ -229,190 +201,6 @@ function isSubItemActive(pathname: string, search: string, url: string): boolean
   const hit = findPage(pathname, search)
   if (hit) return hit.page.url === url
   return checkIsItemActive(pathname, url.split('?')[0])
-}
-
-function CollapsibleNavCategory({
-  category,
-  getUrlWithScope,
-  pathname,
-  search,
-  theme,
-  pin,
-}: {
-  category: NavCategory
-  getUrlWithScope: (url: string) => string
-  pathname: string
-  search: string
-  theme: SidebarTheme
-  pin: PinControl
-}) {
-  const S = SIDEBAR_THEMES[theme]
-  const { state, isMobile } = useSidebar()
-  const navigate = useNavigate()
-  const isCollapsedMode = state === 'collapsed' && !isMobile
-  const isChildActive = category.items.some((item) => isSubItemActive(pathname, search, item.url))
-  const [isOpen, setIsOpen] = useState(isChildActive)
-  // UX-16: hover a closed drawer (or any drawer in icon mode) and its pages appear beside it, so a page is one move
-  // away without opening the drawer. Mouse only; a tap or the keyboard still opens the drawer in place.
-  const canHover = useCanHover()
-  const flyAllowed = canHover && !isMobile && (isCollapsedMode || !isOpen)
-  // `at` is the page and drawer state the list opened on: a click, a route change or the drawer opening hides it.
-  const flyAt = `${pathname}${search}|${isOpen}|${state}`
-  const [flyState, setFly] = useState<{ top: number; left: number; at: string } | null>(null)
-  const fly = flyState && flyState.at === flyAt ? flyState : null
-  const flyTimer = useRef<number | undefined>(undefined)
-  const openFly = (e: React.MouseEvent<HTMLElement>) => {
-    if (!flyAllowed) return
-    const r = e.currentTarget.getBoundingClientRect()
-    // Open beside the sidebar's edge, not over it.
-    const edge = e.currentTarget.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect().right ?? r.right
-    window.clearTimeout(flyTimer.current)
-    flyTimer.current = window.setTimeout(() => setFly({ top: r.top, left: edge + 6, at: flyAt }), 120)
-  }
-  const closeFly = () => {
-    window.clearTimeout(flyTimer.current)
-    flyTimer.current = window.setTimeout(() => setFly(null), 160)
-  }
-  const keepFly = () => window.clearTimeout(flyTimer.current)
-
-  useEffect(() => {
-    if (isChildActive) setIsOpen(true)
-  }, [pathname, isChildActive])
-  useEffect(() => () => window.clearTimeout(flyTimer.current), [])
-  useEffect(() => {
-    if (!fly) return
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setFly(null)
-    window.addEventListener('keydown', esc)
-    return () => window.removeEventListener('keydown', esc)
-  }, [fly])
-
-  if (category.items.length === 0) return null
-  const IconComp = category.icon
-  const allSoon = category.items.every((i) => i.soon)
-  // Closed, the drawer shows its most urgent count (red before orange), so nothing waits unseen.
-  const counted = category.items.map((i) => i.count).filter((c): c is SubCount => !!c && c.n > 0)
-  const headline = counted.find((c) => c.tone === 'issues') ?? counted[0]
-
-  return (
-    <SidebarMenuItem onMouseEnter={openFly} onMouseLeave={closeFly}>
-      <SidebarMenuButton
-        // Icons only: open the module's first page instead of a list nobody can see.
-        onClick={() => (isCollapsedMode ? navigate(getUrlWithScope(category.items[0].url)) : setIsOpen((prev) => !prev))}
-        // With a mouse the hover list names the module; the tooltip stays for touch.
-        tooltip={canHover ? undefined : allSoon ? `${category.title} · planned` : category.title}
-        aria-haspopup={canHover ? 'menu' : undefined}
-        aria-label={category.title}
-        aria-expanded={isOpen}
-        className={cn(
-          'relative flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors',
-          S.hoverBg,
-          S.ring,
-          isChildActive ? S.groupActive : S.groupIdle,
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="relative shrink-0">
-            <IconComp className={cn('size-4', isChildActive ? S.iconActive : S.icon)} />
-            {headline && (
-              <span aria-hidden className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[headline.tone])} />
-            )}
-          </span>
-          <span className={cn('truncate group-data-[collapsible=icon]:hidden', allSoon && !isChildActive && 'opacity-70')}>{category.title}</span>
-        </div>
-        <span className={cn('flex items-center gap-1.5 group-data-[collapsible=icon]:hidden', S.chevron)}>
-          {headline && !isOpen && <CountPill count={headline} />}
-          <ChevronRight className={cn('size-3.5 transition-transform duration-200', isOpen && 'rotate-90')} />
-        </span>
-      </SidebarMenuButton>
-
-      {isOpen && !isCollapsedMode && (
-        <div className={cn('my-0.5 ml-4 flex flex-col gap-0.5 border-l pl-2.5 group-data-[collapsible=icon]:hidden', S.guide)}>
-          {category.items.map((item) => {
-            const active = isSubItemActive(pathname, search, item.url)
-            const pinned = pin.pinned(item.url)
-            return (
-              <div key={item.url} className="group/pin relative">
-                <Link
-                  to={getUrlWithScope(item.url)}
-                  title={item.soon ? `${item.title} · planned (${item.phase}), not built yet` : undefined}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'group/row relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
-                    S.ring,
-                    active ? S.rowActive : S.rowIdle,
-                    item.soon && !active && 'opacity-75',
-                  )}
-                >
-                  {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full" style={{ backgroundColor: S.bar }} />}
-                  <span className="truncate">{item.title}</span>
-                  {pinned && <Pin aria-label="pinned" className="size-3 shrink-0 rotate-45 text-[#FACC15]/80 dark:text-primary-ink" />}
-                  {item.soon && <SoonDot className="ml-auto" />}
-                  {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
-                </Link>
-                {pin.canPin(item.url) && <PinButton pinned={pinned} title={item.title} onClick={() => pin.toggle(item.url, item.title)} group="pin" />}
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {fly &&
-        createPortal(
-          <div
-            role="menu"
-            aria-label={category.title}
-            onMouseEnter={keepFly}
-            onMouseLeave={closeFly}
-            style={{
-              position: 'fixed',
-              left: fly.left,
-              // Stay on screen: a drawer near the bottom opens its list upwards.
-              top: Math.max(8, Math.min(fly.top - 6, window.innerHeight - (48 + category.items.length * 34) - 8)),
-              zIndex: 60,
-            }}
-            className="min-w-56 max-w-72 rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95"
-          >
-            <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{category.title}</div>
-            {category.items.map((item) => {
-              const active = isSubItemActive(pathname, search, item.url)
-              return (
-                <Link
-                  key={item.url}
-                  role="menuitem"
-                  to={getUrlWithScope(item.url)}
-                  onClick={() => setFly(null)}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none',
-                    active && 'bg-muted font-semibold',
-                    item.soon && !active && 'opacity-70',
-                  )}
-                >
-                  <span className="truncate">{item.title}</span>
-                  {item.soon && <SoonDot className="ml-auto" />}
-                  {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
-                </Link>
-              )
-            })}
-          </div>,
-          document.body,
-        )}
-    </SidebarMenuItem>
-  )
-}
-
-/** A mouse or trackpad that can hover (not a phone or tablet), read once. */
-function useCanHover(): boolean {
-  const [can] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches)
-  return can
-}
-
-function CountPill({ count, className }: { count: SubCount; className?: string }) {
-  return (
-    <span className={cn('min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums', BADGE[count.tone], className)} title={`${count.n} ${count.label}`}>
-      {count.n > 99 ? '99+' : count.n}
-      <span className="sr-only"> {count.label}</span>
-    </span>
-  )
 }
 
 /** A planned page (WEB-72): a small hollow dot, named for screen readers. */
@@ -443,11 +231,9 @@ function PinButton({ pinned, title, onClick, group }: { pinned: boolean; title: 
 }
 
 const GROUP_LABEL = 'px-2.5 text-[11px] font-semibold uppercase tracking-wider'
-const SOON_PILL = 'shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide'
 
 export function AppSidebar() {
   const { me } = useAuth()
-  const allowed = useAllowedScopes()
   const { scope } = useScope()
   const location = useLocation()
   const [sidebarTheme] = useSidebarTheme(me?.user_id || me?.org_id)
@@ -472,7 +258,7 @@ export function AppSidebar() {
     }
   }, [isDark])
 
-  const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const toggleTheme = (event: React.MouseEvent<HTMLElement>) => {
     const isSupported = typeof document !== 'undefined' && 'startViewTransition' in document
 
     if (!isSupported) {
@@ -522,88 +308,44 @@ export function AppSidebar() {
   }
 
   const getUrlWithScope = (baseUrl: string) => urlWithScope(baseUrl, scope)
-
   const showBackButton = location.pathname.startsWith('/projects/') || location.pathname.startsWith('/team/')
-
+  const role = (me?.role || '').toUpperCase()
   const isModuleEnabled = useModuleEnabled()
-  const visibleManagementItems = ROOT_MANAGEMENT_ITEMS.filter(
-    (item) =>
-      isModuleEnabled(item.module) &&
-      (!item.requiredScope || allowed.includes(item.requiredScope)) &&
-      (!item.requiredRole || me?.role === item.requiredRole) &&
-      (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
-  )
-
-  // Production's /auth/me returns org_name/name; the older identity router
-  // shape used organization_name/full_name (see lib/api.ts's Me).
+  const [showPlanned, setShowPlanned] = usePlannedPreview()
+  const trial = useTrial()
   const companyName = me?.org_name || me?.organization_name || 'Mesiri'
   const userName = me?.name || me?.full_name || ''
 
   const counts = useNavCounts()
   const taskCounts = useTaskCounts()
   const waiting = useWaitingCounts()
-  // TSK-06: My tasks counts what is mine still open (orange: waiting on me); Overdue counts what is late (red).
   const pageCounts: Record<string, SubCount | undefined> = {
     '/tasks': taskCounts ? { n: taskCounts.mine_open, tone: 'drafts', label: taskCounts.mine_overdue ? `open for you, ${taskCounts.mine_overdue} late` : 'open for you' } : undefined,
     '/tasks?view=overdue': taskCounts ? { n: taskCounts.overdue, tone: 'issues', label: 'late' } : undefined,
-    // UX-62: the Approvals page counts what waits on me (red when some are urgent); the bell's own query, no extra call.
     '/site/approvals': waiting ? { n: waiting.total, tone: waiting.urgent ? 'issues' : 'drafts', label: waiting.urgent ? `waiting, ${waiting.urgent} urgent` : 'waiting' } : undefined,
   }
-  // "Finish setup" (SS-19): the getting-started card stays one click away,
-  // hidden or not, until everything is done.
+
+  // 1. Setting up: the company admin's steps still to do (lib/setup.ts, the same list the card on Home counts).
   const setup = useSetupProgress()
   const guideSteps = useGuideSteps()
-  const trial = useTrial()
+  const steps = setup.data && setup.isCompanyAdmin && !trial.readOnly ? setupNavSteps(setup.data, guideSteps) : []
   const setupDone = setup.data ? setupCounts(setup.data, guideSteps) : null
-  const finishSetup: NavItem | null =
-    setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
-      ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, note: `${setupDone.done}/${setupDone.total}` }
-      : null
-  // WEB-72 / UX-04: modules from lib/module-map.ts, each with only the pages this role may see and only their
-  // home entry (a `shortcut` lives in another module). Without the preview, only working pages.
-  const [showPlanned, setShowPlanned] = usePlannedPreview()
-  const role = (me?.role || '').toUpperCase()
-  const pageVisible = (p: ModuleGroup['pages'][number]) =>
-    !p.shortcut && (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module))
-  const toCategory = (group: ModuleGroup): NavCategory => ({
-    key: group.key,
-    title: group.title,
-    icon: group.icon,
-    items: group.pages.filter(pageVisible).map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase, count: pageCounts[p.url] })),
-  })
-  // A section's entries: a module with one page is a plain link, with several a drawer.
-  type Entry = { kind: 'link'; item: NavItem } | { kind: 'category'; category: NavCategory }
-  const siteGroup = MODULE_GROUPS.find((g) => g.key === 'site')!
-  const sectionEntries = (section: NavSection): Entry[] => {
-    const entries: Entry[] = []
-    if (section === 'site') {
-      // The daily group's other pages (Site log, Analytics; planned ones with the preview) open the SITE section.
-      for (const p of siteGroup.pages.filter((p) => pageVisible(p) && !PRIMARY_ITEMS.some((i) => i.url === p.url))) {
-        entries.push({ kind: 'link', item: { title: p.navTitle ?? p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? RECORD_ITEMS.find((r) => r.url === p.url)?.icon ?? Activity, soon: p.status === 'planned' } })
-      }
-    }
-    for (const group of MODULE_GROUPS.filter((g) => g.section === section && isModuleEnabled(g.module))) {
-      const category = toCategory(group)
-      if (category.items.length === 0) continue
-      if (group.flat) {
-        // Its own section (Tasks): each page is a row, with its icon and its count. UX-70: only what is used daily:
-        // My tasks, and Overdue while something is late; All tasks and Done are tabs on the page (and in search).
-        for (const p of category.items.filter((i) => !TASK_TABS_ONLY.includes(i.url) && !(i.url === '/tasks?view=overdue' && !(i.count && i.count.n > 0)))) {
-          entries.push({ kind: 'link', item: { title: p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? group.icon, soon: p.soon, count: p.count, exact: true } })
-        }
-        continue
-      }
-      if (category.items.length === 1) {
-        const only = category.items[0]
-        entries.push({ kind: 'link', item: { title: group.key === 'labour' ? only.title : group.title, url: only.url, icon: group.icon, soon: only.soon } })
-      } else {
-        entries.push({ kind: 'category', category })
-      }
-    }
-    return entries
+  const settingUp = steps.length > 0 && !!setupDone && setupDone.done < setupDone.total
+  const toDo = steps.filter((s) => !s.done)
+  // The next step only; the rest are on Home's checklist ("N more steps"), so the sidebar stays one screen.
+  const shownSteps = toDo.slice(0, 1)
+  // Until a site sends its first update, the pages that show updates have nothing in them yet.
+  const noUpdateYet = settingUp && setup.data?.first_update_at === null
+
+  // 2. The everyday pages: the role's, each only if this role may open it (lib/module-map.ts roles).
+  const siteGroup = MODULE_GROUPS.find((g) => g.key === 'site')
+  const mayOpen = (url: string) => {
+    const page = siteGroup?.pages.find((p) => p.url === url)
+    return !page || ((!page.roles || page.roles.includes(role)) && (!page.module || isModuleEnabled(page.module)))
   }
-  // UX-65: the person's own sidebar (lib/sidebar-prefs.ts): their sections' order and the ones they hid, and their
-  // pinned pages ("Your pages"); before they change anything, their role's.
+  const everyday = (EVERYDAY_BY_ROLE[role] ?? EVERYDAY_DEFAULT).filter(mayOpen).map((url) => EVERYDAY_ITEMS[url])
+
+  // 3. Your pages (UX-65): the person's pins, then (UX-70) one page they keep opening, offered once.
   const sb = useSidebarPrefs()
   const pinnable = usePinnable()
   const [justPinned, setJustPinned] = useState<string | null>(null)
@@ -612,74 +354,57 @@ export function AppSidebar() {
     const t = window.setTimeout(() => setJustPinned(null), 1600)
     return () => window.clearTimeout(t)
   }, [justPinned])
-  const pin: PinControl = {
-    pinned: (url) => sb.prefs.pins.includes(url),
-    canPin: (url) => pinnable.byUrl.has(url) && !trial.readOnly && (sb.prefs.pins.includes(url) || !sb.full),
-    toggle: (url) => {
-      if (sb.togglePin(url)) setJustPinned(url)
-    },
+  const canPin = (url: string) => pinnable.byUrl.has(url) && !trial.readOnly && (sb.prefs.pins.includes(url) || !sb.full)
+  const togglePin = (url: string) => {
+    if (sb.togglePin(url)) setJustPinned(url)
   }
-  // UX-70: a page this person keeps opening (on several days, lately) and hasn't pinned: offered once, never moved
-  // there by itself. "No" is remembered.
   const usage = usePageUsage()
   const person = me?.user_id ?? ''
   const suggestion =
-    sb.ready && !trial.readOnly && !sb.full
+    sb.ready && !trial.readOnly && !sb.full && !settingUp
       ? usage
           .filter((u) => u.days >= SUGGEST_DAYS && u.score >= SUGGEST_SCORE)
           .map((u) => pinnable.byUrl.get(u.url))
           .find((p) => !!p && !sb.prefs.pins.includes(p.url) && !EVERYDAY.includes(p.url) && !dismissedSuggestions(person).includes(p.url))
       : undefined
-  const yourPages: NavItem[] = sb.prefs.pins
-    .map((url) => pinnable.byUrl.get(url))
-    .filter((p): p is NonNullable<typeof p> => !!p)
+  // The sidebar never scrolls: on a short screen, the pins that don't fit wait in All pages (its row says how many).
+  const [fitPins, setFitPins] = useState(MAX_PINS)
+  const allPins = sb.prefs.pins.map((url) => pinnable.byUrl.get(url)).filter((p): p is NonNullable<typeof p> => !!p)
+  const hiddenPins = Math.max(0, Math.min(allPins.length, MAX_PINS) - fitPins)
+  useLayoutEffect(() => {
+    const nav = document.querySelector<HTMLElement>('[data-sidebar="sidebar"] [data-guide="app.nav"]')
+    if (!nav) return
+    const over = nav.scrollHeight - nav.clientHeight
+    if (over > 1 && fitPins > 0) setFitPins((n) => Math.max(0, n - Math.ceil(over / 32)))
+  }, [fitPins, allPins.length, settingUp, noUpdateYet, sb.ready, suggestion?.url])
+  useEffect(() => {
+    // A taller window (or a closed setup group) has room again: measure from all of them.
+    const grow = () => setFitPins(MAX_PINS)
+    window.addEventListener('resize', grow)
+    return () => window.removeEventListener('resize', grow)
+  }, [])
+  const yourPages: NavItem[] = allPins
+    .slice(0, Math.min(MAX_PINS, fitPins))
     .map((p) => ({ title: p.title, url: p.url, icon: p.icon, soon: p.page.status === 'planned', count: pageCounts[p.url], exact: p.url.includes('?') }))
-  // UX-70: a page pinned to "Your pages" isn't a second row in its section (inside a drawer it stays, with its module).
-  const unpinnedEntries = (section: NavSection) =>
-    sectionEntries(section).filter((e) => e.kind === 'category' || !sb.prefs.pins.includes(e.item.url))
-  const hiddenSections = sb.prefs.hidden.filter((key) => sectionEntries(key).length > 0)
-  const allSections = sb.prefs.order
-    .filter((key) => !sb.prefs.hidden.includes(key))
-    .map((key) => ({ key, title: SECTION_TITLES[key], entries: unpinnedEntries(key) }))
-    .filter((section) => section.entries.length > 0)
-  // SS-31 (guided-onboarding-plan.md 6.2): step-by-step mode starts with the everyday pages and the role's own
-  // first section (UX-04: each role's day comes first), and one row
-  // shows the rest. Help only: search and every link still reach every page this role may see.
+
+  // The foot: Learn (for everyone who gets guidance, SS-41) and Settings.
   const guide = useStartMode()
-  const [showEverything, setShowEverything] = useShowEverything()
-  const canShorten = guide.ready && guide.rules.shortSidebar && !showPlanned
-  const sections = canShorten && !showEverything ? allSections.slice(0, 1) : allSections
-  const hiddenEntries = allSections.filter((s) => !sections.includes(s)).reduce((n, s) => n + s.entries.length, 0)
-  const bringData: NavItem | null =
-    guide.ready && guide.rules.bringDataInSidebar && setup.isCompanyAdmin && !trial.readOnly
-      ? { title: 'Bring your data', url: '/bring-data', icon: Upload }
-      : null
-  // SS-41: Learn Mesiri with the everyday pages, for everyone who gets guidance; "I'll find my way" reaches it from Help.
   const learn: NavItem | null = guide.ready && guide.rules.tours !== 'none' ? { title: 'Learn Mesiri', url: '/learn', icon: GraduationCap } : null
-  const newActions = trial.readOnly ? [] : NEW_ACTIONS.filter((a) => a.roles.includes(role) && (!a.module || isModuleEnabled(a.module)))
-  const renderCategory = (category: NavCategory) => (
-    <CollapsibleNavCategory
-      key={category.key}
-      category={category}
-      getUrlWithScope={getUrlWithScope}
-      pathname={location.pathname}
-      search={location.search}
-      theme={sidebarTheme}
-      pin={pin}
-    />
+  const management = ROOT_MANAGEMENT_ITEMS.filter(
+    (item) =>
+      isModuleEnabled(item.module) &&
+      (!item.requiredRole || me?.role === item.requiredRole) &&
+      (!item.allowedRoles || item.allowedRoles.includes(role)),
   )
 
-  const renderLink = (item: NavItem, pinMode?: 'pin' | 'unpin') => {
+  const renderLink = (item: NavItem, pinMode?: 'unpin') => {
     const ItemIcon = item.icon
     const active = item.exact ? isSubItemActive(location.pathname, location.search, item.url) : checkIsItemActive(location.pathname, item.url)
     const tone = item.count?.tone ?? item.badge
     const count = item.count ? item.count.n : item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
-    // A plain string className: SidebarMenuButton (asChild -> Radix Slot) merges className as text, which silently
-    // drops a function, so the active state never rendered. A Link, not a NavLink: NavLink sets aria-current from
-    // the path alone, so every ?view= of a page (the Tasks rows, Automations under /whatsapp) was "current".
-    const canPin = pinMode && pin.canPin(item.url)
+    const pinnable = pinMode && canPin(item.url)
     return (
-      <SidebarMenuItem key={item.url} className={cn(justPinned === item.url && pinMode === 'unpin' && 'rounded-lg ring-2 ring-[#FACC15]/70 transition-shadow dark:ring-primary/60')}>
+      <SidebarMenuItem key={item.url} className={cn(justPinned === item.url && 'rounded-lg ring-2 ring-[#FACC15]/70 transition-shadow dark:ring-primary/60')}>
         <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
           <Link
             to={getUrlWithScope(item.url)}
@@ -689,23 +414,14 @@ export function AppSidebar() {
             <span className="relative shrink-0">
               <ItemIcon className={cn('size-4', active ? S.iconActive : S.icon)} />
               {count > 0 && (
-                <span
-                  aria-hidden
-                  className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[tone!])}
-                />
+                <span aria-hidden className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[tone!])} />
               )}
             </span>
             <span className="truncate">{item.title}</span>
             {item.soon && <SoonDot className="ml-auto group-data-[collapsible=icon]:hidden" />}
-            {item.note && (
-              <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">{item.note}</span>
-            )}
             {count > 0 && (
               <span
-                className={cn(
-                  'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
-                  BADGE[tone!],
-                )}
+                className={cn('ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden', BADGE[tone!])}
                 title={item.count ? `${count} ${item.count.label}` : item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
               >
                 {count > 99 ? '99+' : count}
@@ -713,7 +429,7 @@ export function AppSidebar() {
             )}
           </Link>
         </SidebarMenuButton>
-        {canPin && <PinButton pinned={pin.pinned(item.url)} title={item.title} onClick={() => pin.toggle(item.url, item.title)} group="menu" />}
+        {pinnable && <PinButton pinned={sb.prefs.pins.includes(item.url)} title={item.title} onClick={() => togglePin(item.url)} group="menu" />}
       </SidebarMenuItem>
     )
   }
@@ -777,35 +493,63 @@ export function AppSidebar() {
           </div>
         </SidebarHeader>
 
-        <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)} data-guide="app.nav">
-          <SidebarGroup className="p-1">
+        <SidebarContent className={cn('gap-0 px-1.5 py-1', S.scrollbar)} data-guide="app.nav">
+          {settingUp && (
+            <SidebarGroup className="px-1 py-0.5" data-guide="app.setup">
+              <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between', S.label)}>
+                <span>Set up</span>
+                <span className="tabular-nums normal-case tracking-normal">
+                  {setupDone!.done} of {setupDone!.total}
+                </span>
+              </SidebarGroupLabel>
+              <div className="mx-2.5 mb-1.5 h-1 overflow-hidden rounded-full bg-white/10 group-data-[collapsible=icon]:hidden dark:bg-muted" aria-hidden>
+                <div className="h-full rounded-full" style={{ width: `${(setupDone!.done / setupDone!.total) * 100}%`, backgroundColor: S.bar }} />
+              </div>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {shownSteps.map((step, i) => {
+                    const active = isSubItemActive(location.pathname, location.search, step.url)
+                    return (
+                      <SidebarMenuItem key={step.key}>
+                        <SidebarMenuButton asChild tooltip={step.title} isActive={active}>
+                          <Link to={getUrlWithScope(step.url)} className={cn(NAV_LINK_BASE, S.ring, i === 0 ? 'bg-[#FACC15]/10 text-white dark:text-foreground' : S.rowIdle)}>
+                            {i === 0 ? (
+                              <span className="flex size-4 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: S.bar }} aria-hidden>
+                                <ChevronRight className="size-3 text-[#2A2829]" strokeWidth={3} />
+                              </span>
+                            ) : (
+                              <Circle className={cn('size-4 shrink-0', S.icon)} aria-hidden />
+                            )}
+                            <span className="truncate">{step.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                  {toDo.length > shownSteps.length && (
+                    <li className="group-data-[collapsible=icon]:hidden">
+                      <Link to={getUrlWithScope(SETUP_URL)} className={cn('flex items-center gap-2 rounded-md px-2.5 py-1 text-xs hover:underline', S.label, S.ring)}>
+                        <ListChecks className="size-3.5" aria-hidden /> {toDo.length - shownSteps.length} more {toDo.length - shownSteps.length === 1 ? 'step' : 'steps'}
+                      </Link>
+                    </li>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          <SidebarGroup className="px-1 py-0.5">
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                <SidebarMenuItem className="mb-1 flex items-center gap-1.5 group-data-[collapsible=icon]:flex-col">
-                  <SidebarMenuButton
-                    onClick={openJump}
-                    data-guide="app.search"
-                    tooltip="Search (Ctrl K)"
-                    className={cn(NAV_LINK_BASE, 'min-w-0 flex-1 border', S.divider, S.rowIdle, S.ring)}
-                  >
-                    <Search className={cn('size-4 shrink-0', S.icon)} />
-                    <span className="truncate">Search</span>
-                    {/* Beside "+ New" there is no room for the key hint; the tooltip and the app tour name it. */}
-                    {newActions.length === 0 && (
-                      <kbd className="ml-auto rounded border border-current/20 px-1 text-[10px] opacity-60 group-data-[collapsible=icon]:hidden">Ctrl K</kbd>
-                    )}
-                  </SidebarMenuButton>
-                  {newActions.length > 0 && <NewButton actions={newActions} bar={S.bar} ring={S.ring} />}
-                </SidebarMenuItem>
-                {PRIMARY_ITEMS.map((i) => renderLink(i))}
-                {bringData && renderLink(bringData)}
-                {learn && renderLink(learn)}
+                {everyday.map((item) =>
+                  noUpdateYet && NEEDS_FIRST_UPDATE.has(item.url) ? <LockedRow key={item.url} item={item} why={LOCKED_WHY} S={S} /> : renderLink(item),
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {sb.ready && (
-            <SidebarGroup className="p-1" data-guide="app.pins">
+          {sb.ready && !noUpdateYet && (yourPages.length > 0 || suggestion || (allPins.length === 0 && !trial.readOnly)) && (
+            <SidebarGroup className="px-1 py-0.5" data-guide="app.pins">
               <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between pr-1', S.label)}>
                 <span className="flex items-center gap-1.5">
                   <Pin className="size-3 rotate-45" aria-hidden /> Your pages
@@ -815,8 +559,8 @@ export function AppSidebar() {
                     type="button"
                     onClick={() => openSidebarCustomise('pages')}
                     className={cn('flex size-6 items-center justify-center rounded-md normal-case', S.iconBtn, S.ring)}
-                    title="Customise your sidebar"
-                    aria-label="Customise your sidebar"
+                    title="Customise your pages"
+                    aria-label="Customise your pages"
                   >
                     <SlidersHorizontal className="size-3.5" />
                   </button>
@@ -830,7 +574,7 @@ export function AppSidebar() {
                       <div className={cn('flex items-center gap-1 rounded-lg border border-dashed pr-1', S.divider)}>
                         <button
                           type="button"
-                          onClick={() => pin.toggle(suggestion.url, suggestion.title)}
+                          onClick={() => togglePin(suggestion.url)}
                           title="You open this often. Pin it here"
                           aria-label={`Pin ${suggestion.title}: you open it often`}
                           className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm', S.rowIdle, S.ring)}
@@ -853,9 +597,9 @@ export function AppSidebar() {
                       </div>
                     </SidebarMenuItem>
                   )}
-                  {yourPages.length === 0 && !trial.readOnly && (
+                  {allPins.length === 0 && !trial.readOnly && (
                     <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => openSidebarCustomise('pages')} tooltip="Pin a page" className={cn(NAV_LINK_BASE, 'border border-dashed', S.divider, S.rowIdle, S.ring)}>
+                      <SidebarMenuButton onClick={openAllPages} tooltip="Pin a page" className={cn(NAV_LINK_BASE, 'border border-dashed', S.divider, S.rowIdle, S.ring)}>
                         <Plus className={cn('size-4 shrink-0', S.icon)} />
                         <span className="truncate">Pin the pages you use</span>
                       </SidebarMenuButton>
@@ -866,176 +610,108 @@ export function AppSidebar() {
             </SidebarGroup>
           )}
 
-          {sections.map((section) => (
-            <SidebarGroup key={section.key} className="p-1">
-              <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between', S.label)}>
-                {section.title}
-                {showPlanned && section.key === sections[0].key && (
-                  <span className={cn(SOON_PILL, 'normal-case tracking-normal', S.soon)}>Preview</span>
-                )}
-              </SidebarGroupLabel>
+          <SidebarGroup className="px-1 py-0.5">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={openAllPages} tooltip="All pages" data-guide="app.all" className={cn(NAV_LINK_BASE, S.rowIdle, S.ring)}>
+                  <LayoutGrid className={cn('size-4 shrink-0', S.icon)} />
+                  <span className="truncate">All pages</span>
+                  {hiddenPins > 0 && (
+                    <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden" title={`${hiddenPins} pinned pages are here: the screen is too short to show them all`}>
+                      +{hiddenPins} pinned
+                    </span>
+                  )}
+                  <ChevronRight className={cn('ml-auto size-3.5 group-data-[collapsible=icon]:hidden', S.chevron)} aria-hidden />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+
+          {(learn || management.length > 0) && (
+            <SidebarGroup className="mt-auto px-1 py-0.5">
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
-                  {section.entries.map((entry) => (entry.kind === 'link' ? renderLink(entry.item, 'pin') : renderCategory(entry.category)))}
+                  {learn && renderLink(learn)}
+                  {management.map((i) => renderLink(i))}
                 </SidebarMenu>
               </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
-
-          {canShorten && (hiddenEntries > 0 || showEverything) && (
-            <SidebarGroup className="p-1">
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => setShowEverything(!showEverything)}
-                    tooltip={showEverything ? 'Show fewer' : `Show all (${hiddenEntries} more)`}
-                    className={cn(NAV_LINK_BASE, S.rowIdle, S.ring)}
-                    aria-expanded={showEverything}
-                  >
-                    <ChevronsUpDown className={cn('size-4 shrink-0', S.icon)} />
-                    <span className="truncate">{showEverything ? 'Show fewer' : 'Show all'}</span>
-                    {!showEverything && (
-                      <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">+{hiddenEntries}</span>
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroup>
-          )}
-
-          {visibleManagementItems.length > 0 && (
-            <SidebarGroup className="p-1">
-              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>{SECTION_TITLES.settings}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {finishSetup && renderLink(finishSetup)}
-                  {visibleManagementItems.map((i) => renderLink(i))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
-
-          {sb.ready && !trial.readOnly && (
-            <SidebarGroup className="mt-auto p-1">
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => openSidebarCustomise(hiddenSections.length ? 'sections' : 'pages')}
-                    tooltip="Customise your sidebar"
-                    data-guide="app.customise"
-                    className={cn(NAV_LINK_BASE, S.rowIdle, S.ring)}
-                  >
-                    <SlidersHorizontal className={cn('size-4 shrink-0', S.icon)} />
-                    <span className="truncate">Customise</span>
-                    {hiddenSections.length > 0 && (
-                      <span
-                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-current/20 px-1.5 text-[11px] tabular-nums opacity-80 group-data-[collapsible=icon]:hidden"
-                        title={`Hidden: ${hiddenSections.map((h) => SECTION_TITLES[h]).join(', ')}`}
-                        aria-label={`${hiddenSections.length} hidden`}
-                      >
-                        <EyeOff className="size-3" aria-hidden />
-                        {hiddenSections.length}
-                      </span>
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
             </SidebarGroup>
           )}
         </SidebarContent>
 
-        <SidebarFooter className={cn('border-t p-2', S.divider)}>
-          <div className="flex items-center gap-2.5 px-1 group-data-[collapsible=icon]:hidden">
-            <div
-              className={cn(
-                'size-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
-                S.avatar
+        <SidebarFooter className={cn('border-t p-1.5', S.divider)}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                data-guide="app.me"
+                className={cn('flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors', S.hoverBg, S.ring)}
+                title="Your account: theme, sidebar, log out"
+              >
+                <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold', S.avatar)} aria-hidden>
+                  {initialsOf(userName || companyName)}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+                  <span className={cn('truncate text-sm font-semibold', S.name)}>{userName || 'Signed in'}</span>
+                  <span className={cn('truncate text-xs', S.role)}>{roleLabel(me?.role)}</span>
+                </span>
+                <ChevronsUpDown className={cn('size-4 shrink-0 group-data-[collapsible=icon]:hidden', S.chevron)} aria-hidden />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" className="w-60">
+              <DropdownMenuLabel className="flex flex-col">
+                <span className="truncate text-sm">{userName || 'Signed in'}</span>
+                <span className="truncate text-xs font-normal text-muted-foreground">
+                  {roleLabel(me?.role)} · {companyName}
+                </span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={toggleTheme} className="gap-2">
+                {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+                {isDark ? 'Light mode' : 'Dark mode'}
+              </DropdownMenuItem>
+              {!trial.readOnly && (
+                <DropdownMenuItem onSelect={() => openSidebarCustomise('pages')} className="gap-2">
+                  <SlidersHorizontal className="size-4" /> Customise your sidebar
+                </DropdownMenuItem>
               )}
-              aria-hidden="true"
-            >
-              {initialsOf(userName || companyName)}
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <span className={cn('text-sm font-semibold truncate', S.name)}>
-                {userName || 'Signed in'}
-              </span>
-              <span className={cn('text-xs truncate', S.role)}>{roleLabel(me?.role)}</span>
-            </div>
-            {me?.is_platform_admin && (
-            <button
-              type="button"
-              onClick={() => setShowPlanned(!showPlanned)}
-              title={showPlanned ? 'Hide planned modules' : 'Show planned modules (preview)'}
-              aria-label={showPlanned ? 'Hide planned modules' : 'Show planned modules'}
-              aria-pressed={showPlanned}
-              className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', S.iconBtn, S.ring, showPlanned && 'text-orange-400 hover:text-orange-300')}
-            >
-              <MapIcon className="size-4" />
-            </button>
-            )}
-          </div>
-          <SidebarMenu>
-            <SidebarMenuItem className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
-              <SidebarMenuButton
-                onClick={() => logout().then(() => window.location.assign('/login'))}
-                tooltip="Log out"
-                className={cn(
-                  'flex-1 rounded-lg px-2.5 py-2 text-sm transition-colors',
-                  S.rowIdle,
-                  S.danger,
-                  S.ring
-                )}
-              >
-                <LogOut className="size-4 shrink-0" />
-                <span>Log out</span>
-              </SidebarMenuButton>
-              <SidebarMenuButton
-                onClick={toggleTheme}
-                tooltip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0', S.iconBtn, S.ring)}
-              >
-                {isDark ? <Sun className="size-4 shrink-0" /> : <Moon className="size-4 shrink-0" />}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+              {me?.is_platform_admin && (
+                <DropdownMenuItem onSelect={() => setShowPlanned(!showPlanned)} className="gap-2">
+                  <MapIcon className="size-4" /> {showPlanned ? 'Hide planned modules' : 'Show planned modules'}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => logout().then(() => window.location.assign('/login'))} className="gap-2 text-destructive focus:text-destructive">
+                <LogOut className="size-4" /> Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarFooter>
       </div>
     </Sidebar>
   )
 }
 
-// UX-16: the "+ New" button (see NEW_ACTIONS). A menu of what this role records; each opens Tell Mesiri with the
-// sentence started.
-function NewButton({ actions, bar, ring }: { actions: NewAction[]; bar: string; ring: string }) {
+/** UX-74: an everyday page that has nothing to show yet: dimmed with a lock; a tap says why instead of opening it. */
+function LockedRow({ item, why, S }: { item: NavItem; why: string; S: (typeof SIDEBAR_THEMES)[SidebarTheme] }) {
+  const [told, setTold] = useState(false)
+  const ItemIcon = item.icon
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          data-guide="app.new"
-          title="New: record something"
-          aria-label="New"
-          style={{ backgroundColor: bar }}
-          className={cn(
-            'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm font-semibold text-[#2A2829] outline-hidden transition-[filter] hover:brightness-105 focus-visible:ring-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0',
-            ring,
-          )}
-        >
-          <Plus className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-          <span className="group-data-[collapsible=icon]:hidden">New</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="end" className="w-64">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Tell Mesiri, like on WhatsApp</DropdownMenuLabel>
-        {actions.map((a) => (
-          <DropdownMenuItem key={a.key} onSelect={() => openTellMesiri(a.starter)} className="flex-col items-start gap-0.5">
-            <span className="text-sm font-medium">{a.label}</span>
-            <span className="text-xs text-muted-foreground">{a.example}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={() => setTold((t) => !t)}
+        tooltip={`${item.title}: ${why.toLowerCase()}`}
+        // Not aria-disabled: the sidebar's button style turns clicks off for it, and a tap here says why.
+        aria-label={`${item.title}, not open yet: ${why.toLowerCase()}`}
+        aria-expanded={told}
+        className={cn(NAV_LINK_BASE, S.rowIdle, S.ring, 'opacity-55')}
+      >
+        <ItemIcon className={cn('size-4 shrink-0', S.icon)} />
+        <span className="truncate">{item.title}</span>
+        <Lock className="ml-auto size-3.5 shrink-0 group-data-[collapsible=icon]:hidden" aria-label="not open yet" />
+      </SidebarMenuButton>
+      {told && <p className={cn('m-0 px-2.5 pb-1.5 pl-9 text-xs group-data-[collapsible=icon]:hidden', S.label)}>{why}.</p>}
+    </SidebarMenuItem>
   )
 }
 

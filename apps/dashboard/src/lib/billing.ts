@@ -31,7 +31,7 @@ export interface Contract {
   defect_liability_months: number | null
   payment_terms: string | null
   notes: string | null
-  /** PS-01..04 (migration 0563) */
+  /** PS-01..04 (migration 0564) */
   client_payment_days?: number | null
   contract_type?: ContractType | null
   ld_pct_per_week?: string | null
