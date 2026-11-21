@@ -93,6 +93,10 @@ class PostgresLabourAllocationRepository:
                 "planned_item_id, man_days, source) SELECT :org, :p, CAST(:s AS uuid), :d, :k, :line, :md, 'auto' "
                 "WHERE NOT EXISTS (SELECT 1 FROM labour_boq_allocations WHERE project_id = :p "
                 "AND site_id IS NOT DISTINCT FROM CAST(:s AS uuid) AND work_date = :d AND trade_key = :k "
-                "AND (source = 'person' OR planned_item_id = :line))"),
+                "AND (source = 'person' OR planned_item_id = :line)) "
+                # Two reads at once (Cost overview and Budget vs actual on one page) both store the same split: the
+                # second is a no-op, never a 500 (found recording episode 9: /cost/portfolio failed, the P&L lost
+                # its "Books or real").
+                "ON CONFLICT DO NOTHING"),
                 {"org": organization_id, "p": project_id, "s": a["site_id"], "d": a["work_date"], "k": a["trade_key"],
                  "line": a["planned_item_id"], "md": a["man_days"]})

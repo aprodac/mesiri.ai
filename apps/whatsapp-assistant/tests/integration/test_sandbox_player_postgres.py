@@ -262,3 +262,22 @@ async def test_the_boq_carries_its_norms_and_the_tiling_rate(world):
             "WHERE w.organization_id = :o AND i.boq_code = '5.1' AND i.superseded_by_id IS NULL"), o)).scalar()
     assert normed == len({c for c, *_ in gv.NORMS})
     assert float(rate) == gv.SUBCONTRACT_RATES["5.1"]
+
+
+async def test_cost_reads_at_once_never_fail(world):
+    """Found recording episode 9: reading Cost control stores the automatic split of finished weeks' labour onto BOQ
+    lines; two reads at once (the P&L page loads the portfolio and a project's budget together) stored the same split
+    twice and one failed with a unique-key error, a 500 that hid the P&L's "Books or real". Several reads at once all
+    answer; the guard: the split stored is the same as one read alone stores."""
+    import asyncio
+
+    app, engine, person = world
+    await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=7)
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=7)  # day 14: a week's labour to store
+    headers = {"Authorization": f"Bearer {moved.token}"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        answers = await asyncio.gather(*[client.get("/cost/portfolio", headers=headers) for _ in range(4)])
+        assert [a.status_code for a in answers] == [200] * 4
+        again = await client.get("/cost/portfolio", headers=headers)
+    assert again.json()["projects"] == answers[0].json()["projects"]
