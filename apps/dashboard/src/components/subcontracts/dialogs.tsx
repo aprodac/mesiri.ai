@@ -27,7 +27,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 // reject a flagged bill with a reason; an advance; releasing retention.
 
 const today = () => appNow().toISOString().slice(0, 10)
-const UNITS = ['cum', 'sqm', 'sqft', 'rmt', 'rft', 'nos', 'kg', 'MT', 'LS', 'day']
+const UNITS = ['cum', 'sqm', 'sqft', 'rmt', 'rft', 'nos', 'kg', 'MT', 'LS', 'day', 'month', 'job']
 
 function Field({ label, htmlFor, hint, children, className }: { label: string; htmlFor?: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (

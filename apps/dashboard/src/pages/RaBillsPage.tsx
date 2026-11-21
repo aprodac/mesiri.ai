@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, PageError } from '@/components/dpr-page'
 import { ContractDialog } from '@/components/billing/contract-dialog'
+import { PaymentStagesCard } from '@/components/billing/payment-stages'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { useAuth } from '@/lib/AuthContext'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -74,7 +75,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
     onSuccess: (b) => {
       queryClient.invalidateQueries({ queryKey: ['ra-bills'] })
       pick(b.id)
-      toast.success(`${b.ref} drafted from the measured work`)
+      toast.success(c?.contract_type === 'lump_sum' ? `${b.ref} drafted from the stages reached` : `${b.ref} drafted from the measured work`)
     },
     onError: (e) => toast.error('Could not make the bill', apiErrorMessage(e)),
   })
@@ -114,11 +115,12 @@ function ProjectBills({ projectId }: { projectId: string }) {
           Set the contract terms first
         </Callout>
       )}
+      {c && <PaymentStagesCard projectId={projectId} />}
       {!list.data ? (
         <Skeleton className="h-48 w-full" />
       ) : list.data.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="ra.empty">
-          No bills yet. New RA bill counts the work done so far.
+          {c?.contract_type === 'lump_sum' ? 'No bills yet. New RA bill asks for the payment stages reached so far.' : 'No bills yet. New RA bill counts the work done so far.'}
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">

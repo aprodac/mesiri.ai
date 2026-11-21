@@ -879,3 +879,169 @@ async def tds_export(date_from: datetime.date | None = None, date_to: datetime.d
     t = await tax.tds(conn, auth.organization_id, date_from, date_to, today)
     return _xlsx(export.tds(await _company(conn, auth.organization_id), date_from, date_to, t),
                  f"tds-{date_from}-to-{date_to}.xlsx")
+
+
+# -- ACC-13 / FB-03: bank reconciliation -------------------------------------------------------------------------
+
+class StatementIn(BaseModel):
+    file_name: str = Field(default="statement.csv", max_length=200)
+    content: str = Field(min_length=1, max_length=5_000_000, description="The statement's CSV text, as downloaded")
+
+
+class MatchIn(BaseModel):
+    entry_id: uuid.UUID
+
+
+class BookIn(BaseModel):
+    ledger_id: uuid.UUID | None = Field(default=None, description="The other side; none: Bank charges for money out, "
+                                                                  "Interest received for money in")
+    narration: str | None = Field(default=None, max_length=500)
+
+
+class IgnoreIn(BaseModel):
+    note: str = Field(min_length=2, max_length=300)
+
+
+async def _bank(conn: AsyncConnection, auth: AuthorizationContext, account_id: uuid.UUID) -> tuple[dict, uuid.UUID | None]:
+    from mesiri.domains.accounts import bankrec
+
+    await _ready(conn, auth)  # posts what changed, so the bank's ledger holds every movement
+    acct = await bankrec.account(conn, auth.organization_id, account_id)
+    if acct is None:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if acct["account_type"] != "bank":
+        raise HTTPException(status_code=422, detail=f"{acct['name']} is not a bank account: only a bank's statement "
+                                                    "is reconciled.")
+    return acct, await bankrec.bank_ledger(conn, auth.organization_id, account_id)
+
+
+async def _bank_line(conn: AsyncConnection, auth: AuthorizationContext, line_id: uuid.UUID):
+    from mesiri.domains.accounts import bankrec
+
+    _require(auth)
+    line = await bankrec.get_line(conn, auth.organization_id, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Statement line not found.")
+    acct, ledger = await _bank(conn, auth, line["account_id"])
+    return line, acct, ledger
+
+
+@router.get("/bank-rec/{account_id}")
+async def bank_rec(account_id: uuid.UUID, date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                   auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """The account's statement lines in the period, each matched, ignored or open; the book entries no line matches;
+    the bank's closing balance against the books' on the same day; and the imports so far."""
+    from mesiri.domains.accounts import bankrec
+
+    acct, ledger = await _bank(conn, auth, account_id)
+    if date_from is None and date_to is None:
+        span = (await conn.execute(text(
+            "SELECT MIN(txn_date), MAX(txn_date) FROM bank_statement_lines WHERE organization_id = :org "
+            "AND account_id = :a"), {"org": auth.organization_id, "a": account_id})).one()
+        if span[0] is not None:
+            date_from, date_to = span[0], span[1]
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    out = await bankrec.state(conn, auth.organization_id, account_id, ledger, date_from, date_to)
+    imports = [dict(r) for r in (await conn.execute(text(
+        "SELECT i.id, i.file_name, i.from_date, i.to_date, i.lines_added, i.lines_repeated, i.created_at, "
+        "u.full_name AS by FROM bank_statement_imports i LEFT JOIN users u ON u.id = i.created_by "
+        "WHERE i.organization_id = :org AND i.account_id = :a ORDER BY i.created_at DESC LIMIT 10"),
+        {"org": auth.organization_id, "a": account_id})).mappings()]
+    return _out({"account": acct, "date_from": date_from, "date_to": date_to, "imports": imports, **out})
+
+
+@router.post("/bank-rec/{account_id}/import", status_code=201)
+async def bank_rec_import(account_id: uuid.UUID, body: StatementIn,
+                          auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """Read a statement CSV into the account, then match what matches. Lines already imported are not added again."""
+    from mesiri.domains.accounts import bankrec
+
+    _, ledger = await _bank(conn, auth, account_id)
+    try:
+        parsed = bankrec.parse(body.content)
+    except bankrec.StatementError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    done = await bankrec.import_lines(conn, auth.organization_id, account_id, parsed, body.file_name, auth.user_id)
+    matched = await bankrec.run_auto_match(conn, auth.organization_id, account_id, ledger, auth.user_id)
+    return _out({**done, "matched": matched, "skipped": parsed["skipped"][:20], "from": parsed["from"],
+                 "to": parsed["to"]})
+
+
+@router.post("/bank-rec/{account_id}/auto-match")
+async def bank_rec_auto(account_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.accounts import bankrec
+
+    _, ledger = await _bank(conn, auth, account_id)
+    return {"matched": await bankrec.run_auto_match(conn, auth.organization_id, account_id, ledger, auth.user_id)}
+
+
+@router.post("/bank-rec/lines/{line_id}/match")
+async def bank_rec_match(line_id: uuid.UUID, body: MatchIn, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.accounts import bankrec
+
+    line, _, ledger = await _bank_line(conn, auth, line_id)
+    try:
+        await bankrec.match_by_hand(conn, auth.organization_id, line, ledger, body.entry_id, auth.user_id)
+    except bankrec.StatementError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"status": "matched"}
+
+
+@router.post("/bank-rec/lines/{line_id}/book", status_code=201)
+async def bank_rec_book(line_id: uuid.UUID, body: BookIn, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """A line the books don't have yet (bank charges, interest, a charge the bank took): a Journal voucher on the
+    line's date, the bank on one side and the ledger picked (default Bank charges / Interest received) on the other,
+    then matched to it. One tap."""
+    from mesiri.domains.accounts import bankrec
+
+    line, acct, ledger = await _bank_line(conn, auth, line_id)
+    if line["status"] == "matched":
+        raise HTTPException(status_code=409, detail="This line is already matched.")
+    if ledger is None:
+        raise HTTPException(status_code=409, detail="The account has no ledger in the books yet.")
+    amount = Decimal(line["amount"])
+    other = body.ledger_id
+    if other is None:
+        code = "bank_charges" if amount < 0 else "interest_received"
+        await chart.ensure_chart(conn, auth.organization_id)
+        other = (await conn.execute(text("SELECT id FROM ledgers WHERE organization_id = :org AND code = :c"),
+                                    {"org": auth.organization_id, "c": code})).scalar()
+    words = body.narration or (f"{'Bank charges' if amount < 0 else 'Interest received'}: "
+                               f"{line['description'] or acct['name']}"[:500])
+    bank_side = {"ledger_id": str(ledger), "debit": amount if amount > 0 else 0, "credit": -amount if amount < 0 else 0}
+    other_side = {"ledger_id": str(other), "debit": -amount if amount < 0 else 0, "credit": amount if amount > 0 else 0}
+    try:
+        entry_id = await vouchers.post(conn, auth.organization_id, auth.user_id, day=line["date"],
+                                       voucher_type="journal", narration=words, lines=[other_side, bank_side])
+        await bankrec.match_by_hand(conn, auth.organization_id, line, ledger, entry_id, auth.user_id, how="booked")
+    except vouchers.VoucherError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    except bankrec.StatementError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _out({"status": "matched", "entry_id": entry_id})
+
+
+@router.post("/bank-rec/lines/{line_id}/ignore")
+async def bank_rec_ignore(line_id: uuid.UUID, body: IgnoreIn, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """Leave a line out of the reconciliation with a reason (a reversal the bank made and undid the same day)."""
+    from mesiri.domains.accounts import bankrec
+
+    line, _, _ = await _bank_line(conn, auth, line_id)
+    await bankrec.set_status(conn, line["id"], "ignored", body.note.strip(), auth.user_id)
+    return {"status": "ignored"}
+
+
+@router.post("/bank-rec/lines/{line_id}/reopen")
+async def bank_rec_reopen(line_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """Undo a match or an ignore: the line is open again (a voucher booked for it stays in the books)."""
+    from mesiri.domains.accounts import bankrec
+
+    line, _, _ = await _bank_line(conn, auth, line_id)
+    await bankrec.set_status(conn, line["id"], "unmatched", None, auth.user_id)
+    return {"status": "unmatched"}

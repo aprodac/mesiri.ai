@@ -15,7 +15,10 @@ import {
   KIND_LABEL,
   KIND_LOOK,
   KIND_ORDER,
+  bulkApprovable,
+  confirmSiteDay,
   daysWaited,
+  itemKey,
   fetchWaiting,
   waitedFor,
   waitingUrl,
@@ -37,7 +40,10 @@ import { cn } from '@/lib/utils'
 // reads each module's own list as the caller). Urgent first, then today, then older; a coloured tile per kind; the
 // simple decisions are taken right on the row with each module's own action (a subcontractor's bill, a week's wages,
 // a task); a material request opens its own panel (order it, send it from another site, or say no); the rest open
-// the record where it is checked line by line. Never in bulk: each decision is one tap on one row.
+// the record where it is checked line by line.
+// FB-02 (contractor session, 21 Nov: "100 labour entries across 10 sites take 300 clicks"): a site's day is confirmed
+// with one tap (every entry on it), and the rows that need nothing opened (site days, draft wage weeks) can be ticked,
+// or all selected, and approved together. Bills, requests and counts stay one by one: each has figures to check.
 
 type KindFilter = 'all' | WaitingKind
 
@@ -47,6 +53,7 @@ export default function ApprovalsPage() {
   const [kind, setKind] = useUrlState<KindFilter>('kind', 'all')
   const [project, setProject] = useUrlState<string>('project_name', 'all')
   const [urgentOnly, setUrgentOnly] = useUrlState<'' | '1'>('urgent', '')
+  const [selected, setSelected] = React.useState<Set<string>>(() => new Set())
 
   const header = (
     <ModuleHeader
@@ -102,7 +109,10 @@ export default function ApprovalsPage() {
           {shown.length === 0 ? (
             <EmptyState icon={CheckCircle2} title="Nothing here" action={<Button variant="outline" size="sm" onClick={() => { setKind('all'); setUrgentOnly(''); setProject('all') }}>Show all</Button>} className="bg-card" />
           ) : (
-            <Groups items={shown} today={data.today} />
+            <>
+              <BulkBar items={shown} selected={selected} setSelected={setSelected} />
+              <Groups items={shown} today={data.today} selected={selected} setSelected={setSelected} />
+            </>
           )}
           {data.items.length < data.total && <p className="text-xs text-muted-foreground">Showing the first {data.items.length} of {data.total}.</p>}
         </>
@@ -167,7 +177,62 @@ function Chip({ kind, active, onClick, label, n, urgent }: { kind?: WaitingKind;
   )
 }
 
-function Groups({ items, today }: { items: WaitingItem[]; today: string }) {
+type Selection = { selected: Set<string>; setSelected: React.Dispatch<React.SetStateAction<Set<string>>> }
+
+/** FB-02: tick rows (or all) that need nothing opened and approve them together, each with its module's own action. */
+function BulkBar({ items, selected, setSelected }: { items: WaitingItem[] } & Selection) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const can = items.filter(bulkApprovable)
+  const picked = can.filter((i) => selected.has(itemKey(i)))
+  const all = can.length > 0 && picked.length === can.length
+  const run = useMutation({
+    mutationFn: async (rows: WaitingItem[]) => {
+      let ok = 0
+      let entries = 0
+      const failed: string[] = []
+      for (const item of rows) {
+        try {
+          if (item.kind === 'site_report') {
+            const n = (await confirmSiteDay(item.site_id!, item.date!)).confirmed
+            if (n === 0) { failed.push(`${item.title}: nothing was left to confirm`); continue }
+            entries += n
+          } else await approveWageSheet(item.id)
+          ok += 1
+        } catch (e) {
+          failed.push(`${item.title}: ${apiErrorMessage(e)}`)
+        }
+      }
+      return { ok, entries, failed }
+    },
+    onSuccess: ({ ok, entries, failed }) => {
+      if (ok) toast.success(`${ok} approved`, entries ? `${entries} site entr${entries === 1 ? 'y' : 'ies'} confirmed` : undefined)
+      if (failed.length) toast.error(`${failed.length} not approved`, failed.slice(0, 3).join(' · '))
+      setSelected(new Set())
+      for (const k of ['approvals', 'labour', 'dpr']) queryClient.invalidateQueries({ queryKey: [k] })
+    },
+  })
+  if (can.length < 2) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 shadow-xs" data-guide="approvals.bulk">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          className="size-4 accent-foreground"
+          checked={all}
+          ref={(el) => { if (el) el.indeterminate = picked.length > 0 && !all }}
+          onChange={() => setSelected(all ? new Set() : new Set(can.map(itemKey)))}
+        />
+        Select all {can.length} that need nothing opened
+      </label>
+      <Button size="sm" className="gap-1.5" disabled={picked.length === 0 || run.isPending} onClick={() => run.mutate(picked)}>
+        <Check className="size-3.5" />{run.isPending ? 'Approving…' : `Approve ${picked.length || ''}`.trim()}
+      </Button>
+    </div>
+  )
+}
+
+function Groups({ items, today, selected, setSelected }: { items: WaitingItem[]; today: string } & Selection) {
   const groups = [
     { key: 'urgent', title: 'Urgent', icon: Flame, tone: 'text-rose-600 dark:text-rose-400', items: items.filter((i) => i.urgent) },
     { key: 'today', title: 'Today', icon: Clock, tone: 'text-foreground', items: items.filter((i) => !i.urgent && daysWaited(i.since, today) === 0) },
@@ -181,7 +246,7 @@ function Groups({ items, today }: { items: WaitingItem[]; today: string }) {
             <g.icon className="size-4" />{g.title}<span className="font-normal text-muted-foreground tabular-nums">{g.items.length}</span>
           </h2>
           <ul className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
-            {g.items.map((item) => <Row key={`${item.kind}-${item.id}`} item={item} today={today} />)}
+            {g.items.map((item) => <Row key={itemKey(item)} item={item} today={today} selected={selected} setSelected={setSelected} />)}
           </ul>
         </section>
       ))}
@@ -189,7 +254,7 @@ function Groups({ items, today }: { items: WaitingItem[]; today: string }) {
   )
 }
 
-function Row({ item, today }: { item: WaitingItem; today: string }) {
+function Row({ item, today, selected, setSelected }: { item: WaitingItem; today: string } & Selection) {
   const look = KIND_LOOK[item.kind]
   const Icon = look.icon
   const where = [item.project_name, item.site_name].filter(Boolean).join(' · ')
@@ -202,6 +267,15 @@ function Row({ item, today }: { item: WaitingItem; today: string }) {
         item.urgent && 'before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-rose-500')}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
+        {bulkApprovable(item) && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${item.title}`}
+            className="mt-2.5 size-4 shrink-0 accent-foreground"
+            checked={selected.has(itemKey(item))}
+            onChange={() => setSelected((s) => { const n = new Set(s); const k = itemKey(item); if (n.has(k)) n.delete(k); else n.add(k); return n })}
+          />
+        )}
         <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', look.tile)} title={KIND_LABEL[item.kind]}>
           <Icon className="size-[18px]" />
         </span>
@@ -241,7 +315,8 @@ function Actions({ item }: { item: WaitingItem }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['approvals'] })
 
   const act = useMutation({
-    mutationFn: async (what: 'wages' | 'task' | 'approve' | 'reject') => {
+    mutationFn: async (what: 'wages' | 'task' | 'approve' | 'reject' | 'day') => {
+      if (what === 'day') return confirmSiteDay(item.site_id!, item.date!)
       if (what === 'wages') return approveWageSheet(item.id)
       if (what === 'task') return moveTask(item.id, 'done')
       // A subcontractor's bill: the same bill the module lists, so its dialog shows the check's flags.
@@ -253,6 +328,7 @@ function Actions({ item }: { item: WaitingItem }) {
     onSuccess: (result, what) => {
       if (what === 'wages') { toast.success('Wages approved', 'Pay them from the wages page.'); queryClient.invalidateQueries({ queryKey: ['labour'] }) }
       if (what === 'task') { toast.success('Task done'); queryClient.invalidateQueries({ queryKey: ['tasks'] }) }
+      if (what === 'day') { const n = (result as { confirmed: number }).confirmed; toast.success(`${n} entr${n === 1 ? 'y' : 'ies'} confirmed`); queryClient.invalidateQueries({ queryKey: ['dpr'] }) }
       if (result !== null) refresh()
     },
     onError: (err) => { toast.error('Not saved', err instanceof Error && !('response' in err) ? err.message : apiErrorMessage(err)); refresh() },
@@ -303,7 +379,12 @@ function Actions({ item }: { item: WaitingItem }) {
       )
       break
     case 'site_report':
-      buttons = open('Confirm')
+      buttons = item.site_id && item.date ? (
+        <>
+          <Button size="sm" className="h-9 flex-1 sm:h-8 sm:flex-none" disabled={busy} onClick={() => act.mutate('day')}><Check className="size-3.5" />Confirm all</Button>
+          {open('Check')}
+        </>
+      ) : open('Confirm')
       break
     case 'labour_split':
       buttons = open('Check')

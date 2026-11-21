@@ -44,7 +44,20 @@ export default function CashBankPage() {
   const accounts = d ? [...d.accounts].sort((a, b) => Number(b.closing) - Number(a.closing)) : []
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Cash & bank" action={<PeriodBar state={periodState} />} />
+      <DprHeader
+        back={{ to: '/accounts', label: 'Accounts' }}
+        crumb="Accounts"
+        title="Cash & bank"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* ACC-13: a bank account's statement matched to the books. */}
+            <Link to="/accounts/bank-rec" data-guide="cash.bankrec" className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-card px-3 text-sm font-medium shadow-xs hover:bg-muted">
+              <Landmark className="size-4" />Reconcile bank
+            </Link>
+            <PeriodBar state={periodState} />
+          </div>
+        }
+      />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (

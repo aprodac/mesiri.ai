@@ -113,3 +113,19 @@ export function waitedFor(since: string | null, today: string): string {
   if (days === 1) return 'yesterday'
   return `${days} days`
 }
+
+/** FB-02: confirm every draft on a site's day in one go (the site's labour, work, materials and issues). */
+export async function confirmSiteDay(siteId: string, date: string): Promise<{ confirmed: number }> {
+  return (await api.post<{ confirmed: number }>(`/dpr/site-days/${siteId}/confirm`, null, { params: { date } })).data
+}
+
+/** FB-02: the rows that can be decided without opening them, so they can be ticked and approved together: a site's
+ *  day (confirm all its entries) and a draft week of wages (approve). Bills, requests and counts are checked one by
+ *  one on purpose: each carries its own figures, a reason or a choice. */
+export function bulkApprovable(item: WaitingItem): boolean {
+  if (item.kind === 'site_report') return !!(item.site_id && item.date)
+  if (item.kind === 'wage_sheet') return (item.detail ?? '').startsWith('Draft')
+  return false
+}
+
+export const itemKey = (item: WaitingItem) => `${item.kind}-${item.id}`

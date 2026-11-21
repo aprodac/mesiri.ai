@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownLeft, HandCoins, ReceiptText, Search } from 'lucide-react'
 import { BooksLink } from '@/components/accounts/books'
 import { ReceiveMoneyDialog } from '@/components/billing/receive-money-dialog'
+import { PaymentAlertsCallout } from '@/components/billing/payment-stages'
 import { AgeingCard, DaysPill, PartyAvatar } from '@/components/accounts/money-kit'
 import { AGE_BARS } from '@/components/accounts/money-look'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
@@ -82,6 +83,7 @@ export default function ReceivablesPage() {
           </div>
         }
       />
+      <PaymentAlertsCallout />
       {owed.isLoading || !d ? (
         <Skeleton className="h-48 rounded-lg" />
       ) : (

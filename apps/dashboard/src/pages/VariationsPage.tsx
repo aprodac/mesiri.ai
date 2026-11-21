@@ -59,7 +59,7 @@ const SORTS = [
 ]
 /** A client who has had it two weeks is chased. */
 const CHASE_DAYS = 14
-const UNITS = ['sqm', 'sqft', 'cum', 'rmt', 'rft', 'nos', 'kg', 'ton', 'ls']
+const UNITS = ['sqm', 'sqft', 'cum', 'rmt', 'rft', 'nos', 'kg', 'ton', 'ls', 'month', 'job']
 
 const money = (v: string | number | null | undefined) => formatRupeesShort(v === null || v === undefined ? null : String(v))
 const full = (v: string | number | null | undefined) => formatRupees(v === null || v === undefined ? null : String(v))

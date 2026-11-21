@@ -37,7 +37,6 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 _ZERO = Decimal(0)
@@ -120,6 +119,14 @@ def _iso(d: Any) -> datetime.date:
     return d if isinstance(d, datetime.date) else datetime.date.fromisoformat(str(d)[:10])
 
 
+def _to_bill_title(lines: list[dict]) -> str:
+    """Work on BOQ lines, or (FB-01, lump sum) payment stages reached, not billed yet."""
+    n = len(lines)
+    if lines and lines[0]["line"].get("payment_stage_id") is not None:
+        return f"{n} payment stage{'s' if n != 1 else ''} reached, not billed"
+    return f"Work done on {n} BOQ line{'s' if n != 1 else ''}, not billed"
+
+
 async def gather(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None, today: datetime.date, *,
                  client_days: int, supplier_days: int, weeks: int) -> list[dict[str, Any]]:
     """Every expected payment in or out, each with kind, date, amount, who, project and a link to its page."""
@@ -147,11 +154,7 @@ async def gather(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
                       "link": f"/billing/ra-bills?bill={b['id']}&project={b['project_id']}"})
 
     # In: work done, on no bill yet (if billed today).
-    rows = (await conn.execute(text(
-        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND COALESCE(p.status, '') <> 'archived' "
-        "AND EXISTS (SELECT 1 FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
-        "WHERE w.project_id = p.id AND i.superseded_by_id IS NULL AND i.client_rate IS NOT NULL)"),
-        {"org": org})).all()
+    rows = await bill_store.billable_projects(conn, org)
     for p in rows:
         if project_ids is not None and p.id not in project_ids:
             continue
@@ -159,7 +162,7 @@ async def gather(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
         amount = sum((ra.line_amount(ln["quantity"], ln["line"]["client_rate"]) for ln in lines), _ZERO)
         if amount > 0:
             items.append({"kind": "to_bill", "date": today + days(days=client_days), "amount": money(amount),
-                          "title": f"Work done on {len(lines)} BOQ line{'s' if len(lines) != 1 else ''}, not billed",
+                          "title": _to_bill_title(lines),
                           "who": None, "project_id": str(p.id), "project": p.name,
                           "link": f"/billing/ra-bills?project={p.id}"})
 

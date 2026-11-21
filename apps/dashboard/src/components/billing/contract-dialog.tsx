@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast-notification'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { fetchClients, fetchContract, putContract, rupees, type Contract, type ContractInput } from '@/lib/billing'
+import { fetchClients, fetchContract, putContract, rupees, type Contract, type ContractInput, type ContractType } from '@/lib/billing'
 
 // NXT-01: a project's client and contract terms. The RA bills (NXT-02) use them: retention held from each bill,
 // the mobilisation advance recovered from each bill, GST added and TDS taken off.
@@ -41,6 +41,7 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
   const [form, setForm] = React.useState<Form>({})
   const [clientId, setClientId] = React.useState('')
   const [newName, setNewName] = React.useState('')
+  const [kind, setKind] = React.useState<ContractType>('measured')
 
   React.useEffect(() => {
     if (!open || !contract.data) return
@@ -50,6 +51,7 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
     f.payment_terms = c?.payment_terms ?? ''
     setForm(f)
     setClientId(c?.client_id ?? '')
+    setKind(c?.contract_type ?? 'measured')
     setNewName('')
   }, [open, contract.data])
 
@@ -61,13 +63,14 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
         ;(body as Record<string, unknown>)[t.key] = v === '' ? null : t.key === 'defect_liability_months' ? Number(v) : v
       }
       body.payment_terms = form.payment_terms?.trim() || null
+      body.contract_type = kind
       if (clientId === 'new') body.new_client = { name: newName.trim() }
       else body.client_id = clientId || null
       return putContract(projectId, body)
     },
     onSuccess: () => {
       toast.success('Contract saved')
-      for (const k of ['contract', 'billing-clients', 'project-start', 'ra-bills']) queryClient.invalidateQueries({ queryKey: [k] })
+      for (const k of ['contract', 'billing-clients', 'project-start', 'ra-bills', 'payment-stages', 'payment-alerts']) queryClient.invalidateQueries({ queryKey: [k] })
       onOpenChange(false)
     },
     onError: (e) => toast.error('Could not save the contract', apiErrorMessage(e)),
@@ -107,6 +110,22 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Term t={field('signed_on')} value={form.signed_on} onChange={set('signed_on')} />
+              <div className="grid content-start gap-1.5" data-guide="contract.type">
+                <span className="flex items-center gap-1">
+                  <Label htmlFor="ct-type" className="text-sm font-medium">How the client pays</Label>
+                  <Hint
+                    title="Measured or lump sum"
+                    text="Measured: each RA bill asks for the work measured on the BOQ since the last bill. Lump sum: a fixed price paid in stages; each bill asks for the payment stages reached (Footing, Lintel, Roof slab)."
+                  />
+                </span>
+                <Select value={kind} onValueChange={(v) => setKind(v as ContractType)}>
+                  <SelectTrigger id="ct-type" className="h-10 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="measured">Measured work (BOQ rates)</SelectItem>
+                    <SelectItem value="lump_sum">Lump sum, by stage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </Group>
 

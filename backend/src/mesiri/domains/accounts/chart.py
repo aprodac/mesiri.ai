@@ -58,6 +58,7 @@ LEDGERS: tuple[tuple[str, str, str, str], ...] = (
     ("no_client", "Client (not set)", "sundry_debtors", "RA bills of a project with no client set"),
     ("retention_payable", "Retention payable", "current_liabilities", "Retention held back from subcontractors"),
     ("bank_charges", "Bank charges", "indirect_expenses", "Charges the bank takes"),
+    ("interest_received", "Interest received", "indirect_income", "Interest the bank pays on the account (ACC-13)"),
     ("round_off", "Round off", "indirect_expenses", "Rounding differences"),
     ("overheads_allocated", "Head office overheads allocated", "indirect_expenses",
      "Each project's monthly share of head-office costs, when sharing is on (nil company-wide)"),
