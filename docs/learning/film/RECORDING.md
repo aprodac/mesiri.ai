@@ -99,7 +99,11 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
   "Already on order"; asked from the request, the form locks the items to its 100 bags of cement. Waits for Ilan.
   **Later (same day):** UX-85 fixed; `compare` plays through (RFQ-0001 for REQ-0001, PO-0003 and PO-0004); `gate` works
   (190 on PO-0003, 10 to come). `match` records the bill but Mesiri can't show the Rs 10 a bag (UX-87, waits for Ilan).
-  `count`, `owner` not written yet. The bill's date must be picked as 22 Nov (the dialog defaults to the day).
+  **21 Nov: recorded.** UX-87 fixed; `match` enters the bill line by line (Rs 410 flagged; the bill's date picked as the
+  day before, so it moves with the week the sample was opened); `count` (119 against 122, wastage) and `owner` (Bills to
+  pay, Returns DN-0001 Rs 2,400 settled, the count approved, Rs 1,228.32) written. **The whole run passes from a fresh
+  sample company:** `record.cjs 04` → 23 frames, nothing failed. Papers and the `stock` screen shot (`SKIP_STEPS=1`, the
+  sample at the start of day 10). **Left:** the build (`build.mjs 04`) needs the ElevenLabs key.
 - Local copy notes: the dashboard installs with `pnpm install` (no npm lockfile) and builds with
   `VITE_API_URL=http://localhost:8000 pnpm exec vite build`; serve with `vite preview --port 5199`. The answer of
   `go-back` has no role in it: take a fresh `POST /learn/sandbox` with the role before shooting a scene (record.cjs
