@@ -41,14 +41,13 @@ One chain carries both halves of the episode: the problem *is* the machine's bre
 | seed | before day 1 | (seed) | Kerala Earthmovers & Equipments added as a supplier (Equipment hire) |
 | 2 | Mon 16 Nov | Anil | The mixer put on hire for the Annex from today: Kerala Earthmovers, ₹450 an hour, no minimum hours (Equipment, Machines) |
 | 2 to 7 | Mon to Sat | Ravi | Each evening the mixer's line in his site message: hours worked (Machines, Daily log). Days 2, 3, 4 and 7: **7 hours** |
-| 5 | Thu 19 Nov | Ravi | "Mixer 4 hours, motor tripping, stopped 3 hours": 4 worked, 3 breakdown. Mesiri raises the problem itself from the breakdown (an issue, Equipment breakdown, on the Annex) |
-| 5 | Thu 19 Nov | Anil | Opens the problem, gives it a task: "Send a mechanic for the mixer motor", for Kerala Earthmovers, due tomorrow, linked to the issue (Tasks) |
-| 6 | Fri 20 Nov | Ravi | "Mixer 4 hours, stopped 3 hours till the mechanic came": 4 worked, 3 breakdown (a second half day lost) |
-| 6 | Fri 20 Nov | Anil | Task done ("Starter relay changed"); the problem closed with the same note (Site, Issues) |
+| 5 | Thu 19 Nov | Ravi | "Mixer worked 1 hour, motor burnt out mid-morning, stopped 6 hours": 1 worked, 6 breakdown. Mesiri raises the problem itself from the breakdown (an issue, Equipment breakdown, on the Annex) |
+| 5 | Thu 19 Nov | Anil | Opens the problem, makes it a task for Ravi: "Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am", due tomorrow, linked to the issue (Issues → Make a task) |
+| 6 | Fri 20 Nov | Anil | The mechanic rewound the motor before work: task done, the problem closed with the same note (Tasks, Issues); the mixer works its 7 hours |
 | 9 | Mon 23 Nov | Meera | Kerala Earthmovers' bill KEE/2027/0118 for 16 to 21 Nov: **42 hours**, ₹18,900 + GST (Equipment, Hire check: *over*, "Bill says 42 hours; 36 recorded on site", ₹2,700 more) |
-| 9 | Mon 23 Nov | Anil | Phones Kerala Earthmovers; they accept the log. The bill corrected to 36 hours, ₹16,200 (Hire check: *ok*) |
+| 9 | Mon 23 Nov | Anil, Meera | Anil phones Kerala Earthmovers; they accept the log. The bill corrected to 36 hours, ₹16,200 (Hire check: *matches*). The dashboard cannot edit a hire bill, only remove it: on screen Meera removes it and enters the corrected one (the cast corrects it through the API) |
 
-Logged: 7 + 7 + 7 + 4 + 4 + 7 = **36 hours worked**, 6 hours breakdown, 6 days on site, no day missing (the period is
+Logged: 7 + 7 + 7 + 1 + 7 + 7 = **36 hours worked**, 6 hours breakdown (one breakdown, so one problem), 6 days on site, no day missing (the period is
 Monday to Saturday, so Sunday's no-log does not count). Billed 42 = 6 days × 7 hours, as if the mixer never stopped.
 The kit's figures stay as they are; only the bill's "For" line changes to the week it covers (plinth beam and filling).
 
@@ -78,8 +77,9 @@ The kit's figures stay as they are; only the bill's "For" line changes to the we
 1. **Which problem carries the episode?** *Recommended:* the mixer's breakdown (it is both the problem and the
    machine, and it is the kit's hire bill). The Tower B vibrator (day 17) and the Annex drawing (day 24) are shown
    only on the Issues list, as "the same path, other problems".
-2. **Who is the task for?** *Recommended:* Kerala Earthmovers (a task can be for a supplier), so the viewer sees that
-   the owner of a fix can be outside the company.
+2. **Who is the task for?** *Decided (21 Nov, building it):* Ravi. The API takes a supplier as a task's assignee, but
+   the dashboard's "For" list offers only people and subcontractors (found: UX-88). A person inside the company owns
+   the fix and chases the hire company, which is also how a site really works.
 3. **Does the bill get corrected or paid short?** *Recommended:* corrected to 36 hours (the supplier accepts the log);
    paying short with a note is said in "What can go wrong".
 4. **The kit's dates** (bill KEE/2027/…, handover July 2027) do not match the story's Nov 2026 to Jan 2027. Not

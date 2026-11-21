@@ -660,6 +660,8 @@ async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str
         if not machine:
             raise _Wait("the machine is not on hire yet")
     if e.kind == "machine":
+        if await w.one("SELECT id FROM equipment WHERE organization_id = :o AND name = :n", n=d["machine"]):
+            return {"already": True}  # put on hire by the person, on screen
         return _ok(await w.call(role, "POST", "/equipment", json={
             "name": d["machine"], "type": d["type"], "kind": "machine", "ownership": "hired",
             "vendor_id": w.vendors.get(d["vendor"]), "hire_company": d["vendor"], "rate": d["rate"], "rate_unit": "hour",
@@ -671,6 +673,8 @@ async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str
         return _ok(await w.call(role, "POST", "/equipment/logs", json={
             "occurred_date": iso, "lines": [line], "source": "whatsapp"}), e.kind)
     if e.kind == "task":
+        if await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t", t=d["title"]):
+            return {"already": True}  # given by the person, on screen
         issue = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
                             "ORDER BY created_at DESC LIMIT 1", n=d["narrative"])
         if not issue:
@@ -678,7 +682,7 @@ async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str
         due = (dt.date.fromisoformat(iso) + dt.timedelta(days=d["due_days"])).isoformat()
         return _ok(await w.call(role, "POST", "/tasks", json={
             "project_id": project, "site_id": site, "title": d["title"], "due_date": due, "priority": "high",
-            "assignee_vendor_id": w.vendors.get(d["vendor"]), "site_issue_id": str(issue["id"])}), e.kind)
+            "assignee_user_id": str(w.users[d["for"]][0]), "site_issue_id": str(issue["id"])}), e.kind)
     if e.kind == "task_status":
         task = await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t ORDER BY created_at DESC LIMIT 1",
                            t=d["title"])
@@ -758,6 +762,11 @@ async def _record(engine: Any, org: uuid.UUID, e: sp.Entry | None, status: str, 
             {"o": org, "e": entry_id or e.id, "d": day if day is not None else e.day, "s": status,
              "r": role or (e.role if e else None), "rec": json.dumps(record, default=str) if record is not None else None,
              "err": error})
+
+
+def _yours(played: dict[str, str]) -> set[tuple[int, str]]:
+    """(day, role) the person landed on: that role's entries of that day are theirs, done by them or not at all."""
+    return {(int(k.split(":")[1]), k.split(":")[2]) for k in played if k.startswith("you:")}
 
 
 def _day_mark(day: int) -> str:
@@ -928,10 +937,17 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
         await _save(engine, org, start, day0)
     w = _World(engine, app, org, person.organization_id)
     await w.load()
-    # What the person left undone today stays theirs; what they did is ticked first.
+    # What the person left undone today stays theirs; what they did is ticked first. That holds for every role they
+    # landed on a day as (``_yours``), not only the one they move on as: someone who switched role (Ravi's message,
+    # then Anil's task) has the first role's day ticked, and its undone entries are never played late by the cast,
+    # dated another day (found recording episode 6: Ravi's day-5 mixer line played again on day 6).
     me = w.users.get(role, (None, ""))[0]
-    if me:
-        await _tick(engine, org, role, me, start, day0)
+    async with engine.connect() as conn:
+        yours = _yours(await _played(conn, org))
+    for r in {role} | {r for _d, r in yours}:
+        uid = w.users.get(r, (None, ""))[0]
+        if uid:
+            await _tick(engine, org, r, uid, start, day0)
     summary: dict[tuple[str, str], int] = {}
     failed: list[dict[str, Any]] = []
     played_now: list[sp.Entry] = []
@@ -943,7 +959,8 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played = await _played(conn, org)
             yours_today = day == target
             due = [e for e in p.entries if e.day <= day and e.id not in played
-                   and not (e.role == role and (yours_today or e.day < start + 1))]
+                   and not (e.role == role and (yours_today or e.day < start + 1))
+                   and (e.day, e.role) not in yours]
             for e in due:
                 try:
                     record = await _play(w, e)
@@ -958,17 +975,21 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played_now.append(e)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
+            if yours_today:  # the day's entries of this role are the person's from now on (``_yours``), saved with it
+                await _record(engine, org, None, "done", entry_id=f"you:{day:03d}:{role}", day=day, role=role)
             # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
             await _save(engine, org, day, day0)
         async with engine.begin() as conn:
             await conn.execute(sa.text("UPDATE organizations SET sandbox_today = :d WHERE id = :o AND sandbox_of IS NOT NULL"),
                                {"d": day0 + dt.timedelta(days=target), "o": org})
+
     finally:
         await w.close()
     async with engine.connect() as conn:
         played = await _played(conn, org)
     waiting = [{"id": e.id, "day": e.day, "who": sp.WHO[e.role], "what": e.what}
-               for e in p.entries if e.day <= target and e.id not in played and e.role != role]
+               for e in p.entries if e.day <= target and e.id not in played and e.role != role
+               and (e.day, e.role) not in _yours(played)]
     for_you = await _tick(engine, org, role, me, target, day0) if me else []
     finale = None
     if target >= p.last_day:

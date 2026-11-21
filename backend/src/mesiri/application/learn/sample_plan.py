@@ -729,8 +729,8 @@ def build() -> Plan:
                 machine_story["problem"] = log
                 machine_story["narrative"] = narrative
                 machine_story["task"] = b.add(
-                    day, "task", f"Task for {hire['vendor']}: {hire['task']}, due tomorrow", site=mixer_site,
-                    data={"title": hire["task"], "vendor": hire["vendor"], "due_days": hire["task_due_days"],
+                    day, "task", f"Task for {WHO[ENGINEER]}: {hire['task']}, due tomorrow", site=mixer_site,
+                    data={"title": hire["task"], "for": ENGINEER, "due_days": hire["task_due_days"],
                           "narrative": narrative}, needs=(log.id,))
             elif "task" in machine_story and "fixed" not in machine_story:
                 fixed = b.add(day, "task_status", f"Done: {hire['task']} ({hire['fixed']})", site=mixer_site,

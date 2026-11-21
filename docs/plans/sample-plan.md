@@ -119,7 +119,7 @@ Sunday: nobody works.
 - Count Annex's plinth beam of day 4 on the BOQ line Plinth beam
 - Count Tower A's column casting of day 4 on its BOQ line
 - Count Tower B's retaining wall of day 4 on its BOQ line
-- Task for Kerala Earthmovers & Equipments: Send a mechanic for the Annex mixer's motor, due tomorrow
+- Task for Ravi: Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am, due tomorrow
 
 ### Day 6 · Friday
 
@@ -140,7 +140,7 @@ Sunday: nobody works.
 - Count Annex's plinth filling of day 5 on the BOQ line Backfilling with excavated earth
 - Count Tower A's slab shuttering of day 5 on its BOQ line
 - Count Tower B's retaining wall of day 5 on its BOQ line
-- Done: Send a mechanic for the Annex mixer's motor (Mechanic rewound the motor before work; mixer running from 8 am)
+- Done: Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am (Mechanic rewound the motor before work; mixer running from 8 am)
 - Close: Concrete mixer breakdown, 6 hrs: motor burnt out mid-morning
 
 **Meera**

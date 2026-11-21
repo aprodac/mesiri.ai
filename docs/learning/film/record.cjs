@@ -9,7 +9,7 @@
 // - a scene of kind `steps` with `as` (a role) and `day` is filmed first on its day, by shoot.cjs (steps-NN.cjs does
 //   the actions) inside the sample company as that role, before the episode's own messages of that day; then the copy
 //   goes back to the start of the day (Go back), so the messages that follow find the day as it was; with `keep: true`
-//   it does not, so the next scene of that day builds on it.
+//   it does not, so the next scene of that day builds on it. With `after: true` it is filmed after the day's messages.
 // - a chat scene with `capture` is sent for real to the assistant (POST /assistant/messages, the same handler as a
 //   WhatsApp message) as `capture.role`, on `capture.day`; the reply is written to .cache/shots/<scene>.chat.json, the
 //   button named `capture.tap` is tapped and its answer kept too. build.mjs draws these in place of the script's guess.
@@ -126,8 +126,11 @@ function steps(sc, mine) {
   console.log(`sample company opened as ${mine}, day 0`)
   const days = [...new Set([...chats.map((s) => s.capture.day), ...webs.map((s) => s.day)])].sort((a, b) => a - b)
   for (const day of days) {
-    for (const sc of webs.filter((s) => s.day === day)) await steps(sc, mine)
+    // `after: true`: a website scene that needs what the day's messages make (episode 6: the task for the problem
+    // Ravi's message raised) is filmed after them; the others before, as the day found them.
+    for (const sc of webs.filter((s) => s.day === day && !s.after)) await steps(sc, mine)
     for (const sc of chats.filter((s) => s.capture.day === day)) await capture(sc)
+    for (const sc of webs.filter((s) => s.day === day && s.after)) await steps(sc, mine)
   }
   console.log(`done: the sample company is on day ${sample.day}`)
 })().catch((e) => {

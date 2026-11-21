@@ -149,7 +149,7 @@ async def test_playing_ravi_the_return_waits_for_his_delivery(world):
 
 async def test_the_mixer_story_plays_on_the_real_api(world):
     """LRN-F25 (episode 6): the Annex mixer on hire; day 5's breakdown in its log raises the problem itself, a task for
-    Kerala Earthmovers fixes it on day 6 and the problem closes; the bill's 42 hours meet the 36 logged and are
+    Ravi (get Kerala Earthmovers' mechanic there) fixes it on day 6 and the problem closes; the bill's 42 hours meet the 36 logged and are
     corrected to them on day 9."""
     from mesiri.application.learn import green_villa as gv
 
@@ -166,18 +166,47 @@ async def test_the_mixer_story_plays_on_the_real_api(world):
         logs = await rows("SELECT ev.duration_hours, ev.breakdown_hours, ev.issue_id FROM equipment_events ev "
                           "JOIN equipment m ON m.id = ev.equipment_id WHERE ev.organization_id = :o "
                           "AND ev.event_type = 'day_log' AND m.ownership = 'hired' ORDER BY ev.occurred_date")
-        issues = await rows("SELECT id, status, issue_type FROM site_issues WHERE organization_id = :o "
-                            "AND narrative LIKE 'Concrete mixer breakdown%'")
-        tasks = await rows("SELECT status, site_issue_id, assignee_vendor_id IS NOT NULL AS for_supplier FROM tasks "
-                           "WHERE organization_id = :o")
+        issues = await rows("SELECT id, status, issue_type, created_at::date AS raised, resolved_at::date AS closed "
+                            "FROM site_issues WHERE organization_id = :o AND narrative LIKE 'Concrete mixer breakdown%'")
+        day0 = (await conn.execute(text("SELECT sandbox_day0 FROM organizations WHERE id = :o"), o)).scalar_one()
+        tasks = await rows("SELECT t.status, t.site_issue_id, u.role FROM tasks t JOIN users u ON u.id = t.assignee_user_id "
+                           "WHERE t.organization_id = :o")
         bills = await rows("SELECT billed_hours, amount FROM equipment_hire_bills WHERE organization_id = :o")
     assert sum(float(x["duration_hours"]) for x in logs) == hire["logged_hours"] and len(logs) == len(hire["log"])
     assert sum(float(x["breakdown_hours"] or 0) for x in logs) == hire["billed_hours"] - hire["logged_hours"]
     # One breakdown, one problem, raised by the log; the task for the hire company fixes it, and it is closed.
     assert len(issues) == 1 and issues[0]["status"] == "RESOLVED" and issues[0]["issue_type"] == "EQUIPMENT_BREAKDOWN"
     assert [x["issue_id"] for x in logs if x["breakdown_hours"]] == [issues[0]["id"]]
+    # UX-90: dated on the sample company's day it was raised and closed, never the real date ("open 5 days" when new).
+    assert (issues[0]["raised"], issues[0]["closed"]) == (day0 + dt.timedelta(days=5), day0 + dt.timedelta(days=6))
     assert len(tasks) == 1 and tasks[0]["status"] == "done" and tasks[0]["site_issue_id"] == issues[0]["id"]
-    assert tasks[0]["for_supplier"]
+    assert str(tasks[0]["role"]).upper() == "SITE_ENGINEER"  # Ravi gets the mechanic there
     # The bill, corrected to the log: Hire check finds nothing over now.
     assert [(float(b["billed_hours"]), float(b["amount"])) for b in bills] == [
         (hire["logged_hours"], hire["logged_hours"] * hire["rate_per_hour"])]
+
+
+async def test_a_role_i_left_is_never_played_late_on_another_day(world):
+    """Found recording episode 6: landing on day 5 as Ravi, saving his mixer line myself, then moving on as Anil, the
+    cast played Ravi's day-5 entries again on day 6 (a second breakdown, dated day 6). What a role I landed on did is
+    ticked, and what it left is mine, never the cast's later; the guard: the cast's own entries still play."""
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="SITE_ENGINEER", days=5)
+    assert not moved.failed, moved.failed[:3]
+    moved = await player.next_day(engine, app, person, role="PROJECT_MANAGER", days=1)
+    assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        day0 = (await conn.execute(text("SELECT sandbox_day0 FROM organizations WHERE id = :o"),
+                                   {"o": opened.organization_id})).scalar_one()
+        logs = (await conn.execute(text(
+            "SELECT occurred_date, duration_hours, breakdown_hours FROM equipment_events WHERE organization_id = :o "
+            "AND event_type = 'day_log' ORDER BY occurred_date"), {"o": opened.organization_id})).mappings().all()
+        late = (await conn.execute(text(
+            "SELECT count(*) FROM sandbox_played WHERE organization_id = :o AND entry_id LIKE 'd05-%' AND entry_id IN "
+            "(SELECT entry_id FROM sandbox_played WHERE organization_id = :o AND by_role = 'SITE_ENGINEER')"),
+            {"o": opened.organization_id})).scalar_one()
+    # Ravi's day 5 was mine and I did nothing: no day-5 log, and day 6's is the cast's own (7 hours, no breakdown).
+    assert [(x["occurred_date"] - day0).days for x in logs] == [2, 3, 4, 6]
+    assert float(logs[-1]["breakdown_hours"] or 0) == 0 and float(logs[-1]["duration_hours"]) == 7
+    assert late == 0

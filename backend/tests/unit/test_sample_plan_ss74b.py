@@ -303,7 +303,7 @@ def test_the_month_end_count_of_episode_4(plan):
 
 def test_the_mixer_story_plays_the_kits_hire_bill(plan):
     """LRN-F25 (episode 6): the Annex mixer on hire, logged each day, its breakdown raising a problem that a task for
-    the hire company fixes, and the bill's hours above the log, corrected."""
+    Ravi fixes, and the bill's hours above the log, corrected."""
     hire = gv.HIRE
     logs = [e for e in plan.entries if e.kind == "machine_log"]
     assert [e.day for e in logs] == sorted(hire["log"]) and all(e.site == "annex" for e in logs)
@@ -317,7 +317,7 @@ def test_the_mixer_story_plays_the_kits_hire_bill(plan):
     broke = [e for e in logs if e.data["breakdown"]]
     assert len(broke) == 1  # one breakdown, one problem
     (task,) = [e for e in plan.entries if e.kind == "task"]
-    assert task.day == broke[0].day and broke[0].id in task.needs and task.data["vendor"] == hire["vendor"]
+    assert task.day == broke[0].day and broke[0].id in task.needs and task.data["for"] == sp.ENGINEER
     (done,) = [e for e in plan.entries if e.kind == "task_status"]
     close = next(e for e in plan.entries if e.kind == "issue_resolve" and broke[0].id in e.needs)
     assert done.day == close.day == task.day + 1 and done.id in close.needs

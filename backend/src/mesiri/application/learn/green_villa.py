@@ -295,14 +295,15 @@ HIRE = {"vendor": "Kerala Earthmovers & Equipments", "bill": "KEE/2027/0118", "m
         "logged_hours": 36,
         # LRN-F25 (episode 6, docs/learning/film/EPISODE_06_PLAN.md): the story the sample company plays. Anil puts the
         # mixer on hire for the Annex on day 2; Ravi logs it each evening (day: hours worked, hours broken down); on
-        # day 5 the motor burns out mid-morning, the log raises the problem, Anil gives Kerala Earthmovers a task; the
-        # mechanic comes before work on day 6, the task is done and the problem closed. On day 9 the bill for the week
+        # day 5 the motor burns out mid-morning, the log raises the problem, Anil gives Ravi the task of getting Kerala
+        # Earthmovers' mechanic there (a task is for a person: the dashboard offers people and subcontractors, not a
+        # hire company); the mechanic comes before work on day 6, the task is done and the problem closed. On day 9 the bill for the week
         # (days 2 to 7) asks for 42 hours (7 a day, as if it never stopped); the hire check says 36; Kerala Earthmovers
         # accept the log and the bill is corrected the same day.
         "short_name": "Concrete mixer", "on_day": 2,
         "log": {2: (7, 0), 3: (7, 0), 4: (7, 0), 5: (1, 6), 6: (7, 0), 7: (7, 0)},
         "breakdown_reason": "motor burnt out mid-morning",
-        "task": "Send a mechanic for the Annex mixer's motor", "task_due_days": 1,
+        "task": "Get Kerala Earthmovers' mechanic to the Annex mixer before 8 am", "task_due_days": 1,
         "fixed": "Mechanic rewound the motor before work; mixer running from 8 am",
         "bill_day": 9, "agreed": "Kerala Earthmovers accepted our log: 6 hours broken down, not billable"}
 

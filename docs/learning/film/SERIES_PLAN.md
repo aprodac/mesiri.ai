@@ -105,7 +105,7 @@ it all adds up. The Prologue has no software and no beat. Every figure is read o
 | 3 | Home on day 2: what needs him (the Main block's cement); the 9 pm report | "Which call do I make tomorrow?" | added |
 | 4 | Suppliers: what is owed to Malabar after the debit note and the ₹10 a bag held; the stock count he approves | "Am I paying for what came?" | in the plan |
 | 5 | Approvals: the wage sheet he approves, beside the work done that week | "Am I paying for work or for heads?" | to script |
-| 6 | Home: the open problem and who owns it; Hire check's hours to question | "What is stuck, and what is idle costing me?" | to script |
+| 6 | Home: Green Villa's open problems, then the mixer's and who is on it (Issues; Home has no line for it: UX-91) | "What is stuck, and who has it?" | added |
 | 7 | Subcontract: Joy Tiling's bill against the measurement, the retention held | "Am I paying only for what was measured?" | to script |
 | 8 | Receivables: what the client owes, by age, and the variation billed | "When does my money come in?" | to script |
 | 9 | (the whole episode is the owner's: Cost control, Project P&L) | "Is it making money, and where does it leak?" | to script |
