@@ -204,23 +204,25 @@ function SayThis({ say, number }: { say: string; number: string | null }) {
         {say}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <CopyButton text={say} />
+        {/* 21 Nov: the practice is entered on the dashboard first (Tell Mesiri, the New box at the top); WhatsApp is the
+            other way, for the site. */}
         <button
           type="button"
           onClick={() => openTellMesiri(say)}
-          className="inline-flex items-center gap-1 rounded-lg border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted"
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
         >
-          <MessageSquarePlus className="size-3.5" aria-hidden /> Send it here
+          <MessageSquarePlus className="size-3.5" aria-hidden /> Type it into Tell Mesiri
         </button>
+        <CopyButton text={say} />
         {/* UX-26: in the sample company the practice goes through Tell Mesiri only; WhatsApp would reach the real one. */}
         {number && !inSandbox() && (
           <a
             href={waLink(number, say)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg bg-success px-2 py-0.5 text-xs font-medium text-background hover:opacity-90"
+            className="inline-flex items-center gap-1 px-1 py-0.5 text-xs text-muted-foreground underline-offset-2 hover:underline"
           >
-            <Send className="size-3.5" aria-hidden /> Try it on WhatsApp
+            <Send className="size-3" aria-hidden /> or on WhatsApp
           </a>
         )}
       </div>
@@ -453,7 +455,7 @@ export function WalkthroughRunner() {
     const skipThis =
       (step.page && !pageOpenFor(step.page, role)) ||
       (practiceOff && (step.try || step.takeBack)) ||
-      (cantTakeBack && (!!step.takeBack || step.try?.kind === 'here')) ||
+      (cantTakeBack && !!step.takeBack) ||
       (step.showNew && !practiceSaved(run.walk, run.index, role))
     if (skipThis) {
       goRef.current(run.dir)
@@ -505,8 +507,9 @@ export function WalkthroughRunner() {
 
   const tryIt = step?.try
   // Card-only practice (nothing to save, or nothing this person could take back): no waiting for a saved record.
+  // A practice here this person could not take back, or one written look-only, opens the form and is cancelled.
   const cardOnly =
-    tryIt?.kind === 'whatsapp' && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
+    (tryIt?.kind === 'whatsapp' || tryIt?.kind === 'here') && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
   // SS-72: `{project}` in a check is the project picked now (the top bar, or the page the walkthrough opened).
   const pickedProject = scope.mode !== 'portfolio' ? scope.projectId : null
   const check = useCheck(cardOnly ? undefined : tryIt?.check, shown,
@@ -520,9 +523,11 @@ export function WalkthroughRunner() {
 
   // A practice that saves, made card-only for this role (they could not take it back): its words said "tap Save", so
   // they are replaced here; a step written card-only (`save: false`) keeps its own words.
-  const madeCardOnly = cardOnly && tryIt?.kind === 'whatsapp' && tryIt.save !== false
+  const madeCardOnly = cardOnly && !!tryIt && tryIt.save !== false
   const shownStep = step && madeCardOnly
-    ? { ...step, say: undefined, text: 'Send this to Mesiri. A card comes back with what Mesiri understood: look at it, then tap Cancel. It is practice, so nothing is saved.' }
+    ? { ...step, say: undefined, text: tryIt?.kind === 'here'
+      ? 'Open it and look at what it asks, then press Cancel. It is practice, so nothing is saved.'
+      : 'Type this into Tell Mesiri. A card comes back with what Mesiri understood: look at it, then tap Cancel. It is practice, so nothing is saved.' }
     : step
 
   // SS-61: the narrator reads each step of a walkthrough that has a voice; quiet while the person fills a real dialog.
@@ -675,7 +680,9 @@ export function WalkthroughRunner() {
           ? cardOnly
             ? 'Send it, look at the card, then tap Cancel. Close the box when done.'
             : "Send it, then tap Save on the card. I'm watching for it."
-          : "Fill it in and save. I'm waiting."}
+          : cardOnly
+            ? 'Look at what it asks, then press Cancel. Nothing is saved.'
+            : "Fill it in and save. I'm waiting."}
       />,
       document.body,
     )
@@ -691,7 +698,7 @@ export function WalkthroughRunner() {
     : `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
-  if (tryIt?.kind === 'here' && !note) nextLabel = check.got ? nextLabel : 'Skip this'
+  if (tryIt?.kind === 'here' && !note) nextLabel = check.got ? nextLabel : cardOnly ? 'I pressed Cancel' : 'Skip this'
   if (ask && answered !== 'right') nextLabel = answered ? 'Next' : 'Skip this'
 
   return (

@@ -47,13 +47,19 @@ step's words in another place.
 - **Steps go to built pages only** (`page:` must be a built page in `module-map.ts`; the build checks it). A workflow
   step whose element is not on screen (no data yet) is told in the middle of the screen, so write its text to make
   sense without the light: "Every evening each site gets its report", not "Click here".
+- **Practice is on the dashboard first** (asked 21 Nov 2026: "change all the scenes where it says send it on WhatsApp
+  to entering through the dashboard itself"): a practice is the page's own form (`kind: 'here'`, the step's `target`
+  the real button). Only what has no form yet (a site's day, attendance, machine hours) is typed into Tell Mesiri, the
+  New box (`kind: 'whatsapp'`: its card's main button is "Type it into Tell Mesiri"; WhatsApp is a small link, hidden in
+  the sample company). Steps that only mention a way say the dashboard first and WhatsApp as the site's other way.
 - **Practice is real data** (decision D-L3). Every practice is one of these two, never neither:
   - **Save, then take back**: `try: { kind: 'whatsapp', say, tools, check }` (or `kind: 'here'` on the real button),
     then a "There it is" step (`showNew: true`), then a step with `takeBack` (the WhatsApp words and their undo
     `tools`, or the dashboard way). Only for records WhatsApp or the dashboard can take back (today: deliveries
     `undo_receipt`, usage `undo_usage`, transfers `undo_transfer`, expenses `undo_expense`, requests
     `cancel_material_request`, orders `cancel_order`). Check the tool exists in `agent_api/tools.py` `ALLOWED`.
-  - **Look at the card, then Cancel**: `save: false`. For records that can't be taken back on WhatsApp (a site update,
+  - **Look at the card (or the form), then Cancel**: `save: false`, on `kind: 'here'` too (the form is opened, looked
+    at and cancelled: a payment, an advance, a work order, a person). For records that can't be taken back on WhatsApp (a site update,
     attendance, an advance, a payment). Nothing is saved.
 - **A practice message must not create something new that stays behind** after the take-back: no supplier, worker,
   team or material name the company may not have ("10 bags cement came", not "... from Malabar"). Cancel practices

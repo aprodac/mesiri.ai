@@ -50,6 +50,10 @@ export interface TryHere {
   /** SS-72: the thing to do opens no dialog (a button that saves at once, a form on the page): the check is read
    *  every few seconds while the step is open, and the step moves on by itself once it passes. */
   poll?: boolean
+  /** false: open the form, look at what it asks, then press Cancel, so nothing is saved (a payment, an advance, a
+   *  work order: money or a promise a practice must not leave behind). 21 Nov: practices moved from WhatsApp to the
+   *  dashboard's own forms. */
+  save?: boolean
 }
 
 /** SS-72: a quick check, answered by tapping the page. */
@@ -130,7 +134,7 @@ export function practiceSaved(walk: Walkthrough, index: number, role: string | n
   for (let i = index - 1; i >= 0; i--) {
     const t = walk.steps[i].try
     if (!t) continue
-    if (t.kind === 'whatsapp' && t.save === false) return false
+    if (t.save === false) return false
     return canTakeBack(walk, i, role)
   }
   return true
@@ -162,14 +166,14 @@ export const WORKFLOWS: Walkthrough[] = [
     kind: 'workflow',
     part: true,
     title: 'A delivery, from site to stock',
-    about: 'Record a delivery on WhatsApp and here, see it in stock, and take it back.',
+    about: 'Record a delivery on the dashboard, see it in stock, and take it back.',
     minutes: 4,
     roles: RECORDERS,
     steps: [
       {
         page: '/materials?view=stock',
         title: "Let's record a delivery",
-        text: "We'll record a real delivery the way your site would, see it land in stock, then take it back. Nothing stays behind.", say: 'Let\'s record a real delivery, the way your site would. We\'ll watch it land in stock, and then take it back, so nothing stays behind.',
+        text: "We'll record a real delivery here on the dashboard, see it land in stock, then take it back. Nothing stays behind.", say: 'Let\'s record a real delivery, right here on the dashboard. We\'ll watch it land in stock, and then take it back, so nothing stays behind.',
         mood: 'hello',
       },
       {
@@ -180,46 +184,32 @@ export const WORKFLOWS: Walkthrough[] = [
       },
       {
         page: '/materials?view=movements',
-        title: 'Send it on WhatsApp',
-        text: "Send this to Mesiri, like a site engineer would. A card comes back: tap Save. I'll watch for it here.", say: 'Send this to Mesiri, just like Ravi would. A card comes back. Tap Save, and I\'ll watch for it here.',
+        target: 'materials.in',
+        title: 'Your turn: record it',
+        text: 'Click Record delivery: 10 bags of cement, your site, and save. No supplier: a practice must not leave a new one behind. I will wait.', say: 'Your turn. Click Record delivery. Ten bags of cement, your site, and save. Take your time, I\'ll wait.',
         mood: 'send',
-        // No supplier named: a practice must not leave a new supplier behind after it is taken back.
-        try: { kind: 'whatsapp', say: '10 bags cement came', tools: ['record_receipt'], check: INFLOWS },
+        try: { kind: 'here', check: INFLOWS },
       },
       {
         page: '/materials?view=movements',
         target: 'materials.list',
         showNew: true,
         title: 'There it is',
-        text: 'The delivery is in Movements, and the stock went up by 10 bags. Your site never opened the dashboard.', say: 'There it is. The delivery is in movements, and the stock went up by ten bags. Notice: your site never opened the dashboard.',
+        text: 'The delivery is in Movements, and the stock went up by 10 bags.', say: 'There it is. The delivery is in movements, and the stock went up by ten bags.',
         mood: 'happy',
       },
       {
         page: '/materials?view=movements',
-        title: 'Take it back',
-        text: 'It was practice, so take it back the same way. Mesiri shows a card: tap Save.',
-        say: 'That was practice, so take it back the same way. Mesiri shows a card. Tap Save.',
-        takeBack: { roles: ADJUSTERS, say: 'Take back the 10 bags cement delivery', tools: ['undo_receipt'] },
-      },
-      {
-        page: '/materials?view=movements',
-        target: 'materials.in',
-        title: 'Now from the office',
-        text: 'Click Record delivery, fill in the material, the quantity and the site, and save. I will wait.', say: 'Now the office way. Click Record delivery, fill in the material, the quantity and the site, and save. Take your time, I\'ll wait.',
-        try: { kind: 'here', check: INFLOWS },
-      },
-      {
-        page: '/materials?view=movements',
         target: 'materials.list',
-        title: 'Take that one back too',
-        text: 'Open the row you just saved and press Correct: it is reversed, and both lines stay in the history.', say: 'Let\'s take that one back too. Open the row you just saved, and press Correct. It\'s reversed, and both lines stay in the history, so nothing ever quietly disappears.',
+        title: 'Take it back',
+        text: 'It was practice. Open the row you just saved and press Correct: it is reversed, and both lines stay in the history.', say: 'That was practice, so let\'s take it back. Open the row you just saved, and press Correct. It\'s reversed, and both lines stay in the history, so nothing ever quietly disappears.',
         takeBack: { roles: ADJUSTERS, here: 'Open the row, then Correct (an admin or project manager).' },
       },
       {
         page: '/materials?view=movements',
         target: 'materials.out',
         title: 'Using it works the same',
-        text: 'Material used on site is one message too: "Used 20 bags cement for the slab". Or Record use here.', say: 'Using material works the same way. One message from site, like: used twenty bags of cement for the slab. Or record it here.',
+        text: 'Material used on site: Record use, here. The site can also send it on WhatsApp: "Used 20 bags cement for the slab".', say: 'Using material works the same way. Record use, right here. Or the site sends one message on WhatsApp: used twenty bags of cement for the slab.',
         mood: 'happy',
       },
     ],
@@ -231,7 +221,7 @@ export const WORKFLOWS: Walkthrough[] = [
     kind: 'workflow',
     part: true,
     title: "The site's day in one message",
-    about: 'Who came, what was done and what is stuck, sent on WhatsApp.',
+    about: 'Who came, what was done and what is stuck, in one line typed into Tell Mesiri (or sent on WhatsApp).',
     minutes: 2,
     roles: RECORDERS,
     steps: [
@@ -243,15 +233,15 @@ export const WORKFLOWS: Walkthrough[] = [
       },
       {
         page: '/today',
-        title: 'Try it: send the day',
-        text: 'Send this to Mesiri. A card comes back with the people, the work and the issue it found. This is practice: look at the card, then tap Cancel, so nothing is saved.', say: 'Let\'s try it. Send this message to Mesiri. In a moment a card comes back, showing what Mesiri understood: the workers, the work, and the problem. It\'s only practice, so look at the card, then tap Cancel.',
+        title: 'Your turn: type the day',
+        text: 'Type this into Tell Mesiri, the New box at the top. A card comes back with the people, the work and the issue it found. This is practice: look at the card, then tap Cancel, so nothing is saved.', say: 'Your turn. Type this into Tell Mesiri, the New box at the top of the dashboard. In a moment a card comes back, showing what Mesiri understood: the workers, the work, and the problem. It\'s only practice, so look at the card, then tap Cancel.',
         mood: 'send',
         try: { kind: 'whatsapp', say: '6 masons, 4 helpers. First-floor slab shuttering done. Cement ran out.', tools: ['record_attendance', 'record_work', 'report_issue'], save: false },
       },
       {
         page: '/today',
         title: 'On a real day, tap Save',
-        text: "Then the site's day here shows it at once. A voice note or a photo of the work works the same way.", say: 'On a real day, Ravi taps Save, and it shows up here straight away. He doesn\'t even need to type. A voice note, or a photo of the work, does the same job.',
+        text: "Then the site's day here shows it at once. From site, the same line works on WhatsApp, and so does a voice note or a photo of the work.", say: 'On a real day, you tap Save, and it shows up here straight away. From site, Ravi can send the same line on WhatsApp. A voice note, or a photo of the work, does the same job.',
         mood: 'happy',
       },
     ],
@@ -269,7 +259,7 @@ export const WORKFLOWS: Walkthrough[] = [
       { page: '/site-log', title: 'Everything the sites sent', text: 'The Site log keeps every update, photo and entry, by day and by site.', mood: 'look', say: 'Nothing gets lost. The site log keeps every message, photo and entry, by day and by site, so you can always go back and check.' },
       { page: '/reports', target: 'reports.list', title: 'The daily report', text: 'Every evening each site gets its daily report (DPR), and it goes to the owner and the client.', say: 'Every evening, each site\'s daily progress report is made for you, and sent to you and to your client. Nobody has to sit and type it up.' },
       { page: '/reports', target: 'reports.pdf', title: 'Exactly as they got it', text: 'Open the PDF the owner and the client received.', mood: 'look', say: 'And this is the report exactly as your client received it. What they saw is what you see.' },
-      { page: '/today', target: 'today.send', title: 'Or send it now', text: "When the day looks right, send it yourself. On WhatsApp: \"Send today's report\".", mood: 'send', say: 'If the day looks right and you don\'t want to wait for the evening, send it now. Ravi can do it from WhatsApp too. He just says: send today\'s report.' },
+      { page: '/today', target: 'today.send', title: 'Or send it now', text: "When the day looks right, press Send here. From site, \"Send today's report\" on WhatsApp does the same.", mood: 'send', say: 'If the day looks right and you don\'t want to wait for the evening, press send, right here. From site, Ravi can do it on WhatsApp too: send today\'s report.' },
     ],
   },
   // W2's first part: the site asks for material.
@@ -278,35 +268,36 @@ export const WORKFLOWS: Walkthrough[] = [
     kind: 'workflow',
     part: true,
     title: 'Asking for material',
-    about: 'The site asks on WhatsApp, and the request waits for the office.',
+    about: 'Ask for material on the dashboard (or from site on WhatsApp), and the request waits for the office.',
     minutes: 2,
     roles: RECORDERS,
     steps: [
       {
         page: '/materials/requests',
         title: 'Asking for material',
-        text: 'The site asks on WhatsApp. The request waits here until the office orders it, and the site can ask how it is going.', say: 'It starts on site. When Ravi needs material, he just asks Mesiri on WhatsApp. His request waits here until the office orders it, and he can check on it any time.',
+        text: 'Material is asked for here, or by the site on WhatsApp. The request waits until the office orders it.', say: 'It starts with a request. You can make it right here, or Ravi asks from site on WhatsApp. Either way, it waits here until the office orders it.',
         mood: 'hello',
       },
       {
         page: '/materials/requests',
-        title: 'Try it: ask for cement',
-        text: "Send this. If you have more than one site, Mesiri asks which. A card comes back: tap Save. I'll watch for the request here.", say: 'Your turn. Send this message to Mesiri. If you run more than one site, Mesiri asks which one. A card comes back: tap Save, and I\'ll watch for the request to arrive here.',
+        target: 'req.add',
+        title: 'Your turn: ask for cement',
+        text: "Press New request: 50 bags of cement for your site, needed by Friday, and save. I'll watch for the request here.", say: 'Your turn. Press new request. Fifty bags of cement for your site, needed by Friday, and save. I\'ll watch for it to arrive here.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Need 50 bags cement by Friday', tools: ['ask_for_material'], check: { path: '/procurement/requests', params: { status: 'open' } } },
+        try: { kind: 'here', check: { path: '/procurement/requests', params: { status: 'open' } } },
       },
       {
         page: '/materials/requests',
         showNew: true,
         title: 'There it is',
-        text: 'The request is in the list, waiting for the office. The site can ask on WhatsApp how it is going: "my requests".', say: 'There it is, waiting for the office. And Ravi never has to call to chase it. He just asks Mesiri: my requests.',
+        text: 'The request is in the list, waiting for the office. The site can ask how it is going on WhatsApp: "my requests".', say: 'There it is, waiting for the office. And Ravi never has to call to chase it. From site, he just asks Mesiri: my requests.',
         mood: 'happy',
       },
       {
         page: '/materials/requests',
         title: 'Take it back',
-        text: 'It was practice, so cancel it the same way. Mesiri shows a card: tap Save.', say: 'That was only practice, so let\'s cancel it, the same way. Mesiri shows a card. Tap Save.',
-        takeBack: { say: 'Cancel my cement request', tools: ['cancel_material_request'] },
+        text: 'It was practice, so cancel it: open the request and press Cancel.', say: 'That was only practice, so let\'s cancel it. Open the request, and press cancel.',
+        takeBack: { here: 'Open the request, then Cancel.' },
       },
     ],
   },
@@ -322,7 +313,7 @@ export const WORKFLOWS: Walkthrough[] = [
       {
         page: '/procurement/orders',
         title: 'Ordering it',
-        text: 'The office turns requests into purchase orders and sends them to the supplier, on WhatsApp or as a PDF. On WhatsApp: "Order 50 bags cement from Malabar at 380".', say: 'Next, the office turns the request into a purchase order and sends it to the supplier, on WhatsApp or as a PDF. It can be one message too: order fifty bags of cement from Malabar.',
+        text: 'The office turns requests into purchase orders here, and sends them to the supplier as a PDF or on WhatsApp.', say: 'Next, the office turns the request into a purchase order, right here, and sends it to the supplier, as a PDF or on WhatsApp.',
       },
       { page: '/procurement/pending', title: 'What is still to come', text: 'Every order not yet delivered in full, so you know whom to chase.', say: 'This is everything ordered that hasn\'t fully arrived yet. So you always know which supplier to chase, and for what.', mood: 'look' },
       {
@@ -339,19 +330,19 @@ export const WORKFLOWS: Walkthrough[] = [
     kind: 'workflow',
     part: true,
     title: 'Attendance from site',
-    about: 'Who came, in one line on WhatsApp; the muster roll fills itself.',
+    about: 'Who came, in one line typed into Tell Mesiri (or sent from site on WhatsApp); the muster roll fills itself.',
     minutes: 1,
     roles: RECORDERS,
     steps: [
-      { page: '/labour', title: 'Attendance from site', text: 'The site says who came. Attendance, the muster roll and the wages all follow from it.', say: 'Every day, the site tells Mesiri who came. That one message is all it takes: attendance, the muster roll and the wages all follow from it.', mood: 'hello' },
+      { page: '/labour', title: 'Attendance from site', text: 'Who came is told to Mesiri in one line: typed here, or sent from site on WhatsApp. Attendance, the muster roll and the wages all follow from it.', say: 'Every day, Mesiri is told who came, in one line. Typed here, or sent from site on WhatsApp. That is all it takes: attendance, the muster roll and the wages all follow from it.', mood: 'hello' },
       {
         page: '/labour',
-        title: 'Try it: mark attendance',
-        text: 'Send this. The card shows the team and how many came. This is practice: look at the card, then tap Cancel.', say: 'Try it. Send this message. The card shows the team and how many turned up. It\'s practice, so just look at the card, then tap Cancel.',
+        title: 'Your turn: mark attendance',
+        text: 'Type this into Tell Mesiri, the New box at the top. The card shows the team and how many came. This is practice: look at the card, then tap Cancel.', say: 'Your turn. Type this into Tell Mesiri, the New box at the top. The card shows the team and how many turned up. It\'s practice, so just look at the card, then tap Cancel.',
         mood: 'send',
         try: { kind: 'whatsapp', say: "Rahim's crew: 4 helpers, 2 masons", tools: ['record_attendance'], save: false },
       },
-      { page: '/labour', target: 'labour.views', title: 'By day and by month', text: 'Attendance by day, and the muster roll for the month, fill from those messages.', say: 'Attendance by day, and the muster roll for the whole month, fill themselves from those messages. No register to copy out.' },
+      { page: '/labour', target: 'labour.views', title: 'By day and by month', text: 'Attendance by day, and the muster roll for the month, fill from those lines.', say: 'Attendance by day, and the muster roll for the whole month, fill themselves from those lines. No register to copy out.' },
     ],
   },
   // W4's second half: wages and advances.
@@ -366,15 +357,16 @@ export const WORKFLOWS: Walkthrough[] = [
       {
         page: '/labour/wages',
         title: 'The wage sheet',
-        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it. On WhatsApp: \"What do I pay Rahim's crew this week?\".", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Rahim\'s crew this week?',
+        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it, here.", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it, right here.',
       },
       { page: '/labour/advances', title: 'Advances', text: 'Money given ahead is kept per person and comes off their next wages by itself.', say: 'When someone takes money in advance, it\'s kept against their name, and it comes off their next wages by itself. No more notebooks.' },
       {
         page: '/labour/advances',
-        title: 'Try it: an advance',
-        text: 'Send this. The card shows who, how much and what they owe after it. This is practice: look at the card, then tap Cancel.', say: 'Try one. Send this message. The card shows who took the advance, how much, and what they owe after it. Practice again: look, then tap Cancel.',
+        target: 'advances.give',
+        title: 'Your turn: an advance',
+        text: 'Press Give advance: who, how much, and which cash box it came from. This is practice: look at what it asks, then press Cancel.', say: 'Your turn. Press give advance. It asks who, how much, and which cash box it came out of. Practice again: look, then press cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Gave Ravi 500 advance', tools: ['give_labour_advance'], save: false },
+        try: { kind: 'here', save: false },
       },
     ],
   },
@@ -397,19 +389,20 @@ export const WORKFLOWS: Walkthrough[] = [
       },
       {
         page: '/finance/expenses',
-        title: 'Try it: record an expense',
-        text: "Send this to Mesiri (add a photo of the bill on a real day). If you have more than one site, Mesiri asks which. A card comes back: tap Save. I'll watch for it here.",
+        target: 'exp.add',
+        title: 'Your turn: record an expense',
+        text: "Press Record expense: 500 for drinking water, your site, no supplier, and save (add the bill's photo on a real day). I'll watch for it here.",
         mood: 'send',
         // No supplier named: a practice must not leave a new supplier behind after it is taken back.
-        try: { kind: 'whatsapp', say: 'Paid 500 for drinking water', tools: ['record_expense'], check: { path: '/expenses' } },
+        try: { kind: 'here', check: { path: '/expenses' } },
       },
       { page: '/finance/expenses', showNew: true, title: 'There it is', text: 'The expense is in the list, and in the project\'s cost.', mood: 'happy' },
       {
         page: '/finance/expenses',
         title: 'Take it back',
-        text: 'It was practice, so take it back the same way. Mesiri shows a card: tap Save.',
-        say: 'That was practice, so take it back the same way. Mesiri shows a card. Tap Save.',
-        takeBack: { roles: MONEY_MANAGERS, say: 'Take back the drinking water expense', tools: ['undo_expense'] },
+        text: "It was practice, so take it back: the row's menu, Take back.",
+        say: 'That was practice, so take it back. Open the row\'s menu, and press take back.',
+        takeBack: { roles: MONEY_MANAGERS, here: "The row's menu (⋯), then Take back." },
       },
       { page: '/finance/vendors', target: 'vendors.tiles', title: 'What you owe each supplier', text: 'Their bills less what you paid, what is overdue, and what you paid ahead.', mood: 'look' },
       {
@@ -423,7 +416,7 @@ export const WORKFLOWS: Walkthrough[] = [
         page: '/finance/vendors',
         target: 'vendors.list',
         title: 'Pay them',
-        text: 'Open a supplier to pay a bill. On WhatsApp: "Paid Malabar 50,000 by UPI", and "How much do we owe Malabar?".',
+        text: 'Open a supplier to pay a bill: Pay, the amount and the account it went from.',
         mood: 'happy',
       },
     ],
@@ -445,15 +438,16 @@ export const WORKFLOWS: Walkthrough[] = [
       },
       {
         page: '/subcontract/work-orders',
-        title: 'Try it: a work order',
-        text: 'Send this. The card shows the work, the quantity and the rate. This is practice: look at the card, then tap Cancel.',
+        target: 'wo.add',
+        title: 'Your turn: a work order',
+        text: 'Press New work order: the subcontractor, the work, the quantity and the rate. This is practice: look at what it asks, then press Cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Work order to Sree tiles: floor tiling 2,400 sq ft at 38', tools: ['create_work_order'], save: false },
+        try: { kind: 'here', save: false },
       },
       {
         page: '/subcontract/work-orders',
         title: 'Measure the work',
-        text: 'Each week site says how much was done: "Sree tiles did 600 sq ft this week". That is what the bill is checked against.',
+        text: 'Each week the work done is measured on the work order (or sent from site: "Sree tiles did 600 sq ft this week"). That is what the bill is checked against.',
       },
       {
         page: '/subcontract/bills',
@@ -488,7 +482,7 @@ export const WORKFLOWS: Walkthrough[] = [
         page: '/planning/setup',
         target: 'setup.new',
         title: 'A new project',
-        text: 'New project: its name, the client and the place. It opens on its start steps. On WhatsApp, "New project Lake View for Mr Thomas at Kakkanad, starts 1 Dec" does the same.', say: 'A new job starts here. New project asks its name, the client and the place, then opens its steps. Or say it to Mesiri on WhatsApp.',
+        text: 'New project: its name, the client and the place. It opens on its start steps.', say: 'A new job starts here. New project asks its name, the client and the place, then opens its steps.',
         mood: 'happy',
       },
       { page: '/planning/setup', target: 'setup.steps', title: 'Steps to "work starts"', text: 'Dates, contract, BOQ, schedule, sites, the site team, suppliers.', say: 'The steps: dates, contract, B O Q, schedule, sites, the site team and suppliers. Do them in any order. Each one ticks itself.', mood: 'think' },
@@ -498,8 +492,8 @@ export const WORKFLOWS: Walkthrough[] = [
         page: '/team',
         target: 'team.add',
         title: 'The site team',
-        text: 'Add the engineer by their WhatsApp number. On WhatsApp: "Add Ravi 98470 12345 as site engineer on Lake View". This is practice: look at the card, then tap Cancel.', say: 'Now the team. Add your site engineer by their WhatsApp number, or just send: add Ravi as site engineer on Lake View. Practice: look at the card, then tap Cancel.',
-        try: { kind: 'whatsapp', say: 'Add Ravi 98470 12345 as site engineer on Lake View', tools: ['add_person'], save: false },
+        text: 'Press Add person: the engineer, their WhatsApp number and their site. This is practice: look at what it asks, then press Cancel.', say: 'Now the team. Press add person. It asks your site engineer\'s name, their WhatsApp number, and their site. Practice: look, then press cancel.',
+        try: { kind: 'here', save: false },
       },
       { page: '/reports', target: 'reports.list', title: 'The first report', text: 'From their first message, the daily report goes out every evening.', say: 'And from Ravi\'s very first message, the daily report goes out every evening. That\'s it. The project is running.', mood: 'happy' },
     ],
@@ -515,14 +509,15 @@ export const WORKFLOWS: Walkthrough[] = [
       { page: '/issues', title: 'Hold-ups from site', text: 'No water, a machine broken, a drawing missing: each stays open here until someone fixes it.', say: 'No water, a broken machine, a missing drawing. Every hold-up the site reports stays here until someone sorts it out.', mood: 'hello' },
       {
         page: '/issues',
-        title: 'Try it: report one',
-        text: 'Send this. The card shows the problem and the site. This is practice: look at the card, then tap Cancel.', say: 'Try reporting one. Send this message. The card shows the problem and the site. Practice: look, then tap Cancel.',
+        target: 'issues.add',
+        title: 'Your turn: report one',
+        text: 'Press Report issue: the problem, the site, how urgent. This is practice: look at what it asks, then press Cancel.', say: 'Your turn. Press report issue. It asks the problem, the site, and how urgent it is. Practice: look, then press cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'No water since morning at the compound wall', tools: ['report_issue'], save: false },
+        try: { kind: 'here', save: false },
       },
       { page: '/issues', target: 'issues.list', title: 'Open until fixed', text: 'The oldest first. Open one to say it is seen, then fixed, or that it will not be fixed and why.', say: 'The oldest are first. Open one to mark it seen, then fixed, or say why it won\'t be fixed. Nothing gets forgotten.', mood: 'think' },
       { page: '/issues', target: 'issues.stats', title: 'At a glance', text: 'How many are open, and how long they have waited.', say: 'At a glance: how many are open, and how long they\'ve been waiting.', mood: 'look' },
-      { page: '/issues', title: 'Closing it from site', text: 'When it is sorted, site says "Water is back at the compound wall" and it closes.', say: 'And when it\'s sorted, the site just says so: water is back at the compound wall. It closes by itself.', mood: 'happy' },
+      { page: '/issues', title: 'Closing it', text: 'When it is sorted, open it and mark it fixed. From site, "Water is back at the compound wall" on WhatsApp closes it too.', say: 'And when it\'s sorted, open it and mark it fixed. From site, Ravi can just say so on WhatsApp, and it closes.', mood: 'happy' },
     ],
   },
   // W8: billing the client.
@@ -538,12 +533,13 @@ export const WORKFLOWS: Walkthrough[] = [
       { page: '/accounts/receivables', title: 'What the client owes', text: 'Every bill, what was paid against it, and how old the rest is.', say: 'Here is everything your client owes: each bill, what\'s been paid, and how long the rest has been waiting.', mood: 'look' },
       {
         page: '/accounts/receivables',
-        title: 'Try it: the client paid',
-        text: 'Send this. The card shows the payment and the bill it goes against. This is practice: look at the card, then tap Cancel.', say: 'Try it. Send this message when the client pays. The card shows the payment and which bill it clears. Practice: look, then tap Cancel.',
+        target: 'recv.record',
+        title: 'Your turn: the client paid',
+        text: 'Press Money received: the amount, the bill it goes against, and the bank it came into. This is practice: look at what it asks, then press Cancel.', say: 'Your turn. When the client pays, press money received. It asks the amount, which bill it clears, and the bank it came into. Practice: look, then press cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Client paid 5 lakh for RA-03', tools: ['record_client_receipt'], save: false },
+        try: { kind: 'here', save: false },
       },
-      { page: '/accounts/receivables', title: 'Ask any time', text: 'On WhatsApp: "What does the client still owe on Green Villa?"', say: 'And any time, ask on WhatsApp: what does the client still owe on Green Villa?', mood: 'happy' },
+      { page: '/accounts/receivables', title: 'Ask any time', text: 'In Tell Mesiri, or on WhatsApp: "What does the client still owe on Green Villa?"', say: 'And any time, ask Mesiri, here or on WhatsApp: what does the client still owe on Green Villa?', mood: 'happy' },
     ],
   },
   // W9: cost control (questions only, nothing to practise).
@@ -560,7 +556,7 @@ export const WORKFLOWS: Walkthrough[] = [
       { page: '/cost/green-red', target: 'gr.lines', title: 'Labour, line by line', text: 'Green: the work earned its labour. Red: it cost more. Worst first, with why.', say: 'Now labour, line by line. Green means the work earned what the labour cost. Red means it cost more. The worst are at the top, with the reason.', mood: 'think' },
       { page: '/cost/budget', target: 'budget.kinds', title: 'Budget against spent', text: 'For labour, material and subcontract: the budget, what the work earned, and what was spent.', say: 'For labour, material and subcontractors: the budget, what the work has earned, and what you\'ve actually spent. Side by side.' },
       { page: '/cost/materials', title: 'Material against the BOQ', text: 'What the work needed by the BOQ against what was used, and what is short to finish.', say: 'And material: what the work should have needed, against what was really used. If cement is disappearing, this is where you\'ll see it.', mood: 'worry' },
-      { page: '/cost', title: 'Ask on WhatsApp', text: '"How is Green Villa doing on cost?" or "Which work is over on labour this week?"', say: 'And you don\'t have to open any of this. Just ask on WhatsApp: how is Green Villa doing on cost?', mood: 'happy' },
+      { page: '/cost', title: 'Ask Mesiri', text: 'In Tell Mesiri, or on WhatsApp: "How is Green Villa doing on cost?" or "Which work is over on labour this week?"', say: 'And you don\'t have to open all of this. Just ask Mesiri, here or on WhatsApp: how is Green Villa doing on cost?', mood: 'happy' },
     ],
   },
   // W10: machines and hire.
@@ -572,16 +568,16 @@ export const WORKFLOWS: Walkthrough[] = [
     minutes: 2,
     roles: RECORDERS,
     steps: [
-      { page: '/equipment/log', title: "Each machine's day", text: 'Hours worked, idle and broken down, and the diesel, from one message from site.', mood: 'hello' },
+      { page: '/equipment/log', title: "Each machine's day", text: 'Hours worked, idle and broken down, and the diesel, from one line: typed into Tell Mesiri, or sent from site.', mood: 'hello' },
       {
         page: '/equipment/log',
-        title: 'Try it: log the machines',
-        text: 'Send this. The card shows each machine and its hours. This is practice: look at the card, then tap Cancel.',
+        title: 'Your turn: log the machines',
+        text: 'Type this into Tell Mesiri, the New box at the top. The card shows each machine and its hours. This is practice: look at the card, then tap Cancel.',
         mood: 'send',
         try: { kind: 'whatsapp', say: 'Mixer 8 hrs, roller broke down 3 hrs', tools: ['log_machines'], save: false },
       },
       { page: '/equipment/hire', title: 'The hire bill, checked', text: 'The hours the owner billed against the hours site logged, so you pay for what was worked.', mood: 'think' },
-      { page: '/equipment/hire', title: 'Ask on WhatsApp', text: '"Does the JCB bill match our hours?"', mood: 'happy' },
+      { page: '/equipment/hire', title: 'Ask Mesiri', text: 'In Tell Mesiri, or on WhatsApp: "Does the JCB bill match our hours?"', mood: 'happy' },
     ],
   },
   // W11: month end.
@@ -593,8 +589,8 @@ export const WORKFLOWS: Walkthrough[] = [
     minutes: 2,
     roles: BILLING_ROLES,
     steps: [
-      { page: '/reports/period', title: "The month's report", text: 'Work, labour, material and money for the week or the month, per project. On WhatsApp: "Send me October\'s report for Green Villa".', say: 'At month end, here\'s the full picture: work, labour, material and money, for each project. Or ask on WhatsApp: send me October\'s report for Green Villa.', mood: 'hello' },
-      { page: '/accounts', title: 'The books keep themselves', text: 'Every bill, payment, delivery and wage recorded on WhatsApp or here is already in the books.', say: 'And your accounts keep themselves. Every bill, payment, delivery and wage already went into the books, the moment it was recorded.', mood: 'look' },
+      { page: '/reports/period', title: "The month's report", text: 'Work, labour, material and money for the week or the month, per project. Download it here, or ask Mesiri: "Send me October\'s report for Green Villa".', say: 'At month end, here\'s the full picture: work, labour, material and money, for each project. Download it here, or just ask Mesiri: send me October\'s report for Green Villa.', mood: 'hello' },
+      { page: '/accounts', title: 'The books keep themselves', text: 'Every bill, payment, delivery and wage recorded here or on WhatsApp is already in the books.', say: 'And your accounts keep themselves. Every bill, payment, delivery and wage already went into the books, the moment it was recorded.', mood: 'look' },
       { page: '/accounts/periods', title: 'Close the month', text: 'Once the month is checked, close it: nothing in it can change without opening it again.', say: 'Once your accountant has checked the month, close it. From then on, nothing in it can change without opening it again.', mood: 'think' },
       { page: '/accounts/tally', title: 'For your accountant', text: 'The month for Tally in one file, so nobody types it in again.', say: 'And for your accountant: the whole month for Tally, in one file. Nobody types it in again.', mood: 'happy' },
     ],
