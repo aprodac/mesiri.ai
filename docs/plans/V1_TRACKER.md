@@ -583,7 +583,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-74f | "Let Meera do it": hand one of your entries for today back to the cast, who make it now; `POST /learn/sandbox/hand-over` | S | Must | SS-74c | todo |  | [plan §18.13 c](guided-demo-plan.md) |
 | SS-75 | Playground events and choices with effects (short delivery, rain, cement out, advance, red line, late client payment) | M | Must | SS-72, SS-74 | todo | | [plan §16.4](guided-demo-plan.md) |
 | SS-76 | Play the roles: a person per role in the sample company (done in SS-66/67); **switch role from the sample company's banner** without leaving it | S | Must | SS-66 | done | Claude (session 17 Nov, session_016qPwVK) | [plan §16.5](guided-demo-plan.md). The WhatsApp-style phone for the site engineer is dropped (17 Nov: a mobile app is coming, [DECISIONS.md](../DECISIONS.md)) |
-| SS-76b | Play the roles, part 2: the mission switches the role for you ("6 pm, you're Ravi now"); how the site engineer plays once the mobile app's shape is known | S | Must | SS-74, SS-69 | todo | | [plan §16.5](guided-demo-plan.md). Waits for the simulation script and the mobile app decision |
+| SS-76b | Play the roles, part 2: the mission switches the role for you ("6 pm, you're Ravi now"); how the site engineer plays once the mobile app's shape is known | S | Must | SS-74, SS-69 | todo | | [plan §16.5](guided-demo-plan.md). Waits for the simulation script and the mobile app decision. App shape proposed 21 Nov: [mobile-site-engineer-plan.md](mobile-site-engineer-plan.md) (Today + the mic) |
 | SS-77 | Project health strip, report card at handover, careers and certificates on Learn | S | Must | SS-74 | todo | | [plan §16.6](guided-demo-plan.md). D-PG3: project numbers, no points |
 | SS-78 | Owner assigns missions to the team and sees their progress | S | Later | SS-77 | todo | | [plan §16.6](guided-demo-plan.md). D-PG6 |
 
@@ -1164,6 +1164,26 @@ balance sheet, receivables, purchase cycle, returnables, variations, role-scoped
 | FB-05 | **GST and non-GST projects** ("90% of home owners won't pay 18% GST"). A contract's GST % is already per project (0% allowed) and the books follow what is billed. **Not built: a second, unrecorded set of books**: that would be tax evasion, so Mesiri won't do it. | — | — | | decision | Ilan | What to offer legitimately (e.g. GST-exempt / composition-scheme registration guidance per client) is a product decision. |
 | FB-06 | **Per-seat / tiered pricing** (entry tier ~3-4 users, 10-20 projects; upsell later). | — | — | | decision | Ilan | Pricing decision, not code; no plan limits exist in the product yet. |
 | FB-07 | **Crane operations, hourly equipment allocation across sites** (large builders' module). Hourly hire already exists (NXT-11/13/15). | L | Later | | todo | | The contractor called it an add-on for high-rise builders. |
+
+## MOB — Mobile app, part 1: the site engineer ([plan](mobile-site-engineer-plan.md), 21 Nov 2026)
+
+Asked 21 Nov 2026 (in session): the mobile app, site engineer first, easy to find your way, voice in
+Malayalam and other languages, filling a form or one field by voice. The app's voice is the existing
+assistant (`/assistant/messages`, `/assistant/messages/voice`, the same v3 agent as WhatsApp), not a new pipeline.
+
+| ID | Item | Size | Priority | Depends | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| MOB-01 | **Design: the site engineer's app** (navigation, three ways to speak, six screens, build order) | S | Must | | done (commit in report) | Claude (session 21 Nov) | [plan](mobile-site-engineer-plan.md); mockups on the design canvas shared in session. Waits for review of §9's decisions |
+| MOB-02 | **App shell**: brand theme (WEB-76 tokens), bottom bar Today / Site / mic / Requests / More, the site at the top from the real projects and sites, email sign-in with the token in secure storage, English + Malayalam words; the prototype's mock data and manager screens taken out of the navigation | M | Must | MOB-01 | todo | | `apps/mobile`. No backend change |
+| MOB-03 | **Say anything**: record (60 s), send to `/assistant/messages/voice`, show You said, Mesiri's line and the TO SAVE card with its buttons (Save is the assistant's Save). Backend, additive: the voice route takes `audio/mp4` (iPhone), channel / source `app` | M | Must | MOB-02 | todo | | Check Sarvam takes m4a first (else convert on the server). Tell Mesiri on the dashboard must be unchanged |
+| MOB-04 | **Today**: the site's day as 8 rows (attendance, work, materials in, used, machines, problems, photos, weather) with what was told, "6 of 8 done", when the report goes, Send now | M | Must | MOB-02 | todo | | Existing routes (`site_day`, `day_summary`, `send_dpr`) |
+| MOB-05 | **Forms for the 8 rows**, posting to the routes the dashboard uses; **speak into a form**. Backend, additive: the web door's response carries the ready entries (tool, summary, fields) | L | Must | MOB-03, MOB-04 | todo | | No new data routes. Optional response field, so the dashboard is untouched |
+| MOB-06 | **Speak into one field**: a text field gets the English words with theirs above; a number, material or supplier is taken from the assistant's prepared entry | M | Should | MOB-05 | todo | | |
+| MOB-07 | **No signal**: voice notes, photos and forms queued on the phone, "N waiting", sent by themselves, never twice (idempotency keys) | M | Must | MOB-03, MOB-05 | todo | | Answers to an offline note may come later: they wait on Today |
+| MOB-08 | **Sign in with phone number + a code on WhatsApp** | M | Must | MOB-02 | blocked | | **Needs Ilan's approval: security (auth).** Email + password until then |
+| MOB-09 | **Notifications**: a question waiting, a request answered, the evening report reminder | M | Should | MOB-03 | blocked | | **Needs approval: ops** (push keys) and a new table for device tokens (additive) |
+| MOB-10 | **Site**: stock (running low first, days left, on order), requests, coming deliveries; ask for material | M | Must | MOB-02 | todo | | Existing routes (`stock_summary`, `material_requests`, `ask_for_material`, `purchase_orders`) |
+| MOB-11 | **Android build and the Play Store testing track** | S | Must | MOB-03 | blocked | | **Ops: needs the store account.** iPhone after |
 
 ## Done log
 
