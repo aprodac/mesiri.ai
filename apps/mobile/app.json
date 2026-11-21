@@ -1,19 +1,37 @@
 {
   "expo": {
-    "name": "Mesiri AI",
+    "name": "Mesiri",
     "slug": "mesiri-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "scheme": "mesiri",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "ai.mesiri.site",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Mesiri listens to your voice notes about the site, in Malayalam, English or any language you speak."
+      }
     },
-    "android": {},
+    "android": {
+      "package": "ai.mesiri.site",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "softwareKeyboardLayoutMode": "resize"
+    },
     "web": {},
     "plugins": [
       "expo-router",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Mesiri listens to your voice notes about the site, in Malayalam, English or any language you speak."
+        }
+      ]
+    ],
+    "backgroundColor": "#f6f3ed"
   }
 }
