@@ -7,8 +7,8 @@
 > Tracker: **MOB** section of [V1_TRACKER.md](V1_TRACKER.md). Screen mockups (six phone screens, clickable):
 > the "Mesiri Site Engineer App" design canvas shared in session.
 >
-> Status: **building (21 Nov).** Done: MOB-01 design, MOB-02 shell, MOB-03 say anything, MOB-04 Today, MOB-08 sign-in,
-> MOB-10 site and requests. Next: MOB-05 forms (needs the ready entries in the response), MOB-07 no signal, MOB-06.
+> Status: **building (21 Nov).** Done: MOB-01 design, MOB-02 shell, MOB-03 say anything, MOB-04 Today, MOB-05 forms
+> filled by voice, MOB-08 sign-in, MOB-10 site and requests. Next: MOB-07 no signal, MOB-06, MOB-12.
 > §9's defaults were taken (asked to "go implement" 21 Nov): Android first, phone + WhatsApp code sign-in, replies in
 > the app only, English and Malayalam.
 
@@ -236,3 +236,12 @@ returns; all of it shows on the dashboard's day page and in the DPR.
 - **The prototype could not have run.** It mixed React 19.2.7 with react-dom 19.1.0 (a blank screen); React is
   now pinned to Expo 54's versions.
 - **Machines** are not in the site day's data, so Today has 7 rows, not 8; machine hours are taken by voice.
+- **How a form is filled by voice without a second pipeline (MOB-05).** The voice note goes to Mesiri as any other;
+  the web door's answer carries `ready`, the person's TO SAVE list as data (read from the assistant's own state, never
+  changed there). The form takes the newest entry of its kind, keeps its whole body (fields the form doesn't show,
+  like a rate, stay), and saves it with the entry's own idempotency key; then it sends the assistant's own Remove
+  tap. If the Remove is lost, the assistant's Save of that entry can only answer "already saved". For that,
+  `POST /progress/issues` now honours `Idempotency-Key` (it did not; deliveries and use already did). 50 other POST
+  routes the assistant uses still ignore it (MOB-12).
+- **A voice-filled form left without saving** leaves its entry on Mesiri's list, as on WhatsApp: it shows on Speak
+  and is saved or cancelled there.
