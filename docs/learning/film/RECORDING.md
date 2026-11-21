@@ -104,6 +104,11 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
   pay, Returns DN-0001 Rs 2,400 settled, the count approved, Rs 1,228.32) written. **The whole run passes from a fresh
   sample company:** `record.cjs 04` → 23 frames, nothing failed. Papers and the `stock` screen shot (`SKIP_STEPS=1`, the
   sample at the start of day 10). **Left:** the build (`build.mjs 04`) needs the ElevenLabs key.
+  **21 Nov, built** (another session): since `8e8c570d` a role left behind is never played late, so Go back after a
+  scene lost the person's own entries (the order made in `compare` was gone by `gate`). The chained scenes now `keep`;
+  `match` takes the bill back on screen (frame 5) so the plan plays the corrected bill and the settled return on day 10;
+  `stock` is a steps scene on day 9 inside the run (Go back to a day restores a copy without the on-screen orders).
+  Words to the screen: 191 bags, 34 days. `record.cjs 04` → 28 frames, nothing failed; `build.mjs 04` → 8.4 minutes.
 - Local copy notes: the dashboard installs with `pnpm install` (no npm lockfile) and builds with
   `VITE_API_URL=http://localhost:8000 pnpm exec vite build`; serve with `vite preview --port 5199`. The answer of
   `go-back` has no role in it: take a fresh `POST /learn/sandbox` with the role before shooting a scene (record.cjs
