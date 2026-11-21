@@ -88,7 +88,7 @@ old Episode 2 ("What owners want") is retired: it was about selling.
 | 6 | **Problems and machines** | 3 to 30 | follow a problem from WhatsApp to fixed (an issue, a task for someone, closed), and a machine's day (log, breakdown, hire check), and say why idle time costs money | "A problem on site" |
 | 7 | **The subcontractor** | 34 to 49 | pay a subcontractor only for measured work: work order → measurement → bill → retention and TDS → payment | "The tiling subcontract" |
 | 8 | **Billing the client** | 23 to 51 | explain how money comes in: measured work → running bill → client pays; an extra the client asks for (a variation) priced, approved and billed; what the client sees; why a late bill hurts | "The first running bill" |
-| 9 | **Is it making money?** | around 30 | read a project's health halfway: work counted on the BOQ, green and red, budget against actual, materials against the BOQ, cost centres; and decide what to do about a red line | BOQ counts → cost control |
+| 9 | **Is it making money?** ([plan](EPISODE_09_PLAN.md): "Where every entry goes", filmed before 8) | around 30 | read a project's health halfway: work counted on the BOQ, green and red, budget against actual, materials against the BOQ, cost centres; and decide what to do about a red line | BOQ counts → cost control |
 | 10 | **Month end** | 30 and 60 | close a month: GST and TDS, the cash and bank book, the books from the records (ledgers, trial balance, P&L, balance sheet), closing the month, the Tally export | month-end entries (batch 1) |
 | 11 | **Handover, and after** | 55 to 62, then a year | close a project: the last stages, the snag list, the final bill, handover; then the defects period and the retention released; the credits | handover → retention |
 
