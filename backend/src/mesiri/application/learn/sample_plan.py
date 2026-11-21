@@ -204,6 +204,14 @@ KINDS: dict[str, Kind] = {
     # LRN-F23: the month-end count at the Main block, and the owner's approval of its difference.
     "stock_count": Kind(ENGINEER, (("POST", "/materials/stock-counts"), ("PUT", "/materials/stock-counts/{count_id}/lines"))),
     "count_approve": Kind(OWNER, (("POST", "/materials/stock-counts/{count_id}/approve"),)),
+    # LRN-F25 (episode 6): the Annex mixer on hire, its day logs (a breakdown raises the problem), the task that fixes
+    # it, and the hire company's bill checked against the logs.
+    "machine": Kind(PM, (("POST", "/equipment"),)),
+    "machine_log": Kind(ENGINEER, (("POST", "/equipment/logs"),), routine=True),
+    "task": Kind(PM, (("POST", "/tasks"),)),
+    "task_status": Kind(PM, (("POST", "/tasks/{task_id}/status"),)),
+    "hire_bill": Kind(ACCOUNTS, (("POST", "/equipment/hire-bills"),)),
+    "hire_bill_fix": Kind(PM, (("PATCH", "/equipment/hire-bills/{bill_id}"),)),
     "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
     "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
     "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
@@ -231,7 +239,7 @@ ROUTER_MODULES = (
     "mesiri.domains.expenses.router", "mesiri.domains.procurement.router", "mesiri.domains.procurement.orders_router",
     "mesiri.domains.subcontracts.router", "mesiri.domains.vendors.router", "mesiri.domains.billing.router",
     "mesiri.domains.schedule.router", "mesiri.domains.procurement.rfqs_router", "mesiri.domains.procurement.returns_router",
-    "mesiri.domains.materials.stock_count_router",
+    "mesiri.domains.materials.stock_count_router", "mesiri.domains.equipment.router", "mesiri.domains.tasks.router",
 )
 
 
@@ -419,6 +427,7 @@ def build() -> Plan:
     to_count: list[tuple[int, Entry]] = []                 # work to count on the BOQ, on this day
     gv_setup: dict[str, Entry] = {}                        # D2: Green Villa's contract and BOQ entries
     issues: dict[int, list[Entry]] = defaultdict(list)     # day to close -> issue
+    machine_story: dict[str, Any] = {}                     # LRN-F25: the Annex mixer, its problem and task
     ra_bills: list[tuple[int, Entry]] = []                 # (client pays on this day, the bill)
     workers = {at: [(n, t, w) for n, t, w, home in story.DEMO_WORKERS if home == at] for at in range(len(SITES))}
     worker_site = {n: SITES[home][0] for n, _t, _w, home in story.DEMO_WORKERS}
@@ -699,6 +708,52 @@ def build() -> Plan:
                   f"({cs['count_reason']})", site=site, data={"material": "cement"}, needs=(counted.id,))
             stock[(site, "cement")] -= cs["count_short"]
 
+        # LRN-F25 (episode 6): the Annex mixer (green_villa.HIRE).
+        hire, mixer_site = gv.HIRE, "annex"
+        if day == hire["on_day"]:
+            machine_story["machine"] = b.add(
+                day, "machine", f"Put the {hire['short_name'].lower()} from {hire['vendor']} on hire at {SITE_NAME[mixer_site]}, "
+                f"{_amount(hire['rate_per_hour'])} an hour", site=mixer_site,
+                data={"machine": hire["short_name"], "type": hire["machine"], "vendor": hire["vendor"],
+                      "rate": hire["rate_per_hour"]})
+        if day in hire["log"] and "machine" in machine_story:
+            worked, broke = hire["log"][day]
+            said = f"{hire['short_name']} {_fmt(worked)} hr{'' if worked == 1 else 's'}" + (f", broke down {_fmt(broke)} hrs: {hire['breakdown_reason']}" if broke else "")
+            log = b.add(day, "machine_log", said, site=mixer_site,
+                        data={"machine": hire["short_name"], "worked": worked, "breakdown": broke,
+                              "reason": hire["breakdown_reason"] if broke else None},
+                        needs=(machine_story["machine"].id,))
+            if broke:
+                # The log raises the problem itself (equipment's breakdown rule), in these words.
+                narrative = f"{hire['short_name']} breakdown, {_fmt(broke)} hrs: {hire['breakdown_reason']}"
+                machine_story["problem"] = log
+                machine_story["narrative"] = narrative
+                machine_story["task"] = b.add(
+                    day, "task", f"Task for {hire['vendor']}: {hire['task']}, due tomorrow", site=mixer_site,
+                    data={"title": hire["task"], "vendor": hire["vendor"], "due_days": hire["task_due_days"],
+                          "narrative": narrative}, needs=(log.id,))
+            elif "task" in machine_story and "fixed" not in machine_story:
+                fixed = b.add(day, "task_status", f"Done: {hire['task']} ({hire['fixed']})", site=mixer_site,
+                              data={"title": hire["task"], "status": "done", "note": hire["fixed"]},
+                              needs=(machine_story["task"].id,))
+                machine_story["fixed"] = fixed
+                b.add(day, "issue_resolve", f"Close: {machine_story['narrative']}", site=mixer_site,
+                      data={"narrative": machine_story["narrative"], "resolution_notes": hire["fixed"]},
+                      needs=(machine_story["problem"].id, fixed.id))
+        if day == hire["bill_day"] and "machine" in machine_story:
+            days = sorted(hire["log"])
+            billed = hire["billed_hours"] * hire["rate_per_hour"]
+            bill = b.add(day, "hire_bill", f"Bill {hire['bill']} from {hire['vendor']}: {hire['short_name'].lower()}, "
+                         f"days {days[0]} to {days[-1]}, {hire['billed_hours']} hours, {_amount(billed)}", site=mixer_site,
+                         data={"machine": hire["short_name"], "bill_ref": hire["bill"], "from_day": days[0], "to_day": days[-1],
+                               "hours": hire["billed_hours"], "amount": billed},
+                         needs=tuple(e.id for e in b.entries if e.kind == "machine_log" and e.site == mixer_site))
+            agreed = hire["logged_hours"] * hire["rate_per_hour"]
+            b.add(day, "hire_bill_fix", f"Correct bill {hire['bill']} to the {hire['logged_hours']} hours logged, "
+                  f"{_amount(agreed)}: {hire['agreed']}", site=mixer_site,
+                  data={"bill_ref": hire["bill"], "hours": hire["logged_hours"], "amount": agreed, "note": hire["agreed"]},
+                  needs=(bill.id,))
+
         # Issues seen today (closed on their day).
         for issue_day, site, kind, severity, narrative, close_day, note in ISSUES:
             if issue_day == day:
@@ -869,6 +924,7 @@ def _site_day(routine: list[Entry]) -> str:
     if used:
         parts.append("used " + ", ".join(used))
     parts += [f"spent {_amount(e.data['amount'])} ({e.data['description'].lower()})" for e in of("expense")]
+    parts += [e.what.lower() for e in of("machine_log")]  # LRN-F25: the mixer's hours
     parts += [e.what.lower() for e in of("conditions")]
     return "; ".join(parts)
 

@@ -145,3 +145,39 @@ async def test_playing_ravi_the_return_waits_for_his_delivery(world):
     assert not moved.failed, moved.failed[:3]
     assert any(f.kind == "delivery" and "190" in f.what for f in moved.for_you)
     assert any(w["what"].startswith("Send back 6 torn bags") for w in moved.waiting)
+
+
+async def test_the_mixer_story_plays_on_the_real_api(world):
+    """LRN-F25 (episode 6): the Annex mixer on hire; day 5's breakdown in its log raises the problem itself, a task for
+    Kerala Earthmovers fixes it on day 6 and the problem closes; the bill's 42 hours meet the 36 logged and are
+    corrected to them on day 9."""
+    from mesiri.application.learn import green_villa as gv
+
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    for days in (5, 4):  # to day 9
+        moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
+        assert not moved.failed, moved.failed[:3]
+    hire, o = gv.HIRE, {"o": opened.organization_id}
+    async with engine.connect() as conn:
+        async def rows(sql: str):
+            return (await conn.execute(text(sql), o)).mappings().all()
+
+        logs = await rows("SELECT ev.duration_hours, ev.breakdown_hours, ev.issue_id FROM equipment_events ev "
+                          "JOIN equipment m ON m.id = ev.equipment_id WHERE ev.organization_id = :o "
+                          "AND ev.event_type = 'day_log' AND m.ownership = 'hired' ORDER BY ev.occurred_date")
+        issues = await rows("SELECT id, status, issue_type FROM site_issues WHERE organization_id = :o "
+                            "AND narrative LIKE 'Concrete mixer breakdown%'")
+        tasks = await rows("SELECT status, site_issue_id, assignee_vendor_id IS NOT NULL AS for_supplier FROM tasks "
+                           "WHERE organization_id = :o")
+        bills = await rows("SELECT billed_hours, amount FROM equipment_hire_bills WHERE organization_id = :o")
+    assert sum(float(x["duration_hours"]) for x in logs) == hire["logged_hours"] and len(logs) == len(hire["log"])
+    assert sum(float(x["breakdown_hours"] or 0) for x in logs) == hire["billed_hours"] - hire["logged_hours"]
+    # One breakdown, one problem, raised by the log; the task for the hire company fixes it, and it is closed.
+    assert len(issues) == 1 and issues[0]["status"] == "RESOLVED" and issues[0]["issue_type"] == "EQUIPMENT_BREAKDOWN"
+    assert [x["issue_id"] for x in logs if x["breakdown_hours"]] == [issues[0]["id"]]
+    assert len(tasks) == 1 and tasks[0]["status"] == "done" and tasks[0]["site_issue_id"] == issues[0]["id"]
+    assert tasks[0]["for_supplier"]
+    # The bill, corrected to the log: Hire check finds nothing over now.
+    assert [(float(b["billed_hours"]), float(b["amount"])) for b in bills] == [
+        (hire["logged_hours"], hire["logged_hours"] * hire["rate_per_hour"])]

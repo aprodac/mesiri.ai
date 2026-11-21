@@ -133,8 +133,8 @@ Each built page (lib/module-map.ts) appears in the episode where a project first
 | Site | Approvals | 5 | ready |
 | Labour | Attendance, Muster roll, Workers, Wages, Advances, Teams | 5 | ready; Teams batch 3 |
 | Site | Issues | 6 | ready |
-| Tasks | My tasks, All tasks, Overdue, Done | 6 | batch 3 |
-| Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 6 | batch 2 |
+| Tasks | My tasks, All tasks, Overdue, Done | 6 | ready: one task, the mixer's (LRN-F25) |
+| Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 6 | ready: the Annex mixer (LRN-F25); Vehicles, Shuttering & tools not played |
 | Subcontract | Subcontractors, Work orders, Bills & checks | 7 | ready |
 | Client billing | Clients, RA bills | 8 | ready |
 | Client billing | Variations, Client view | 8 | batch 3 |
