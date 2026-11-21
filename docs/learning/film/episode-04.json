@@ -461,7 +461,7 @@
         {
           "at": 2,
           "do": "take the bill back (Expenses, its menu, Take back); the corrected bill and the settled return follow on day 10",
-          "show": "the bill at Rs 410 taken back",
+          "show": "Malabar's account after the take-back: the Rs 91,922 no longer owed",
           "mark": "the bill taken back"
         }
       ],

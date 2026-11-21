@@ -183,7 +183,11 @@ module.exports = {
       const dlg = pg.getByRole('dialog').filter({ hasText: /^Take back/ }).last()
       await dlg.getByRole('button', { name: /^Take back$/ }).click()
       await h.wait(2500)
-      return pg.locator('main tr, main li').filter({ hasText: 'MCA/INV/2611' }).first()
+      // A bill taken back leaves the list; Malabar's account shows what is owed without it.
+      await h.go('/finance/vendors')
+      await pg.getByText('Malabar Cements Agency', { exact: true }).first().click()
+      await h.wait(3000)
+      return pg.locator('main').getByText('We owe', { exact: true }).first().locator('xpath=ancestor::*[3]')
     },
   ],
   // Ravi, day 16 (the month's end): the Main block's store counted; cement 3 bags under the book, wastage. Kept for the owner.
