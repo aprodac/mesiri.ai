@@ -466,12 +466,12 @@
       "kind": "screen",
       "part": "In Mesiri",
       "shot": "ep04-stock",
-      "url": "/materials?project={Green Villa}",
+      "url": "/materials?project={Green Villa}&site={Green Villa › Main block}",
       "wait": 6000,
       "eyebrow": "In Mesiri · Stock",
       "title": "Back above the line",
       "beats": [
-        "And on site, the cement is back. The Main block holds what the gate kept, less what has been used since, above its least of a hundred bags.",
+        "And on site, the cement is back. The Main block holds a hundred and eighty-eight bags: what the gate kept, less what has been used since. Twenty-five days at this week's use.",
         "Ten bags are still to come on Malabar's order. Anil does not chase them from memory: the order shows them as not yet delivered, until they are."
       ],
       "focus": [
@@ -481,7 +481,7 @@
         }
       ],
       "boxes": [],
-      "record": "As the owner on day 8, after the steps above."
+      "record": "As the owner on day 9, after the bill (the 10 bags come on day 10): the Main block's stock."
     },
     {
       "id": "count",
@@ -531,28 +531,34 @@
       "beats": [
         "What does Ramesh see of all this? Two screens.",
         "Malabar, on Suppliers: the bill that was taken back, the corrected one for what was kept, the six bags sent back, and what is owed now. He did not have to ask anyone.",
-        "And the month's count: three bags short at the Main block, wastage, twelve hundred rupees. He approves it, and the book is the store again.",
+        "And the month's count: three bags short at the Main block, wastage, one thousand two hundred and twenty-eight rupees, at what the bags cost. He approves it, and the book is the store again.",
         "Three leaks this month, each caught by the person whose step it was: at the gate, at the bill, and at the count."
       ],
       "frames": [
         {
           "at": 1,
           "url": "/finance/vendors",
-          "do": "open Malabar Cements Agency",
-          "show": "the bill taken back, the corrected bill, the debit note, owed now",
-          "mark": "Malabar"
+          "do": "open Malabar Cements Agency · Bills to pay",
+          "show": "the corrected bill MCA/INV/2611-R, owed; the one at Rs 410 taken back",
+          "mark": "the corrected bill"
+        },
+        {
+          "at": 1,
+          "do": "Returns",
+          "show": "DN-0001: 6 bags cement, damaged, Rs 2,400, settled",
+          "mark": "the debit note"
         },
         {
           "at": 2,
-          "url": "/materials/counts",
-          "do": "open the Main block's count; Approve",
-          "show": "3 bags short, wastage, the rupees; approved",
-          "mark": "the difference"
+          "url": "/materials/counts?project={Green Villa}&site={Green Villa › Main block}",
+          "do": "open the Main block's count",
+          "show": "cement 3 bags short, wastage, Rs 1,228.32 at the stock's own cost",
+          "mark": "the count"
         },
         {
           "at": 3,
-          "url": "/materials/counts",
-          "show": "the count approved",
+          "do": "Approve differences",
+          "show": "Approved by Ramesh Nair",
           "mark": "the count"
         }
       ],

@@ -24,6 +24,7 @@ const LEVELS: [string, ScopeLevel][] = [
   ['/labour', 'site'],
   ['/labour/wages', 'site'],
   ['/labour/advances', 'site'],
+  ['/labour/reports', 'site'],
   ['/materials', 'site'],
   ['/materials/requests', 'site'],
   ['/materials/counts', 'company'],

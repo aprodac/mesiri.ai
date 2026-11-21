@@ -5,7 +5,7 @@ import { ActionButton, ActionChip, ClearButton, KpiStrip, ListToolbar, NoAccess,
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDown, ArrowRight, ArrowUpDown, Boxes, Calculator, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, ShoppingCart, TrendingDown, TrendingUp, TriangleAlert, X,
+  ArrowDown, ArrowRight, ArrowUpDown, Boxes, Calculator, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, ShoppingCart, Sparkles, TrendingDown, TrendingUp, TriangleAlert, X,
 } from 'lucide-react'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { Pager } from '@/components/page/pager'
@@ -21,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
 import { formatQuantity, formatRupees, maySeeBoq } from '@/lib/boq'
-import { CENTRE_COLOURS, fetchProjectBudget, fetchProjectLabour, putLabourOnLines, type BudgetKind, type BudgetLine, type LabourGroup } from '@/lib/cost'
+import { CENTRE_COLOURS, fetchProjectBudget, fetchProjectLabour, putLabourOnLines, putLabourOnSuggestions, type BudgetKind, type BudgetLine, type LabourGroup } from '@/lib/cost'
 import { compact } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
@@ -392,6 +392,27 @@ function BoqLinesTable({ lines }: { lines: Line[] }) {
   )
 }
 
+/** The nudge (21 Nov 2026): the days of labour on no line that Mesiri has a line for, put on them in one tap. The
+ *  suggestion follows the trade (masons to masonry, concrete, plaster; never the conduits), so a tap never puts a
+ *  day where its trade did not work; days with no suggestion stay below for a person to pick. */
+function SuggestedBar({ groups, saving, onPut }: { groups: LabourGroup[]; saving: boolean; onPut: () => void }) {
+  const ready = groups.filter((g) => g.suggested_line_id && Number(g.not_on_a_line.man_days) > 0 && !g.over_allocated)
+  if (!ready.length) return null
+  const cost = ready.reduce((sum, g) => sum + Number(g.not_on_a_line.cost ?? 0), 0)
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-info/30 bg-info-soft px-3 py-2.5 text-sm" data-guide="budget.suggested">
+      <Sparkles className="size-4 shrink-0 text-info" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="font-semibold tabular-nums">{ready.length}</span> {ready.length === 1 ? 'day' : 'days'} of labour
+        {cost > 0 && <> (<span className="tabular-nums">{formatRupees(String(Math.round(cost)))}</span>)</>} have a line Mesiri suggests
+      </span>
+      <Button size="sm" className="gap-1.5" disabled={saving} onClick={onPut}>
+        <Sparkles className="size-3.5" aria-hidden /> Put on suggested lines
+      </Button>
+    </div>
+  )
+}
+
 /** Labour to check, ten to a page (UX-36). */
 function LabourList({ groups, lines, saving, onSave }: { groups: LabourGroup[]; lines: Line[]; saving: boolean; onSave: (g: LabourGroup, next: { line_id: string; man_days: string }[]) => void }) {
   const [pageS, setPage] = useUrlState<string>('lpage', '1')
@@ -477,6 +498,17 @@ export default function CostBudgetPage() {
       qc.invalidateQueries({ queryKey: ['cost'] })
     },
     onError: (err: unknown) => toast.error('Could not put the labour on the line', apiErrorMessage(err)),
+  })
+  const putSuggested = useMutation({
+    mutationFn: () => putLabourOnSuggestions(projectId!),
+    onSuccess: (r) => {
+      toast.success(
+        `${r.rows} ${r.rows === 1 ? 'day' : 'days'} of labour put on their lines (${formatRupees(r.cost)})`,
+        r.still_off.rows ? `${r.still_off.rows} still need a line picked` : undefined,
+      )
+      qc.invalidateQueries({ queryKey: ['cost'] })
+    },
+    onError: (err: unknown) => toast.error('Could not put the labour on its lines', apiErrorMessage(err)),
   })
 
   if (!allowed) {
@@ -606,7 +638,10 @@ export default function CostBudgetPage() {
                   <CircleCheck className="size-4 text-success" aria-hidden /> All labour is on its BOQ lines.
                 </p>
               ) : (
-                <LabourList groups={labour.data!.groups} lines={lines} saving={putLabour.isPending} onSave={(g, next) => putLabour.mutate({ group: g, lines: next })} />
+                <>
+                  <SuggestedBar groups={labour.data!.groups} saving={putSuggested.isPending} onPut={() => putSuggested.mutate()} />
+                  <LabourList groups={labour.data!.groups} lines={lines} saving={putLabour.isPending || putSuggested.isPending} onSave={(g, next) => putLabour.mutate({ group: g, lines: next })} />
+                </>
               )}
             </DprSection>
           </div>

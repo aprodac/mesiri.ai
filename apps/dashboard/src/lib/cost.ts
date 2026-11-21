@@ -153,6 +153,19 @@ export async function putLabourOnLines(
   ).data
 }
 
+/** The nudge's one tap: every day of labour in the last 30 days with a suggested line is put on it (a row's own
+ *  Put on line, for all of them); rows with no suggestion stay for a person. */
+export interface SuggestionsPut {
+  rows: number
+  man_days: string
+  cost: string
+  still_off: { rows: number; man_days: string; cost: string }
+}
+
+export async function putLabourOnSuggestions(projectId: string): Promise<SuggestionsPut> {
+  return (await api.post<SuggestionsPut>(`/cost/projects/${projectId}/labour/suggestions`, {})).data
+}
+
 /** CC-07: green / amber / red per BOQ line. Grey: cannot be judged (the reason says why), never a colour. */
 export type VarianceColour = 'green' | 'amber' | 'red' | 'grey'
 export type VarianceReason =

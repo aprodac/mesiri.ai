@@ -14,6 +14,8 @@ approved by Ilan 9 Nov 2026). Mounted under /labour with the labour module switc
   POST /labour/wage-sheets/{id}/pay              pay one row or every row still due, from a money account
   GET  /labour/muster                            a site's month: each worker's days (P / ½ / A, overtime)
   GET  /labour/teams                             labour contractors (vendors of kind labour) with their workers
+  GET  /labour/pay/report                        LW-10: labour by project / site / trade / payee: days, earned, paid, owed
+  GET  /labour/pay/statement                     LW-10: one worker's or team's weeks, advances, paid and owed
 
 Who may (D-W5): anyone who can reach the site records an advance, from an account they hold unless they manage money;
 wage figures, approving and paying are for the roles that see the company's spending (EXPENSE_VIEW_ROLES).
@@ -400,3 +402,94 @@ async def teams(auth: AuthorizationContext = Depends(get_auth_context), conn: As
         "FROM vendors v WHERE v.organization_id = :org AND v.kind = 'labour' ORDER BY v.name"),
         {"org": org, "today": clock.today()})).mappings()]
     return {"items": rows}
+
+
+# -- LW-10: reports ----------------------------------------------------------------------------------------------------
+
+def _period(date_from: datetime.date | None, date_to: datetime.date | None) -> tuple[datetime.date, datetime.date]:
+    """The period asked, or the last four pay weeks to today; at most two years."""
+    date_to = date_to or clock.today()
+    date_from = date_from or pay.week_of(date_to)[0] - datetime.timedelta(days=21)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    return date_from, date_to
+
+
+def _totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def add(k: str) -> Any:
+        vals = [r[k] for r in rows if r[k] is not None]
+        return pay.money(sum(vals, Decimal(0))) if vals or not rows else None
+    return {"man_days": sum((r["man_days"] for r in rows), Decimal(0)),
+            "unpriced_man_days": sum((r["unpriced_man_days"] for r in rows), Decimal(0)),
+            **{k: add(k) for k in ("earned", "to_pay", "paid", "owed", "waiting")}}
+
+
+@router.get("/pay/report")
+async def pay_report(by: Literal["project", "site", "trade", "payee"] = "payee", project_id: uuid.UUID | None = None,
+                     site_id: uuid.UUID | None = None, date_from: datetime.date | None = None,
+                     date_to: datetime.date | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                     conn: AsyncConnection = Depends(get_db_conn)):
+    """Labour for a period, one row per project, site, trade or payee (worker or team): days, man-days, wages earned
+    (attendance, by the wage sheet's own rule), and from the wage sheets whose week ends in the period, to pay, paid,
+    owed and waiting for approval (none by trade: a sheet pays people). The last four pay weeks by default."""
+    _money_role(auth)
+    org = auth.organization_id
+    if site_id is not None:
+        project_id = project_id or await _site_project(conn, org, site_id)
+    if project_id is not None:
+        _reach(auth, project_id, site_id)
+    date_from, date_to = _period(date_from, date_to)
+    lines = await store.period_lines(conn, org, _scope(auth), project_id, site_id, date_from, date_to)
+    sheets = await store.period_sheet_rows(conn, org, _scope(auth), project_id, site_id, date_from, date_to)
+    for r in sheets:  # the label of a row only the sheets know of (paid for days outside the period)
+        r["label"] = {"project": r["project_name"], "payee": r["payee_name"],
+                      "site": f"{r['project_name']} › {r['site_name']}" if r["site_name"]
+                      else f"{r['project_name']} · whole-project sheet"}.get(by)
+    rows = pay.report_rows(lines, sheets, by, await store.worker_team(conn, org), await store.teams(conn, org))
+    return {"by": by, "date_from": date_from, "date_to": date_to, "rows": rows, "totals": _totals(rows)}
+
+
+@router.get("/pay/statement")
+async def pay_statement(payee_key: str = Query(min_length=3, max_length=300), project_id: uuid.UUID | None = None,
+                        date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                        auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """One worker's or team's statement for a period (``payee_key`` as the report and the wage sheet give it): each
+    pay week (days, wages, advance taken back, deductions, to pay, paid), the advances given, and what is still owed
+    either way today. ``text`` is the statement as a message, to share on WhatsApp."""
+    _money_role(auth)
+    org = auth.organization_id
+    if project_id is not None:
+        _reach(auth, project_id)
+    date_from, date_to = _period(date_from, date_to)
+    weeks = await store.period_sheet_rows(conn, org, _scope(auth), project_id, None, date_from, date_to, payee_key)
+    team, named = await store.worker_team(conn, org), await store.teams(conn, org)
+    advances = [a for a in await store.list_advances(conn, org, _scope(auth), project_id)
+                if a["voided_at"] is None and date_from <= a["given_on"] <= date_to
+                and store.advance_key(a, team, named) == payee_key]
+    name = weeks[-1]["payee_name"] if weeks else (advances[0]["payee_name"] if advances else None)
+    if name is None:
+        lines = await store.period_lines(conn, org, _scope(auth), project_id, None, date_from, date_to)
+        rows = {r["key"]: r for r in pay.report_rows(lines, [], "payee", team, named)}
+        if payee_key not in rows:
+            raise HTTPException(status_code=404, detail="Nobody by that name was paid or worked in the period")
+        name = rows[payee_key]["label"]
+    balance = (await store.advance_balances(conn, org, project_id=project_id, project_ids=_scope(auth))).get(payee_key)
+    out_weeks = [{
+        "period_from": w["period_from"], "period_to": w["period_to"], "project_name": w["project_name"],
+        "site_name": w["site_name"], "status": w["status"], "days": w["days"], "man_days": w["man_days"],
+        "trades": w["trades"], "wages": pay.money(Decimal(w["gross"]) + Decimal(w["overtime_amount"])),
+        "advances_recovered": pay.money(w["advances_recovered"]), "deductions": pay.deductions_total(w["deductions"]),
+        "net": pay.money(w["net"]), "paid": pay.money(w["paid"]),
+        "due": pay.money(max(Decimal(w["net"]) - Decimal(w["paid"]), Decimal(0))) if w["status"] == "approved" else Decimal(0),
+    } for w in weeks]
+    totals = {k: pay.money(sum((Decimal(w[k]) for w in out_weeks), Decimal(0)))
+              for k in ("wages", "advances_recovered", "deductions", "net", "paid", "due")}
+    totals["advances_given"] = pay.money(sum((Decimal(a["amount"]) for a in advances), Decimal(0)))
+    totals["advance_outstanding"] = pay.money(max(balance or Decimal(0), Decimal(0)))
+    result = {"payee_key": payee_key, "payee_name": name, "date_from": date_from, "date_to": date_to,
+              "weeks": out_weeks, "advances": [{"given_on": a["given_on"], "amount": pay.money(a["amount"]),
+                                                "project_name": a["project_name"], "site_name": a["site_name"],
+                                                "note": a["note"]} for a in advances], "totals": totals}
+    result["text"] = pay.statement_text(result)
+    return result

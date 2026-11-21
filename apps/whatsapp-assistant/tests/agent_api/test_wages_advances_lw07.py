@@ -53,3 +53,25 @@ def test_guard_unrelated_questions_do_not_pull_in_wages() -> None:
     for topic in ("send my invoice to the client by email", "post our brochure on instagram",
                   "Mesiri cannot post on Instagram; passed to the team."):
         assert not set(read_tools_for(topic, tools)) & set(READS), topic
+
+
+# -- LW-10: labour over a period and one person's statement, read-only ------------------------------------------------
+
+def test_labour_report_and_statement_are_reads_on_the_real_api() -> None:
+    tools = _real_tools()
+    for name in ("labour_report", "labour_statement"):
+        assert not tools[name].is_write, name
+    rule = SOP[SOP.index("22. Wages and advances"):SOP.index("23. Weekly and monthly reports")]
+    assert "labour_report" in rule and "labour_statement" in rule
+
+
+def test_a_month_of_wages_finds_the_report_and_this_week_still_finds_the_sheet() -> None:
+    tools = _real_tools()
+    assert "labour_report" in read_tools_for("how much did we pay Rahim's team this month", tools)
+    assert "wage_sheet" in read_tools_for("what do I pay this week in wages", tools)  # the guard: unchanged
+
+
+def test_guard_unrelated_questions_do_not_pull_in_the_labour_report() -> None:
+    tools = _real_tools()
+    for topic in ("send my invoice to the client by email", "post our brochure on instagram"):
+        assert not set(read_tools_for(topic, tools)) & {"labour_report", "labour_statement"}, topic

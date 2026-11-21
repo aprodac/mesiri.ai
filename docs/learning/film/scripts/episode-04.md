@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can walk a material chain across the four people: the request, the quotes, the order, the delivery checked at the gate (a short load, torn bags returned), the stock, the supplier's bill checked against the order and the delivery, and the payment; and the month-end stock count.
 
-**Length:** 16 scenes, 1311 words of narration (about 9 minutes)
+**Length:** 16 scenes, 1324 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -231,11 +231,11 @@ Narration:
 
 ### 12. Back above the line
 
-*In Mesiri · Stock · screen · screen `/materials?project={Green Villa}`*
+*In Mesiri · Stock · screen · screen `/materials?project={Green Villa}&site={Green Villa › Main block}`*
 
 Narration:
 
-> And on site, the cement is back. The Main block holds what the gate kept, less what has been used since, above its least of a hundred bags.
+> And on site, the cement is back. The Main block holds a hundred and eighty-eight bags: what the gate kept, less what has been used since. Twenty-five days at this week's use.
 >
 > Ten bags are still to come on Malabar's order. Anil does not chase them from memory: the order shows them as not yet delivered, until they are.
 
@@ -271,9 +271,10 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 2 · open `/finance/vendors` · do: open Malabar Cements Agency · picture: the bill taken back, the corrected bill, the debit note, owed now · light: Malabar
-- beat 3 · open `/materials/counts` · do: open the Main block's count; Approve · picture: 3 bags short, wastage, the rupees; approved · light: the difference
-- beat 4 · open `/materials/counts` · picture: the count approved · light: the count
+- beat 2 · open `/finance/vendors` · do: open Malabar Cements Agency · Bills to pay · picture: the corrected bill MCA/INV/2611-R, owed; the one at Rs 410 taken back · light: the corrected bill
+- beat 2 · do: Returns · picture: DN-0001: 6 bags cement, damaged, Rs 2,400, settled · light: the debit note
+- beat 3 · open `/materials/counts?project={Green Villa}&site={Green Villa › Main block}` · do: open the Main block's count · picture: cement 3 bags short, wastage, Rs 1,228.32 at the stock's own cost · light: the count
+- beat 4 · do: Approve differences · picture: Approved by Ramesh Nair · light: the count
 
 *Owner beat (SERIES_PLAN 5a). Done for real by steps-04.cjs, as the owner on day 16, after Ravi's count. The rupees of 3 bags are the screen's. On the same copy as the count (keep): the approval is the owner's own entry.*
 
@@ -283,7 +284,7 @@ Narration:
 >
 > Malabar, on Suppliers: the bill that was taken back, the corrected one for what was kept, the six bags sent back, and what is owed now. He did not have to ask anyone.
 >
-> And the month's count: three bags short at the Main block, wastage, twelve hundred rupees. He approves it, and the book is the store again.
+> And the month's count: three bags short at the Main block, wastage, one thousand two hundred and twenty-eight rupees, at what the bags cost. He approves it, and the book is the store again.
 >
 > Three leaks this month, each caught by the person whose step it was: at the gate, at the bill, and at the count.
 

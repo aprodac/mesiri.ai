@@ -762,8 +762,19 @@ async def reverse_vendor_payment(
 # --- Deliveries and bills: "these deliveries are on this bill" (D-CC3: the bill replaces the deliveries) -----------
 
 
+class BillLineIn(BaseModel):
+    """UX-87: what the bill says for one delivery: its quantity and its rate (before GST). Left out: the bill was typed as
+    one amount and says neither."""
+
+    receipt_id: uuid.UUID
+    quantity: Decimal | None = Field(default=None, gt=0)
+    rate: Decimal | None = Field(default=None, ge=0)
+
+
 class BillDeliveriesRequest(BaseModel):
     receipt_ids: list[uuid.UUID] = Field(min_length=1)
+    #: UX-87: the bill line by line (quantity and rate per delivery), checked against what the site recorded.
+    lines: list[BillLineIn] = Field(default_factory=list)
     #: Left out: the deliveries' total.
     amount: Decimal | None = Field(default=None, gt=0)
     bill_number: str | None = None
@@ -790,8 +801,10 @@ async def _unbilled(conn: AsyncConnection, auth: AuthorizationContext, vendor_id
 
 
 async def _link(conn: AsyncConnection, auth: AuthorizationContext, v: dict, expense: dict, rows: list[dict],
-                bill_number: str | None, bill_date: datetime.date | None) -> list[str]:
-    """One material invoice per project for the bill (an invoice belongs to one project), the deliveries on it."""
+                bill_number: str | None, bill_date: datetime.date | None,
+                said: dict[str, BillLineIn] | None = None) -> list[str]:
+    """One material invoice per project for the bill (an invoice belongs to one project), the deliveries on it. With
+    the bill's own quantity and rate for a delivery (UX-87), each is kept beside the site's, so the difference shows."""
     by_project: dict = {}
     for e in rows:
         by_project.setdefault(e["project_id"], []).append(e)
@@ -807,8 +820,15 @@ async def _link(conn: AsyncConnection, auth: AuthorizationContext, v: dict, expe
              "total": expense["amount"] if len(by_project) == 1 else None, "e": expense["id"], "by": auth.user_id})
         from mesiri.domains.vendors.matching import link
 
-        await link(conn, auth.organization_id, inv, [{"id": uuid.UUID(e["links"]["receipt_id"]), "quantity": None}
-                                                     for e in group], v["id"], None, None)
+        plain = [e for e in group if not (said and e["links"]["receipt_id"] in said)]
+        if plain:
+            await link(conn, auth.organization_id, inv, [{"id": uuid.UUID(e["links"]["receipt_id"]), "quantity": None}
+                                                         for e in plain], v["id"], None, None)
+        for e in group:
+            line = (said or {}).get(e["links"]["receipt_id"])
+            if line is not None:
+                await link(conn, auth.organization_id, inv, [{"id": line.receipt_id, "quantity": None}], v["id"],
+                           line.quantity, line.rate)
         ids.append(str(inv))
     return ids
 
@@ -851,6 +871,9 @@ async def bill_deliveries(
     projects = {e["project_id"] for e in rows}
     if len(projects) != 1:
         raise HTTPException(status_code=422, detail="Bill one project's deliveries at a time.")
+    said = {str(x.receipt_id): x for x in body.lines if x.quantity is not None or x.rate is not None}
+    if set(said) - {e["links"]["receipt_id"] for e in rows}:
+        raise HTTPException(status_code=422, detail="A bill line is for a delivery that is not on this bill.")
     total = sum((e["owe"] for e in rows), Decimal(0))
     amount = (body.amount or total).quantize(Decimal("0.01"))
     if amount <= 0:
@@ -879,9 +902,19 @@ async def bill_deliveries(
         raise HTTPException(status_code=422, detail=f"The bill could not be saved: {result.rejection_reasons}")
     expense_id = uuid.UUID(result.material_row_id)
     expense = await _bill(conn, auth_context, vendor_id, expense_id)
-    await _link(conn, auth_context, v, expense, rows, number, body.bill_date)
+    await _link(conn, auth_context, v, expense, rows, number, body.bill_date, said)
+    from mesiri.domains.vendors.matching import flags
+
+    found = []
+    for e in rows:  # UX-87: what the bill says against what the site recorded, in the one rule's words
+        line = said.get(e["links"]["receipt_id"])
+        got = e.get("delivered") or {}
+        if line is not None and got:
+            found += [f"{e['title']}: {f}" for f in flags(
+                Decimal(got["quantity"]), line.quantity, Decimal(got["rate"]) if got.get("rate") else None, line.rate,
+                got.get("unit"))]
     return {"expense_id": str(expense_id), "amount": ledger.money(amount), "deliveries": len(rows),
-            "deliveries_total": ledger.money(total), "difference": ledger.money(amount - total)}
+            "deliveries_total": ledger.money(total), "difference": ledger.money(amount - total), "flags": found}
 
 
 @router.post("/{vendor_id}/bills/{expense_id}/deliveries")

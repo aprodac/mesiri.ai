@@ -7,7 +7,8 @@ import { formatQuantity, formatRupees } from '@/lib/boq'
 import type { BudgetLine, LabourGroup } from '@/lib/cost'
 
 // CC-05: a site's day of one trade (from attendance) put on BOQ lines by man-days. The suggested line is
-// preselected and all the man-days not on a line are offered; a person presses Put on line. Several lines split
+// preselected (it follows the trade: costing/labour.suggest_for) and all the man-days not on a line are offered; a
+// person presses Put on line, or Put on suggested lines for every row at once (LW-11). Several lines split
 // the day ("3 masons on plastering, 1 on brickwork"). Nothing is ever put on a line by itself.
 // The caller keys a row by its man-days left and suggestion, so the picker starts afresh after each save.
 

@@ -13,6 +13,22 @@ async function pickRadix(pg, trigger, label) {
   await pg.getByRole('option', { name: label, exact: true }).first().click()
   await pg.waitForTimeout(300)
 }
+/** The day before the one the date field shows (the sample's own today), picked on the calendar: a date in the story
+ *  that moves with the week the sample company was opened in. */
+async function pickDayBefore(pg, sel) {
+  await pg.locator(sel).click()
+  await pg.waitForTimeout(400)
+  const cal = pg.locator('[data-slot="popover-content"]').last()
+  const today = await cal.locator('[data-selected="true"], [aria-selected="true"]').first().locator('xpath=ancestor-or-self::*[@data-day][1]').getAttribute('data-day')
+  const d = new Date(`${today}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  const iso = d.toISOString().slice(0, 10)
+  const [y, m] = iso.split('-').map(Number)
+  await cal.locator('select').nth(0).selectOption(String(m - 1))
+  await cal.locator('select').nth(1).selectOption(String(y))
+  await cal.locator(`[data-day="${iso}"] button`).click()
+  await pg.waitForTimeout(300)
+}
 /** The n-th item line of a request for quotes: the item from its list, then the quantity. */
 async function pickItem(pg, dlg, n, item, qty) {
   await dlg.locator('button').filter({ hasText: /^Item$/ }).first().click()
@@ -125,7 +141,7 @@ module.exports = {
       return card(pg, /^10 bags still to come/)
     },
   ],
-  // Meera, day 9: Malabar's bill MCA/INV/2611 as it came (190 bags at Rs 410, GST 18%), against Friday's delivery.
+  // Meera, day 9: Malabar's bill MCA/INV/2611 as it came, line by line (UX-87): 190 bags at Rs 410 against the site's Rs 400.
   match: [
     async (pg, h) => {
       await h.go('/finance/vendors')
@@ -136,22 +152,73 @@ module.exports = {
     async (pg, h) => {
       await pg.getByRole('tab', { name: /Not billed/ }).or(pg.getByRole('button', { name: /^Not billed/ })).first().click()
       await h.wait(1500)
-      const row = pg.locator('main li').filter({ hasText: /190 bags/ }).first()
-      await row.locator('input[type="checkbox"]').check()
+      await pg.locator('main li').filter({ hasText: /190 bags/ }).first().locator('input[type="checkbox"]').check()
       await pg.getByRole('button', { name: 'Bill these' }).click()
       await h.wait(1500)
       const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
+      await dlg.getByLabel(/rate on the bill$/).first().fill('410')
       await dlg.locator('#b-amount').fill('91922')
       await dlg.locator('#b-gst').fill('14022')
       await dlg.locator('#b-no').fill('MCA/INV/2611')
-      return dlg
+      await pickDayBefore(pg, '#b-date')  // the bill's own date, the Sunday; Meera books it on Monday
+      return dlg.locator('[data-guide="bill.lines"]')
+    },
+    async (pg) => pg.locator('[data-guide="bill.differs"]').first(),
+    async (pg, h) => {
+      await pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last().getByRole('button', { name: 'Record bill' }).click()
+      await h.wait(3000)
+      await pg.getByRole('tab', { name: /Bills to pay/ }).or(pg.getByRole('button', { name: /^Bills to pay/ })).first().click()
+      await h.wait(1500)
+      return pg.locator('main').getByText(/MCA\/INV\/2611/).first().locator('xpath=ancestor::*[3]')
+    },
+  ],
+  // Ravi, day 16 (the month's end): the Main block's store counted; cement 3 bags under the book, wastage. Kept for the owner.
+  count: [
+    async (pg, h) => {
+      await h.go('/materials/counts?project={Green Villa}&site={Green Villa › Main block}')
+      await pg.getByRole('button', { name: /^Count all/ }).first().click()
+      await h.wait(2500)
+      return '[data-guide="counts.sheet"]'
     },
     async (pg, h) => {
-      const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
-      await dlg.getByRole('button', { name: 'Record bill' }).click()
-      await h.wait(3000)
-      return 'main'
+      const row = pg.locator('[data-guide="counts.sheet"] div').filter({ has: pg.getByLabel('Counted Cement') }).filter({ hasText: /Book [0-9,.]+ bags/ }).last()
+      const book = Number((await row.innerText()).match(/Book ([0-9,.]+) bags/)[1].replace(/,/g, ''))
+      await pg.getByLabel('Counted Cement').fill(String(book - 3))  // counted bag by bag: three fewer than the book
+      await h.wait(500)
+      await pickRadix(pg, pg.getByRole('combobox', { name: 'Why Cement differs' }), 'Wastage')
+      return row
     },
-    async () => null,
+    async (pg, h) => {
+      await pg.getByRole('button', { name: 'Save count' }).click()
+      await h.wait(2500)
+      return pg.locator('[data-guide="counts.list"] li').first()
+    },
+  ],
+  // The owner, day 16: Malabar's page (what is owed now), then the month's count, approved.
+  owner: [
+    async (pg, h) => {
+      await h.go('/finance/vendors')
+      await pg.getByText('Malabar Cements Agency', { exact: true }).first().click()
+      await h.wait(3000)
+      await pg.getByRole('tab', { name: /Bills to pay/ }).or(pg.getByRole('button', { name: /^Bills to pay/ })).first().click()
+      await h.wait(1500)
+      return pg.locator('main').getByText(/MCA\/INV\/2611-R/).first().locator('xpath=ancestor::*[3]')
+    },
+    async (pg, h) => {
+      await pg.getByRole('tab', { name: /^Returns/ }).or(pg.getByRole('button', { name: /^Returns/ })).first().click()
+      await h.wait(1500)
+      return pg.locator('main').getByText(/DN-0001/).first().locator('xpath=ancestor::*[2]')
+    },
+    async (pg, h) => {
+      await h.go('/materials/counts?project={Green Villa}&site={Green Villa › Main block}')
+      await pg.locator('[data-guide="counts.list"] li').first().click()
+      await h.wait(1500)
+      return '[data-guide="counts.sheet"]'
+    },
+    async (pg, h) => {
+      await pg.getByRole('button', { name: 'Approve differences' }).click()
+      await h.wait(2500)
+      return '[data-guide="counts.sheet"]'
+    },
   ],
 }

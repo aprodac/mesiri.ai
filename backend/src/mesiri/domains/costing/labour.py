@@ -141,6 +141,44 @@ def _trade_words(trade_key: str | None) -> set[str]:
     return out
 
 
+def known_trade(trade_key: str | None) -> bool:
+    """A trade whose work Mesiri knows (``TRADE_WORK``): its days go only to lines of that work."""
+    return bool(_trade_words(trade_key))
+
+
+def fitting_lines(trade_key: str | None, activities: Iterable[str] | None, names: Mapping[Any, str]) -> list[Any]:
+    """The one rule for which BOQ lines a site-day of one trade may go to (``names``: line -> its work and section).
+
+    A trade Mesiri knows goes only to the lines of its work, or that attendance's own words name (masons never to the
+    steel); any other trade (helpers) to those its words name, else to every line given. Used by the automatic split
+    and by the line suggested to a person, so the two never disagree."""
+    said = _trade_words(trade_key) | _words(" ".join(activities or []))
+    fits = [ln for ln, name in names.items() if said & _words(name)]
+    return fits if known_trade(trade_key) else (fits or list(names))
+
+
+def suggest_for(group: Mapping[str, Any], worked_on: Mapping[tuple, Mapping[Any, str]]) -> Any:
+    """The line to offer a person for a site-day of one trade nobody put on a line, or None.
+
+    ``worked_on``: per (site_id, work_date) as ``group_key`` writes them, the lines work was reported on -> name.
+    That day's work at the site first, then the nearest other day's at the same site (masons idle at the Main block
+    on Monday are offered the plastering they did on Friday, never the conduits that were the only work on Monday).
+    Only lines ``fitting_lines`` allows; when none fits, nothing is offered: a person picks."""
+    site, day = group_key(group["site_id"], group["work_date"], None)[:2]
+    days = sorted((d for (s, d) in worked_on if s == site), key=lambda d: (d != day, abs(_day(d) - _day(day)), d))
+    for d in days:
+        fits = fitting_lines(group.get("trade_key"), group.get("activities"), worked_on[(site, d)])
+        if fits:
+            return fits[0]
+    return None
+
+
+def _day(value: str) -> int:
+    import datetime
+
+    return datetime.date.fromisoformat(value[:10]).toordinal()
+
+
 #: BOQ-02b: a line never takes more of a day's labour by itself than this many times the labour budget its work that
 #: day earned (done x labour rate). What is left stays "not on a BOQ line": shown, for a person to put.
 EARNED_CAP = Decimal(2)
@@ -174,7 +212,7 @@ def auto_split(
     out: list[dict[str, Any]] = []
 
     def known(g: Mapping[str, Any]) -> bool:
-        return bool(_trade_words(g.get("trade_key")))
+        return known_trade(g.get("trade_key"))
 
     for g in sorted(groups, key=lambda g: not known(g)):  # skilled trades first: they take the room first
         key = group_key(g["site_id"], g["work_date"], g["trade_key"])
@@ -182,12 +220,7 @@ def auto_split(
         lines = worked.get(key[:2]) or {}
         if key in split or man_days <= 0 or not lines:
             continue
-        said = _trade_words(g.get("trade_key")) | _words(" ".join(g.get("activities") or []))
-        fits = [ln for ln, info in lines.items() if said & _words(info["name"])]
-        if known(g):
-            targets = fits
-        else:
-            targets = fits or list(lines)
+        targets = fitting_lines(g.get("trade_key"), g.get("activities"), {ln: info["name"] for ln, info in lines.items()})
         if not targets:
             continue
         per_day = Decimal(g["cost"]) / man_days if Decimal(g.get("cost") or 0) > 0 else Decimal(0)
@@ -210,7 +243,8 @@ def auto_split(
 
 
 def worked_lines(work: Iterable[Mapping[str, Any]], lines: Mapping[Any, Mapping[str, Any]]) -> dict[tuple, dict]:
-    """Per (site, day), the BOQ lines work was counted on (``boq_router.counted_work`` rows) -> {"name", "earned"}:
+    """Per (site, day), the BOQ lines work was counted on (``boq_router.counted_work`` rows) -> {"name", "earned"}
+    (``name``: the line's work and, when the line carries it, its section's name, for matching a trade):
     the labour budget that day's work earned there (quantity in the line's unit x its labour rate; None when the
     line has no labour rate or the work was in another unit), for ``auto_split``."""
     out: dict[tuple, dict] = {}
@@ -219,7 +253,10 @@ def worked_lines(work: Iterable[Mapping[str, Any]], lines: Mapping[Any, Mapping[
         if line is None:
             continue
         day = out.setdefault(group_key(w["site_id"], w["work_date"], None)[:2], {})
-        info = day.setdefault(w["line_id"], {"name": line["work_type"], "earned": Decimal(0)})
+        # The section's name is matched too: a line is often named for the element ("Plinth beam", "Lintel") and only
+        # its section says the work ("B. CONCRETE"), so a mason's day would otherwise never reach it.
+        name = " ".join(x for x in (line["work_type"], line.get("section")) if x)
+        info = day.setdefault(w["line_id"], {"name": name, "earned": Decimal(0)})
         rate = line.get("labour_rate")
         if info["earned"] is None or rate is None or w["quantity"] is None:
             info["earned"] = None

@@ -479,6 +479,15 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     ],
     steps: ['Pick a site and a week.', 'Approve.', 'Pay from cash or bank, and send the slip.'],
   },
+  '/labour/reports': {
+    parts: [
+      { name: 'Earned', means: 'Days × wage, plus overtime, from attendance', find: 'labour-reports.stats' },
+      { name: 'Paid', means: 'Handed over on the wage sheets', tone: 'good' },
+      { name: 'Owed', means: 'Approved, not paid yet', tone: 'attention' },
+      { name: 'No wage sheet', means: 'Days worked, nobody made that week\'s sheet', tone: 'attention', find: 'labour-reports.table' },
+    ],
+    steps: ['Pick the dates and how to group.', 'Tap a worker or team for their statement.', 'Share it on WhatsApp, or export to Excel.'],
+  },
   '/labour/advances': {
     parts: [
       { name: 'Given', means: 'Money handed over before payday' },
