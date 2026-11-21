@@ -163,7 +163,8 @@
       "record": "As Anil (PROJECT_MANAGER) on day 3, by steps-04.cjs. Needs LRN-F18 (the plan's day 3 has the move). Read the figures off the screen.",
       "as": "PROJECT_MANAGER",
       "day": 3,
-      "play": "PROJECT_MANAGER"
+      "play": "PROJECT_MANAGER",
+      "keep": true
     },
     {
       "id": "quotes",
@@ -259,7 +260,8 @@
       "record": "As Anil on day 4 (18 Nov), by steps-04.cjs. The compare's words and totals are read off the screen; if it does not show the split, say only what it shows and log it.",
       "as": "PROJECT_MANAGER",
       "day": 4,
-      "play": "PROJECT_MANAGER"
+      "play": "PROJECT_MANAGER",
+      "keep": true
     },
     {
       "id": "challan",
@@ -337,7 +339,8 @@
           "mark": "the order"
         }
       ],
-      "record": "Done on the website, not WhatsApp (Ilan, 20 Nov: no model key; \"use the website way\"). As Ravi (SITE_ENGINEER) on day 6: the plan's delivery of 190 is his own entry that day. The return is Anil's (the next scene, a paper)."
+      "record": "Done on the website, not WhatsApp (Ilan, 20 Nov: no model key; \"use the website way\"). As Ravi (SITE_ENGINEER) on day 6: the plan's delivery of 190 is his own entry that day. The return is Anil's (the next scene, a paper).",
+      "keep": true
     },
     {
       "id": "return",
@@ -459,7 +462,8 @@
       "record": "As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen). The corrected bill (the plan's day 10) is entered on screen the same day, then the day goes back. Read the difference off the screen and say only what it shows.",
       "as": "FINANCE",
       "day": 9,
-      "play": "FINANCE"
+      "play": "FINANCE",
+      "keep": true
     },
     {
       "id": "stock",
