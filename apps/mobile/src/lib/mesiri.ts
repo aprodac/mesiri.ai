@@ -1,4 +1,5 @@
 import { get, patch, post, request, saveToken } from './api'
+export { newKey } from './keys'
 
 // The routes the app uses, all the dashboard's own (shapes mirror apps/dashboard/src/lib).
 
@@ -191,11 +192,28 @@ export interface AssistantReply {
   button_label?: string | null
 }
 
+/** MOB-05: one entry on the person's list waiting for Save, as data (web_assistant ReadyEntry). */
+export interface ReadyEntry {
+  line: number
+  tool: string
+  method: string
+  path: string
+  params: Record<string, unknown>
+  body: Record<string, unknown>
+  summary: string
+  /** Sent as Idempotency-Key when the app saves it, so the assistant's own Save later can't record it twice. */
+  key: string
+  /** The assistant's own Remove tap for this line. */
+  remove_id: string | null
+}
+
 export interface AssistantResponse {
   message_id: string
   replies: AssistantReply[]
   /** A voice note's words, as Mesiri heard them. */
   transcript: string | null
+  /** The list waiting for Save after this message; null when it could not be read. */
+  ready?: ReadyEntry[] | null
 }
 
 /** A voice note plus the model usually answers in 5–20 s; the door waits up to a minute. */
@@ -213,3 +231,27 @@ export const sendVoice = (audio: Blob, contentType: string) =>
     contentType,
     timeoutMs: ASSISTANT_TIMEOUT_MS,
   })
+
+// ── Forms (MOB-05): the routes the dashboard's own forms post to ─────────
+
+export interface CatalogMaterial {
+  id: string
+  name: string
+  default_unit: string | null
+  default_unit_id: string | null
+  category?: string | null
+}
+
+export interface Unit {
+  id: string
+  code: string
+  display_name: string
+}
+
+export const fetchMaterials = () => get<{ items: CatalogMaterial[]; total: number }>('/materials', { is_active: true, limit: 200 })
+export const fetchUnits = () => get<{ items: Unit[] }>('/materials/units-of-measure')
+
+/** Save one record as the dashboard does; the key makes a second send (a retry, or the assistant's Save of the
+ * same entry) answer with the first instead of recording it again. */
+export const saveRecord = (method: string, path: string, body: Record<string, unknown>, key: string) =>
+  request<unknown>(method, path, { json: body, headers: { 'Idempotency-Key': key } })

@@ -29,6 +29,7 @@ function Gate() {
       <Stack.Screen name="speak" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="switch-site" options={{ presentation: 'transparentModal', animation: 'fade' }} />
       <Stack.Screen name="day/[section]" />
+      <Stack.Screen name="form/[kind]" />
     </Stack>
   )
 }

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Keyboard, Mic } from 'lucide-react-native'
+import { ClipboardPen, Keyboard, Mic } from 'lucide-react-native'
 import { useWords } from '../../src/lib/i18n'
 import { fetchSiteDay, setConditions, type Weather } from '../../src/lib/mesiri'
 import { todayFor, useSession, useSite } from '../../src/lib/session'
@@ -13,6 +13,9 @@ import { colors, font, space } from '../../src/theme'
 
 // One row of Today opened: what was told for it today, and the way to tell more (speak or type).
 // Weather is a direct tap, saved through the site day's own route (PATCH conditions).
+
+/** MOB-05: the rows with a form of their own (the rest are told by voice or typed to Mesiri). */
+const FORMS: Partial<Record<Section, 'received' | 'used' | 'problem'>> = { received: 'received', used: 'used', issues: 'problem' }
 
 const num = (v: string | null | undefined) => Number(v ?? 0) || 0
 const show = (n: number) => (Number.isInteger(n) ? String(n) : String(+n.toFixed(2)))
@@ -111,7 +114,19 @@ export default function DaySection() {
           )
         ) : null}
 
-        <Button label={t.speakToMesiri} icon={<Mic size={22} color={colors.ink} />} onPress={() => router.push('/speak')} />
+        {FORMS[section] ? (
+          <Button
+            label={t.fillForm}
+            icon={<ClipboardPen size={22} color={colors.ink} />}
+            onPress={() => router.push({ pathname: '/form/[kind]', params: { kind: FORMS[section] as string } })}
+          />
+        ) : null}
+        <Button
+          kind={FORMS[section] ? 'secondary' : 'primary'}
+          label={t.speakToMesiri}
+          icon={<Mic size={22} color={colors.ink} />}
+          onPress={() => router.push('/speak')}
+        />
         <Button kind="secondary" label={t.typeInstead} icon={<Keyboard size={20} color={colors.ink} />} onPress={() => router.push({ pathname: '/speak', params: { typing: '1' } })} />
       </ScrollView>
     </Screen>

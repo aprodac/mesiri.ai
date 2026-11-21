@@ -41,6 +41,10 @@ function detailOf(body: unknown): string | null {
     const detail = (body as { detail: unknown }).detail
     if (typeof detail === 'string') return detail
     if (Array.isArray(detail) && detail[0] && typeof detail[0].msg === 'string') return detail[0].msg
+    // A refusal with a reason the person can act on ("more than ordered"): its message.
+    if (detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string') {
+      return (detail as { message: string }).message
+    }
   }
   return null
 }
@@ -58,9 +62,16 @@ function withQuery(path: string, query?: Query): string {
 export async function request<T>(
   method: string,
   path: string,
-  options: { query?: Query; json?: unknown; body?: BodyInit; contentType?: string; timeoutMs?: number } = {},
+  options: {
+    query?: Query
+    json?: unknown
+    body?: BodyInit
+    contentType?: string
+    timeoutMs?: number
+    headers?: Record<string, string>
+  } = {},
 ): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...CLIENT }
+  const headers: Record<string, string> = { Accept: 'application/json', ...CLIENT, ...(options.headers ?? {}) }
   if (token) headers.Authorization = `Bearer ${token}`
   let body: BodyInit | undefined = options.body
   if (options.json !== undefined) {
