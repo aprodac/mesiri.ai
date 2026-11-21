@@ -362,16 +362,31 @@ export function BillDeliveriesDialog({ open, onOpenChange, vendor, deliveries, b
   const [date, setDate] = React.useState(todayIso())
   const [gst, setGst] = React.useState('')
   const [bill, setBill] = React.useState('')
+  // UX-87: the bill line by line: per delivery, the quantity and rate (before GST) the bill says, filled from the site's.
+  const [said, setSaid] = React.useState<Record<string, { quantity: string; rate: string }>>({})
   React.useEffect(() => {
     if (!open) return
+    setSaid(Object.fromEntries(deliveries.filter((d) => d.delivered).map((d) => [d.links.receipt_id!, { quantity: d.delivered!.quantity, rate: d.delivered!.rate ? String(Number(d.delivered!.rate)) : '' }])))
     setMode('new')
     setAmount(String(Math.round(total * 100) / 100))
     setNumber('')
     setDate(todayIso())
     setGst('')
     setBill('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, total])
   const diff = (Number(amount) || 0) - total
+  /** What differs on a delivery between the bill and the site, in words (the backend's flags say the same after Save). */
+  const differs = (d: LedgerLine): string[] => {
+    const s = said[d.links.receipt_id!]
+    if (!s || !d.delivered) return []
+    const out: string[] = []
+    const q = Number(s.quantity), dq = Number(d.delivered.quantity)
+    if (s.quantity && q !== dq) out.push(`billed ${Math.abs(q - dq).toLocaleString('en-IN')} ${d.delivered.unit ?? ''} ${q > dq ? 'more' : 'less'} than delivered`)
+    if (s.rate && d.delivered.rate && Number(s.rate) !== Number(d.delivered.rate)) out.push(`rate ₹${Number(s.rate).toLocaleString('en-IN')} on the bill, ₹${Number(d.delivered.rate).toLocaleString('en-IN')} on site`)
+    return out
+  }
+  const flagged = deliveries.filter((d) => differs(d).length)
   const done = (what: string) => {
     queryClient.invalidateQueries({ queryKey: ['finance'] })
     queryClient.invalidateQueries({ queryKey: ['vendors'] })
@@ -380,7 +395,10 @@ export function BillDeliveriesDialog({ open, onOpenChange, vendor, deliveries, b
   }
   const save = useMutation({
     mutationFn: () => mode === 'new'
-      ? billDeliveries(vendor.id, { receipt_ids: deliveries.map((d) => d.links.receipt_id!), amount: amount || undefined, bill_number: number.trim() || undefined, bill_date: date, tax_amount: gst || undefined }).then(() => `Bill recorded for ${deliveries.length} ${deliveries.length === 1 ? 'delivery' : 'deliveries'}`)
+      ? billDeliveries(vendor.id, {
+        receipt_ids: deliveries.map((d) => d.links.receipt_id!), amount: amount || undefined, bill_number: number.trim() || undefined, bill_date: date, tax_amount: gst || undefined,
+        lines: Object.entries(said).filter(([, s]) => s.quantity || s.rate).map(([receipt_id, s]) => ({ receipt_id, quantity: s.quantity || undefined, rate: s.rate || undefined })),
+      }).then((r) => r.flags.length ? `Bill recorded: ${r.flags.join('; ')}` : `Bill recorded for ${deliveries.length} ${deliveries.length === 1 ? 'delivery' : 'deliveries'}`)
       : matchDeliveries(vendor.id, bill, deliveries.map((d) => d.links.receipt_id!)).then(() => `${deliveries.length} ${deliveries.length === 1 ? 'delivery' : 'deliveries'} put on the bill`),
     onSuccess: done,
   })
@@ -393,15 +411,36 @@ export function BillDeliveriesDialog({ open, onOpenChange, vendor, deliveries, b
           <DialogTitle>{deliveries.length} {deliveries.length === 1 ? 'delivery' : 'deliveries'} from {vendor.name}</DialogTitle>
           <DialogDescription>Worth {rupees(total)} at the rates recorded on site. The bill takes their place: owed and counted once.</DialogDescription>
         </DialogHeader>
-        <ul className="max-h-36 divide-y overflow-y-auto rounded-lg border text-sm">
-          {deliveries.map((d) => (
-            <li key={d.id} className="flex items-center gap-2 px-3 py-1.5">
-              <span className="w-14 shrink-0 text-xs text-muted-foreground">{day(d.date)}</span>
-              <span className="min-w-0 flex-1 truncate">{d.title}{d.site ? ` · ${d.site}` : ''}</span>
-              <span className="tabular-nums">{rupees(num(d.owe))}</span>
-            </li>
-          ))}
+        <ul className="max-h-60 divide-y overflow-y-auto rounded-lg border text-sm" data-guide="bill.lines">
+          {deliveries.map((d) => {
+            const s = said[d.links.receipt_id!]
+            const off = differs(d)
+            return (
+              <li key={d.id} className="flex flex-col gap-1.5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs text-muted-foreground">{day(d.date)}</span>
+                  <span className="min-w-0 flex-1 truncate">{d.title}{d.site ? ` · ${d.site}` : ''}</span>
+                  <span className="tabular-nums">{rupees(num(d.owe))}</span>
+                </div>
+                {mode === 'new' && s && d.delivered && (
+                  <div className="flex flex-wrap items-center gap-2 pl-16 text-xs">
+                    <span className="text-muted-foreground">The bill says</span>
+                    <Input aria-label={`${d.title}: quantity on the bill`} inputMode="decimal" className="h-8 w-20 text-right tabular-nums" value={s.quantity} onChange={(e) => setSaid((all) => ({ ...all, [d.links.receipt_id!]: { ...s, quantity: e.target.value.replace(/[^0-9.]/g, '') } }))} />
+                    <span className="text-muted-foreground">{d.delivered.unit ?? ''} at ₹</span>
+                    <Input aria-label={`${d.title}: rate on the bill`} inputMode="decimal" className="h-8 w-20 text-right tabular-nums" value={s.rate} onChange={(e) => setSaid((all) => ({ ...all, [d.links.receipt_id!]: { ...s, rate: e.target.value.replace(/[^0-9.]/g, '') } }))} />
+                    <span className="text-muted-foreground">before GST</span>
+                    {off.length > 0 && <span className="basis-full font-semibold text-destructive">{off.join('; ')}</span>}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
+        {mode === 'new' && flagged.length > 0 && (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm" data-guide="bill.differs">
+            <strong>The bill is not what came.</strong> {flagged.length === 1 ? 'One delivery differs' : `${flagged.length} deliveries differ`}: saved as the bill says, with the difference kept beside the site's, to settle before paying.
+          </p>
+        )}
         <div role="radiogroup" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
           <button type="button" role="radio" aria-checked={mode === 'new'} onClick={() => setMode('new')} className={cn('inline-flex h-8 items-center justify-center gap-1.5 rounded-md', mode === 'new' ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}><FileText className="size-4" /> Record their bill</button>
           <button type="button" role="radio" aria-checked={mode === 'existing'} disabled={!bills.length} onClick={() => setMode('existing')} className={cn('inline-flex h-8 items-center justify-center gap-1.5 rounded-md disabled:opacity-50', mode === 'existing' ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}><Link2 className="size-4" /> Already recorded</button>
