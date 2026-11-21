@@ -1,169 +1,161 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { login } from '@mesiri/auth';
-import { useAuth } from './_layout';
-import { useTheme, useStyles } from '../src/theme';
+import * as React from 'react'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ApiError } from '../src/lib/api'
+import { useWords, LANGS } from '../src/lib/i18n'
+import { loginWithCode, loginWithEmail, requestCode } from '../src/lib/mesiri'
+import { useSession } from '../src/lib/session'
+import { Button, Chip, HazardStripe, Screen } from '../src/components/ui'
+import { colors, font, radius, space } from '../src/theme'
 
-export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { signIn } = useAuth();
-  const { theme } = useTheme();
-  const styles = useStyles(createStyles);
+// Sign in with the WhatsApp number on their account and a code sent on WhatsApp (the dashboard's own
+// /auth/code routes), or with email and password.
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Please enter both email and password.');
-      return;
-    }
-    
-    setLoading(true);
-    setError('');
-    
+type Step = 'phone' | 'code' | 'email'
+
+export default function Login() {
+  const { t, lang, setLang } = useWords()
+  const { signedIn } = useSession()
+  const [step, setStep] = React.useState<Step>('phone')
+  const [phone, setPhone] = React.useState('')
+  const [code, setCode] = React.useState('')
+  const [email, setEmail] = React.useState('')
+  const [password, setPassword] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [hint, setHint] = React.useState<string | null>(null)
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
     try {
-      await login(email, password);
-      signIn();
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Invalid credentials. Please try again.');
+      await work()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e))
     } finally {
-      setLoading(false);
+      setBusy(false)
     }
-  };
+  }
+
+  const askCode = () =>
+    run(async () => {
+      const res = await requestCode(phone.trim())
+      setHint(res.dev_code ? `${t.codeSent} (${res.dev_code})` : t.codeSent)
+      setStep('code')
+    })
+
+  const finish = (work: () => Promise<void>) =>
+    run(async () => {
+      await work()
+      await signedIn()
+    })
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.content}>
-        <View style={styles.headerContainer}>
-          <Text style={styles.title}>Mesiri AI</Text>
-          <Text style={styles.subtitle}>Welcome back. Sign in to your workspace.</Text>
-        </View>
+    <Screen>
+      <HazardStripe />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <View style={styles.langs}>
+            {LANGS.map((l) => (
+              <Chip key={l.id} label={l.name} selected={lang === l.id} onPress={() => setLang(l.id)} />
+            ))}
+          </View>
+          <View style={styles.logo}>
+            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.ink }}>M</Text>
+          </View>
+          <Text style={[font.title, { fontSize: 28 }]}>{t.signInTitle}</Text>
+          <Text style={[font.body, { color: colors.muted }]}>{t.signInLead}</Text>
 
-        <View style={styles.form}>
+          {step === 'email' ? (
+            <>
+              <Field label={t.email} value={email} onChange={setEmail} keyboard="email-address" autoComplete="email" />
+              <Field label={t.password} value={password} onChange={setPassword} secure autoComplete="password" />
+              <Button label={t.signIn} busy={busy} disabled={!email || !password} onPress={() => finish(() => loginWithEmail(email.trim(), password))} />
+              <Link label={t.usePhone} onPress={() => setStep('phone')} />
+            </>
+          ) : step === 'phone' ? (
+            <>
+              <Field label={t.phone} value={phone} onChange={setPhone} keyboard="phone-pad" placeholder={t.phonePlaceholder} autoComplete="tel" />
+              <Button label={t.sendCode} busy={busy} disabled={phone.replace(/\D/g, '').length < 10} onPress={askCode} />
+              <Link label={t.useEmail} onPress={() => setStep('email')} />
+            </>
+          ) : (
+            <>
+              {hint ? <Text style={[font.body, { color: colors.done }]}>{hint}</Text> : null}
+              <Field label={t.code} value={code} onChange={setCode} keyboard="number-pad" autoComplete="one-time-code" big />
+              <Button label={t.signIn} busy={busy} disabled={code.trim().length < 4} onPress={() => finish(() => loginWithCode(phone.trim(), code.trim()))} />
+              <Link label={t.otherNumber} onPress={() => setStep('phone')} />
+            </>
+          )}
           {error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
+            <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 15 }}>
+              {error}
+            </Text>
           ) : null}
-          
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="you@construction.com"
-              placeholderTextColor={theme.colors.textMuted}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={theme.colors.textMuted}
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
-          </View>
-
-          <TouchableOpacity 
-            style={[styles.button, loading && styles.buttonDisabled]} 
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={theme.colors.actionPrimaryForeground} />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
-  );
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  )
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.backgroundApp, // surface-app
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.space6, // 24
-  },
-  headerContainer: {
-    marginBottom: theme.spacing.space10, // 40
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: theme.typography.weightBold,
-    color: theme.colors.textPrimary, // neutral-900
-    marginBottom: theme.spacing.space2,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: theme.typography.sizeMd,
-    color: theme.colors.textSecondary, // neutral-500
-    lineHeight: 24,
-  },
-  form: {
-    gap: theme.spacing.space5, // 20
-  },
-  inputContainer: {
-    gap: theme.spacing.space2,
-  },
-  label: {
-    fontSize: theme.typography.sizeSm,
-    fontWeight: theme.typography.weightMedium,
-    color: theme.colors.textPrimary, // neutral-800
-  },
+function Field({
+  label,
+  value,
+  onChange,
+  keyboard,
+  placeholder,
+  secure,
+  big,
+  autoComplete,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  keyboard?: 'phone-pad' | 'number-pad' | 'email-address'
+  placeholder?: string
+  secure?: boolean
+  big?: boolean
+  autoComplete?: 'tel' | 'email' | 'password' | 'one-time-code'
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={[font.small, { fontWeight: '600', color: colors.inkSoft }]}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        value={value}
+        onChangeText={onChange}
+        keyboardType={keyboard}
+        placeholder={placeholder}
+        placeholderTextColor={colors.faint}
+        secureTextEntry={secure}
+        autoCapitalize="none"
+        autoComplete={autoComplete}
+        style={[styles.input, big && { fontSize: 26, letterSpacing: 8, textAlign: 'center' }]}
+      />
+    </View>
+  )
+}
+
+function Link({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 48, justifyContent: 'center', alignItems: 'center' }}>
+      <Text style={{ color: colors.brandInk, fontSize: 15, fontWeight: '600' }}>{label}</Text>
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  body: { padding: space.xl, gap: space.lg, paddingTop: space.lg },
+  langs: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
+  logo: { width: 64, height: 64, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginTop: space.lg },
   input: {
-    backgroundColor: theme.colors.backgroundSurface, // surface-primary
+    height: 56,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: theme.colors.borderDefault, // border-strong
-    borderRadius: theme.radius.lg, // input default radius
-    padding: theme.spacing.space4,
-    height: 52, // Better touch target for mobile (44px min, 52px comfortable)
-    fontSize: theme.typography.sizeMd,
-    color: theme.colors.textPrimary, // neutral-800
+    borderColor: colors.field,
+    backgroundColor: colors.card,
+    paddingHorizontal: space.lg,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.ink,
   },
-  button: {
-    backgroundColor: theme.colors.actionPrimary, // primary
-    borderRadius: theme.radius.lg,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: theme.spacing.space3,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: theme.colors.actionPrimaryForeground, // dark-deep
-    fontSize: theme.typography.sizeMd,
-    fontWeight: theme.typography.weightSemiBold,
-  },
-  errorContainer: {
-    backgroundColor: theme.colors.statusDangerBackground, // error-soft
-    padding: theme.spacing.space3,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.statusDangerBorder, // error
-  },
-  errorText: {
-    color: theme.colors.statusDangerForeground,
-    fontSize: theme.typography.sizeSm,
-    fontWeight: theme.typography.weightMedium,
-  }
-});
+})
