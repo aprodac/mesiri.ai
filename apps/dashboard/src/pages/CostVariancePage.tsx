@@ -648,7 +648,7 @@ export default function CostVariancePage() {
                       col={col}
                       dir={dir}
                       onSort={sortCol}
-                      onOpen={siteView ? undefined : (l) => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}`)}
+                      onOpen={siteView ? undefined : (l) => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}&line=${l.line_id}`)}
                       openTitle={siteView ? undefined : 'Open this line in Budget vs actual'}
                       minWidth={money ? 1100 : 640}
                       footer={money ? 'Rates and costs per unit of the line · hover a name for why it is its colour' : 'Hover a name for why it is its colour'}
@@ -680,7 +680,7 @@ export default function CostVariancePage() {
                             <tr
                               key={l.line_id}
                               className={cn('align-top hover:bg-muted/30', !siteView && 'cursor-pointer')}
-                              onClick={siteView ? undefined : () => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}`)}
+                              onClick={siteView ? undefined : () => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}&line=${l.line_id}`)}
                               title={siteView ? undefined : 'Open this line in Budget vs actual'}
                             >
                               <td className="relative px-3 py-2.5 pl-4">

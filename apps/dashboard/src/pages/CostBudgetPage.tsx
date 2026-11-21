@@ -16,6 +16,7 @@ import { useUrlState } from '@/lib/url-state'
 import { exportCsv } from '@/lib/export'
 import { appNow } from '@/lib/clock'
 import { CostExportButton } from '@/components/cost/export-button'
+import { LineDetailSheet } from '@/components/cost/line-detail'
 import { LabourGroupRow } from '@/components/cost/labour-to-lines'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
@@ -212,7 +213,15 @@ function SortHead({ label, value, sort, onSort, right }: { label: string; value:
   )
 }
 
-function BoqLinesTable({ lines }: { lines: Line[] }) {
+function BoqLinesTable({ lines, projectId }: { lines: Line[]; projectId: string }) {
+  // UX-95: a line opens its entries (the work counted on it, the labour put on it).
+  const [opened, setOpened] = React.useState<Line | null>(null)
+  // From Green / red: `line` names the line the owner tapped, opened at once (one tap from the red line to its entries).
+  const [lineParam, setLineParam] = useUrlState<string>('line', '')
+  React.useEffect(() => {
+    const hit = lineParam ? lines.find((l) => l.id === lineParam) : undefined
+    if (hit) setOpened(hit)
+  }, [lineParam, lines])
   const [q, setQ] = useUrlState<string>('q', '')
   const [sec, setSec] = useUrlState<string>('section', '')
   const [prog, setProg] = useUrlState<string>('done', '')
@@ -332,7 +341,8 @@ function BoqLinesTable({ lines }: { lines: Line[] }) {
                       <td className="px-3 py-2">
                         <span className="flex items-baseline gap-1.5">
                           {l.boq_code && <span className="shrink-0 rounded bg-muted px-1 text-[11px] font-medium text-muted-foreground tabular-nums">{l.boq_code}</span>}
-                          <span className={cn('font-medium', !started && 'text-muted-foreground')}>{l.work}</span>
+                          <button type="button" onClick={() => setOpened(l)} title="What made this line's figures"
+                            className={cn('text-left font-medium underline-offset-2 hover:underline', !started && 'text-muted-foreground')}>{l.work}</button>
                         </span>
                         {!bands && sections.length > 1 && <span className="mt-0.5 block text-[11px] text-muted-foreground">{l.section}</span>}
                         {/* Phones: the money folds under the name (docs/DESIGN.md section 8). */}
@@ -388,6 +398,7 @@ function BoqLinesTable({ lines }: { lines: Line[] }) {
         </div>
       )}
       <Pager className="mt-2" {...paged} noun="lines" size={size} onPage={goTo} onSize={(n) => { setSize(String(n)); setPage('1') }} />
+      <LineDetailSheet projectId={projectId} line={opened} onOpenChange={(o) => { if (!o) { setOpened(null); setLineParam('') } }} />
     </DprSection>
   )
 }
@@ -622,7 +633,7 @@ export default function CostBudgetPage() {
             </div>
           )}
 
-          <BoqLinesTable lines={lines} />
+          <BoqLinesTable lines={lines} projectId={b!.project_id} />
 
           <div id="labour-to-lines" className="scroll-mt-20" data-guide="budget.labour">
             <DprSection icon={HardHat} title="Labour to check" meta={labour.data?.groups.length || undefined}>
