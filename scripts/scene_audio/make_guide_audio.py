@@ -17,8 +17,8 @@ import hashlib
 import importlib.util
 import json
 import re
-import urllib.error
 import sys
+import urllib.error
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent

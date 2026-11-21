@@ -93,10 +93,20 @@ _SANDBOX_OF = sa.text(
 )
 
 
-def day_zero(today: dt.date) -> dt.date:
-    """The date a new sample company starts on (SS-74a): the latest Saturday, so its seeded weeks end on a pay day
-    and its planned simulation's day 0 is a Saturday (application/learn/sample_plan.py ``weekday``)."""
-    return today - dt.timedelta(days=(today.weekday() - 5) % 7)
+#: The plan's handover day (project bible D1: the 62 days are Green Villa's last two months).
+HANDOVER_DAY = 62
+
+
+def day_zero(today: dt.date | None = None) -> dt.date:
+    """The date a new sample company starts on (SS-74a), on the contract's calendar (asked 21 Nov 2026, the project
+    bible's D4 reversed: the opening, the contract summary and the days must agree): the Saturday on or before
+    ``HANDOVER_DAY`` days ahead of the contract's handover, so the seeded weeks end on a pay day, day 0 is a Saturday
+    (sample_plan.py ``weekday``) and day 62 is the eve of the handover date (Sat 29 May 2027 to Fri 30 Jul 2027).
+    ``today`` is no longer used: every copy plays the same calendar, whenever it is opened."""
+    from mesiri.application.learn.green_villa import CONTRACT
+
+    last = dt.date.fromisoformat(CONTRACT["handover_on"]) - dt.timedelta(days=HANDOVER_DAY)
+    return last - dt.timedelta(days=(last.weekday() - 5) % 7)
 
 
 def _email(org_id: uuid.UUID, role: str) -> str:

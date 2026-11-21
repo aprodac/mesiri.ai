@@ -21,7 +21,7 @@ import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/li
 import { useTrial } from '@/lib/trial'
 import { inSandbox, peekSandboxStart, takeSandboxStart, whenOpeningDone } from '@/lib/sandbox'
 import {
-  OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { waLink } from '@/lib/whatsapp-modal'
@@ -379,7 +379,7 @@ export function WalkthroughRunner() {
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
   // UX-71: a chapter's title card when the guided project reaches a new chapter (forward, or a jump).
-  const [episode, setEpisode] = React.useState<{ number: number; of: number; title: string; line?: string } | null>(null)
+  const [episode, setEpisode] = React.useState<{ number: number; of: number; title: string; line?: string; film?: string } | null>(null)
   const lastChapter = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {
     const chapter = step?.chapter
@@ -395,7 +395,7 @@ export function WalkthroughRunner() {
     // Backwards inside the project (Back) shows no card. The first chapter's card plays only as the project starts
     // (UX-72: right after the sample company's opening), never when coming back to it.
     if (at < 0 || (at === 0 && before) || (before && run.dir === -1) || prefersReducedMotion()) return
-    setEpisode({ number: at + 1, of: starts.length, title: chapter, line: step?.title })
+    setEpisode({ number: at + 1, of: starts.length, title: chapter, line: step?.title, film: JOURNEY_CHAPTERS.find((c) => c.title === chapter)?.film })
   }, [run, step?.chapter, step?.title])
   const stepKey = run ? `${run.walk.id}:${run.index}` : null
   const shown = !!stepKey && shownKey === stepKey
