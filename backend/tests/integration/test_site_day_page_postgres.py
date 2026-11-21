@@ -274,3 +274,24 @@ async def test_a_member_limited_to_other_sites_gets_not_found(conn) -> None:
         created.site_id, report_date=DAY, auth_context=allowed, conn=conn
     )
     assert ok["drafts"] == 2
+
+
+async def test_confirm_the_whole_day_in_one_go(conn) -> None:
+    """FB-02: one tap confirms every draft on the site's day (the same per-entry confirm); a second tap finds nothing;
+    a member of another site can't confirm it."""
+    created, ids = await _day(conn, "9876500049")
+    auth = _auth(created)
+    before = await dpr_router.get_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
+    assert before["drafts"] == 2
+
+    done = await dpr_router.confirm_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
+    assert done == {"status": "confirmed", "confirmed": 2}
+    after = await dpr_router.get_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
+    assert after["drafts"] == 0
+    again = await dpr_router.confirm_site_day(created.site_id, report_date=DAY, auth_context=auth, conn=conn)
+    assert again["confirmed"] == 0
+
+    with pytest.raises(HTTPException) as e:
+        await dpr_router.confirm_site_day(created.site_id, report_date=DAY,
+                                          auth_context=_auth(created, sites={uuid.uuid4()}), conn=conn)
+    assert e.value.status_code == 404

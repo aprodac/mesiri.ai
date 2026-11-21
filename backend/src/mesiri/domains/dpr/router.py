@@ -347,6 +347,43 @@ async def get_site_day(
     }
 
 
+@router.post("/site-days/{site_id}/confirm")
+async def confirm_site_day(
+    site_id: uuid.UUID,
+    report_date: datetime.date = Query(alias="date"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """FB-02: confirm every draft on a site's day in one go (the labour, work, materials and issues the site sent),
+    instead of one tap per entry. The same per-entry confirm as ``POST /facts/.../confirm`` (one rule), for the same
+    people as the site's day page. Answers how many were confirmed; 0 when nothing was waiting."""
+    repo = PostgresDprRepository(conn)
+    site = await repo.find_site(organization_id=auth_context.organization_id, site_id=site_id)
+    if site is None or site["project_id"] is None or _site_denied(auth_context, site["project_id"], site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    _, _, items = await repo.assemble_site_day_with_drafts(
+        organization_id=auth_context.organization_id,
+        project_id=site["project_id"],
+        site_id=site_id,
+        report_date=report_date,
+    )
+    facts = PostgresFactReviewRepository(conn)
+    confirmed = 0
+    for item in items:
+        if item.get("review") != "draft":
+            continue
+        try:
+            confirmed += int(await facts.confirm(
+                organization_id=auth_context.organization_id,
+                fact_type=item["fact_type"],
+                fact_id=uuid.UUID(str(item["id"])),
+                actor_user_id=auth_context.user_id,
+            ))
+        except FactReviewError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "confirmed", "confirmed": confirmed}
+
+
 @router.get("/facts/{fact_type}/{fact_id}/sources")
 async def get_fact_sources(
     fact_type: str,
