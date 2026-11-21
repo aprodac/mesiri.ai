@@ -35,7 +35,7 @@ VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # George: warm, captivating storyteller (Brit
 MODEL = "eleven_multilingual_v2"
 FORMAT = "mp3_44100_64"
 
-NUMBERS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
+NUMBERS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"]
 
 # The narrator's lines. The opening's cast names each role's own part last ("And you, ...").
 LINES: dict[str, str] = {
