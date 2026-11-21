@@ -29,7 +29,7 @@ from __future__ import annotations
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -92,8 +92,15 @@ class ContractIn(BaseModel):
     defect_liability_months: int | None = Field(default=None, ge=0, le=120)
     payment_terms: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=1000)
+    # PS-01..04 (migration 0563)
+    client_payment_days: int | None = Field(default=None, ge=0, le=365, description="The client pays a bill in N days")
+    contract_type: Literal["item_rate", "lump_sum", "cost_plus"] | None = None
+    ld_pct_per_week: Decimal | None = _Pct
+    ld_cap_pct: Decimal | None = _Pct
+    escalation_applies: bool | None = None
+    escalation_terms: str | None = Field(default=None, max_length=500)
 
-    _clean_text = field_validator("contract_no", "payment_terms", "notes")(_clean)
+    _clean_text = field_validator("contract_no", "payment_terms", "notes", "escalation_terms")(_clean)
 
 
 def _require(auth: AuthorizationContext, project_id: uuid.UUID | None = None) -> None:
@@ -193,6 +200,8 @@ async def put_contract(project_id: uuid.UUID, body: ContractIn,
         raise HTTPException(status_code=422, detail="Pick a saved client or add a new one, not both")
     if body.mobilisation_advance and body.contract_value and body.mobilisation_advance > body.contract_value:
         raise HTTPException(status_code=422, detail="The advance is more than the contract value")
+    if body.ld_pct_per_week and body.ld_cap_pct is not None and body.ld_cap_pct < body.ld_pct_per_week:
+        raise HTTPException(status_code=422, detail="The penalty cap is less than one week's penalty")
     before = await contracts.get_contract(conn, org, project_id)
     client_id = body.client_id
     if client_id is not None and await contracts.get_client(conn, org, client_id) is None:

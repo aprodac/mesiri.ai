@@ -4,7 +4,7 @@ import { MONEY_PEOPLE } from '@/lib/permissions'
 import { ActionButton, ActionIcon, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, TriangleAlert, Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
+import { ArrowRight, BadgeCheck, Calculator, ChevronDown, ChevronRight, ClipboardCheck, Copy, Download, Library, MoreHorizontal, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,10 +14,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { ModuleHeader } from '@/components/page/module-header'
-import { DprSection, PageError, StatStrip, type Stat } from '@/components/dpr-page'
+import { DprSection, PageError } from '@/components/dpr-page'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProject, type Project } from '@/lib/projects'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
+import { ContractFromBoq } from '@/components/boq/contract-from-boq'
+import { ApproveBudgetDialog, BoqFilters, BoqNotices, BoqSummary, LibraryDialog, LineEditor, LinesTable } from '@/components/boq/boq-view'
+import { downloadBlob } from '@/lib/export'
+import { CopyBoqDialog } from '@/components/boq/copy-boq-dialog'
+import { mayBill } from '@/lib/billing'
 import { NormsDialog } from '@/components/boq/norms-dialog'
 import {
   copyLineNorms,
@@ -35,10 +40,11 @@ import {
   putWorkOnLine,
   updateLine,
   updateSection,
+  exportBoq,
+  saveToLibrary,
   type Boq,
   type BoqLine,
   type BoqSection,
-  type BoqTotals,
   type BoqWork,
   type LineInput,
   type NormInput,
@@ -46,14 +52,12 @@ import {
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { useReadOnly } from '@/lib/trial'
-import { cn } from '@/lib/utils'
 
 // CC-02: a project's Bill of Quantities. Every work item with its quantity, what the client
 // pays per unit, and what it should cost us per unit. CC-04: the work done on each line (site
 // work updates put on it, work-order measurements) and the budget that work earned. Later items
 // (CC-05..07) put the money spent against it, to show green or red each day.
 
-const NUM = 'text-right tabular-nums'
 
 /** Margin as a share of the contract value, whole percent (null when either is missing). */
 function marginPct(margin: string | null, contract: string | null): number | null {
@@ -76,123 +80,8 @@ function Money({ value, title }: { value: string | null; title?: string }) {
   return <span title={[formatRupees(value), title].filter(Boolean).join(' · ')}>{formatRupeesShort(value)}</span>
 }
 
-function TotalsStrip({ totals }: { totals: BoqTotals }) {
-  // UX-15: the figures draw what they mean: margin by colour, the budget's share of the contract and the budget
-  // earned so far as bars, the priced lines as "x of y" (amber while some still have no rate).
-  const num = (v: string | null | undefined) => (v === null || v === undefined ? null : Number(v))
-  const contract = num(totals.contract_value)
-  const budget = num(totals.budget_cost)
-  const earned = num(totals.earned)
-  const priced = totals.line_count - Math.max(totals.lines_without_client_rate, totals.lines_without_budget_rate)
-  const stats: Stat[] = [
-    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', explain: { term: 'contract value' } },
-    {
-      label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill', explain: { term: 'budget cost' },
-      share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
-    },
-    { label: 'Margin', explain: { term: 'margin' }, value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good', hint: marginPct(totals.margin, totals.contract_value) !== null ? `${marginPct(totals.margin, totals.contract_value)}% of contract` : undefined },
-    ...(totals.earned !== undefined
-      ? [{
-          label: 'Earned so far', explain: { term: 'earned so far' }, value: formatRupees(totals.earned), kind: 'progress' as const,
-          share: budget && earned !== null ? earned / budget : 0, hint: budget && earned !== null ? `${Math.round((earned / budget) * 100)}% of budget` : undefined,
-        }]
-      : []),
-    {
-      label: 'Lines priced', explain: { title: 'Lines priced', text: 'BOQ lines with your own cost rate. A line without one has no margin yet, so the totals leave it out.' }, value: priced, of: totals.line_count, kind: 'work', tone: priced < totals.line_count ? 'attention' : 'good',
-      hint: [totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} no client rate`, totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} no budget rate`].filter(Boolean).join(' · ') || undefined,
-    },
-  ]
-  return <StatStrip stats={stats} phoneCols={2} guide="boq.totals" />
-}
 
 type LineDialogState = { section: BoqSection; line: BoqLine | null } | null
-
-const EMPTY_LINE: LineInput = {
-  work: '', unit: '', planned_quantity: '', boq_code: '', client_rate: '', labour_rate: '', material_rate: '', subcontract_rate: '', revision_reason: '',
-}
-
-function LineDialog({
-  state,
-  onClose,
-  onSave,
-  saving,
-}: {
-  state: LineDialogState
-  onClose: () => void
-  onSave: (input: LineInput) => void
-  saving: boolean
-}) {
-  const [form, setForm] = React.useState<LineInput>(EMPTY_LINE)
-  React.useEffect(() => {
-    const l = state?.line
-    setForm(
-      l
-        ? {
-            work: l.work, unit: l.unit, planned_quantity: String(Number(l.planned_quantity)), boq_code: l.boq_code ?? '',
-            client_rate: l.client_rate ?? '', labour_rate: l.labour_rate ?? '', material_rate: l.material_rate ?? '',
-            subcontract_rate: l.subcontract_rate ?? '', revision_reason: '',
-          }
-        : EMPTY_LINE,
-    )
-  }, [state])
-  const set = (k: keyof LineInput) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }))
-  const qtyChanged = !!state?.line && Number(form.planned_quantity) !== Number(state.line.planned_quantity)
-  const budget = ['labour_rate', 'material_rate', 'subcontract_rate'].reduce((s, k) => s + (Number(form[k as keyof LineInput]) || 0), 0)
-  const qty = Number(form.planned_quantity) || 0
-
-  const field = (id: keyof LineInput, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, hint?: string) => (
-    <div className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-1"><Label htmlFor={`boq-${id}`}>{label}</Label>{hint && <Hint title={label} text={hint} />}</span>
-      <Input id={`boq-${id}`} value={(form[id] as string) ?? ''} onChange={set(id)} {...props} />
-    </div>
-  )
-
-  return (
-    <Dialog open={!!state} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">{state?.line ? 'Edit line' : `Add a line to ${state?.section.name ?? ''}`} <Hint title="A BOQ line" text="One work item from the estimate. Rates are per unit; leave a rate empty if you don't have it yet." /></DialogTitle>
-          <DialogDescription className="sr-only">One work item from the estimate.</DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            onSave(form)
-          }}
-        >
-          <div className="grid gap-3 sm:grid-cols-[90px_1fr]">
-            {field('boq_code', 'Item no.', { placeholder: state?.section.code ? `${state.section.code}.1` : '1.1' })}
-            {field('work', 'Work', { placeholder: 'Internal plastering 12 mm', required: true })}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {field('planned_quantity', 'Quantity', { inputMode: 'decimal', placeholder: '18000', required: true })}
-            {field('unit', 'Unit', { placeholder: 'sqft, cum, rft, nos', required: true })}
-          </div>
-          {qtyChanged && field('revision_reason', 'Why it changed', { placeholder: 'Balcony added' }, "Kept in the line's history with the old and new quantity.")}
-          {field('client_rate', 'Client rate ₹/unit', { inputMode: 'decimal', placeholder: '42' }, 'What the client pays per unit. Leave it empty if you do not have it yet.')}
-          <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1 flex items-center gap-1 text-sm font-medium">Budget rate ₹/unit <Hint title="Budget rate" text="What one unit should cost us, split by labour, material and subcontract. Green / red and Budget vs actual measure against it." /></legend>
-            <div className="grid grid-cols-3 gap-3">
-              {field('labour_rate', 'Labour', { inputMode: 'decimal', placeholder: '14' })}
-              {field('material_rate', 'Material', { inputMode: 'decimal', placeholder: '22' })}
-              {field('subcontract_rate', 'Subcontract', { inputMode: 'decimal', placeholder: '—' })}
-            </div>
-            {qty > 0 && budget > 0 && (
-              <p className="text-xs text-muted-foreground tabular-nums">
-                ₹{budget.toLocaleString('en-IN')} × {qty.toLocaleString('en-IN')} = <span className="font-semibold text-foreground">₹{(budget * qty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
-              </p>
-            )}
-          </fieldset>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save line'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 function SectionDialog({
   section,
@@ -230,11 +119,11 @@ function SectionDialog({
           <div className="grid gap-3 sm:grid-cols-[90px_1fr]">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="boq-section-code">No.</Label>
-              <Input id="boq-section-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="4" />
+              <Input id="boq-section-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. 4" />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="boq-section-name">Name</Label>
-              <Input id="boq-section-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Plastering" required />
+              <Input id="boq-section-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Plastering" required />
             </div>
           </div>
           <DialogFooter>
@@ -244,225 +133,6 @@ function SectionDialog({
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function SectionTable({
-  section,
-  readOnly,
-  onAdd,
-  onEdit,
-  onNorms,
-  onDelete,
-}: {
-  section: BoqSection
-  readOnly: boolean
-  onAdd: () => void
-  onEdit: (line: BoqLine) => void
-  onNorms: (line: BoqLine) => void
-  onDelete: (line: BoqLine) => void
-}) {
-  if (section.lines.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed px-3 py-4 text-sm text-muted-foreground">
-        No lines yet.{' '}
-        {!readOnly && (
-          <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={onAdd}>
-            Add the first line
-          </button>
-        )}
-      </p>
-    )
-  }
-  // A section whose lines carry no BOQ codes gives the No. column nothing to show: it is left out.
-  const hasCodes = section.lines.some((l) => l.boq_code)
-  // UX-20: the Value cell's faint bar is the line's share of its section, so the big lines show before any reading.
-  const sectionValue = Math.max(...section.lines.map((l) => Number(l.contract_value ?? 0)), 0)
-  return (
-    <div data-guide="boq.lines">
-    {/* UX-20: on a phone each line is a card (nothing scrolls sideways); from md the table. */}
-    <ul className="divide-y rounded-lg border bg-card md:hidden">
-      {section.lines.map((line) => (
-        <LineCard key={line.id} line={line} readOnly={readOnly} onEdit={onEdit} onNorms={onNorms} onDelete={onDelete} />
-      ))}
-      <li className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2.5 text-sm">
-        <span className="font-semibold">Section total</span>
-        <span className="flex items-center gap-3 tabular-nums">
-          <span className="font-semibold"><Money value={section.totals.contract_value} /></span>
-          <MarginCell margin={section.totals.margin} contract={section.totals.contract_value} />
-        </span>
-      </li>
-    </ul>
-    <div className="hidden overflow-x-auto rounded-lg border bg-card [contain:inline-size] md:block">
-      {/* Fixed widths, so every section's columns line up down the page. */}
-      <table className="w-full min-w-[820px] table-fixed text-sm">
-        <colgroup>
-          {hasCodes && <col className="w-14" />}
-          <col className="w-[27%]" />
-          <col className="w-[29%]" />
-          <col className="w-[15%]" />
-          <col className="w-[13%]" />
-          <col className="w-[12%]" />
-          {!readOnly && <col className="w-10" />}
-        </colgroup>
-        <thead className="bg-muted text-xs text-muted-foreground">
-          <tr>
-            {hasCodes && <th className="px-3 py-2 text-left font-medium">No.</th>}
-            <th className="px-3 py-2 text-left font-medium">Work</th>
-            <th className="px-3 py-2 text-left font-medium">Progress</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)} title="What the client pays per unit, and what it should cost you">Rate per unit</th>
-            <th className={cn('border-l px-3 py-2 font-medium', NUM)}>Value</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Margin</th>
-            {!readOnly && <th className="w-10" aria-label="Actions" />}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {section.lines.map((line) => {
-            const value = Number(line.contract_value ?? 0)
-            return (
-              // UX-22: every row carries the guide markers; a guide lights the first one on screen.
-              <tr key={line.id} data-guide={Number(line.margin ?? 0) < 0 ? 'boq.loss' : 'boq.line'}>
-                {hasCodes && <td className="px-3 py-3 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
-                <td className="px-3 py-3" data-guide="boq.work">
-                  <span className="font-medium">{line.work}</span>
-                  {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
-                  <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
-                </td>
-                <td className="px-3 py-3" data-guide="boq.progress">
-                  <ProgressCell line={line} />
-                </td>
-                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} title={costParts(line)} data-guide="boq.rate">
-                  <div>
-                    {formatRupees(line.client_rate)}
-                    <span className="text-xs text-muted-foreground"> /{line.unit}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">cost {formatRupees(line.budget_rate)}</div>
-                </td>
-                <td className={cn('border-l px-3 py-3 whitespace-nowrap', NUM)} data-guide="boq.value">
-                  <Money value={line.contract_value} title={line.budget_cost ? `budget cost ${formatRupees(line.budget_cost)}` : undefined} />
-                  {sectionValue > 0 && value > 0 && (
-                    <div className="mt-1 ml-auto h-1 w-16 overflow-hidden rounded-full bg-muted" title="Its size against the biggest line in this section" aria-hidden>
-                      <div className="ml-auto h-full rounded-full bg-chart-1/70" style={{ width: `${Math.max((value / sectionValue) * 100, 4)}%` }} />
-                    </div>
-                  )}
-                </td>
-                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} data-guide="boq.margin">
-                  <MarginCell margin={line.margin} contract={line.contract_value} />
-                </td>
-                {!readOnly && (
-                  <td className="px-1 py-1">
-                    <LineMenu line={line} onEdit={onEdit} onNorms={onNorms} onDelete={onDelete} />
-                  </td>
-                )}
-              </tr>
-            )
-          })}
-        </tbody>
-        <tfoot className="border-t-2 border-foreground/15 bg-muted/30 text-sm">
-          <tr>
-            <td className="px-3 py-2.5" colSpan={hasCodes ? 2 : 1}>
-              <span className="font-semibold">Section total</span>
-            </td>
-            <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">
-              {Number(section.totals.earned ?? 0) > 0 && <><Money value={section.totals.earned ?? null} /> earned</>}
-            </td>
-            <td />
-            <td className={cn('border-l px-3 py-2.5 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.contract_value} /></td>
-            <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}><MarginCell margin={section.totals.margin} contract={section.totals.contract_value} /></td>
-            {!readOnly && <td />}
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-    </div>
-  )
-}
-
-type LineActions = { onEdit: (line: BoqLine) => void; onNorms: (line: BoqLine) => void; onDelete: (line: BoqLine) => void }
-
-/** A line's ⋯ menu, the same in the table and on a phone's card. */
-function LineMenu({ line, onEdit, onNorms, onDelete }: { line: BoqLine } & LineActions) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${line.work}`}>
-          <MoreHorizontal className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
-        <DropdownMenuItem onClick={() => onNorms(line)}>
-          <Package className="mr-2 size-3.5" /> Materials per {line.unit}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-/** One BOQ line on a phone: name and margin on top, progress, then rate and value in one muted line. */
-function LineCard({ line, readOnly, ...actions }: { line: BoqLine; readOnly: boolean } & LineActions) {
-  return (
-    <li className="flex flex-col gap-2 px-3 py-3 text-sm" data-guide={Number(line.margin ?? 0) < 0 ? 'boq.loss' : 'boq.line'}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0" data-guide="boq.work">
-          {line.boq_code && <span className="mr-1.5 text-muted-foreground tabular-nums">{line.boq_code}</span>}
-          <span className="font-medium">{line.work}</span>
-          <MaterialsNote line={line} readOnly={readOnly} onNorms={() => actions.onNorms(line)} />
-        </div>
-        <div className="flex shrink-0 items-start gap-1">
-          <span data-guide="boq.margin"><MarginCell margin={line.margin} contract={line.contract_value} /></span>
-          {!readOnly && <LineMenu line={line} {...actions} />}
-        </div>
-      </div>
-      <div data-guide="boq.progress"><ProgressCell line={line} /></div>
-      <p className="text-xs text-muted-foreground tabular-nums" title={costParts(line)} data-guide="boq.rate">
-        {formatRupees(line.client_rate)} /{line.unit} · cost {formatRupees(line.budget_rate)} · value{' '}
-        <span className="font-medium text-foreground" data-guide="boq.value"><Money value={line.contract_value} /></span>
-      </p>
-    </li>
-  )
-}
-
-/** "Labour ₹260 + Material ₹210": what the budget rate is made of, for the rate cell's hover. */
-function costParts(line: BoqLine): string {
-  return [
-    line.labour_rate && `Labour ${formatRupees(line.labour_rate)}`,
-    line.material_rate && `Material ${formatRupees(line.material_rate)}`,
-    line.subcontract_rate && `Subcontract ${formatRupees(line.subcontract_rate)}`,
-  ].filter(Boolean).join(' + ')
-}
-
-/** Margin led by its %: plain ink when healthy; an orange pill when thin, a red one with a warning icon when a loss
- *  (colour only for what needs you, DESIGN.md section 3; the icon keeps a loss readable without colour). */
-function MarginCell({ margin, contract }: { margin: string | null; contract: string | null }) {
-  if (margin === null) return <span className="text-muted-foreground">—</span>
-  const pct = marginPct(margin, contract)
-  const loss = Number(margin) < 0
-  const thin = !loss && pct !== null && pct < THIN_MARGIN
-  const label = pct === null ? null : `${pct < 0 ? `−${-pct}` : pct}%`
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      {label && (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 font-semibold',
-            (loss || thin) && 'rounded-full px-2 py-0.5 text-xs',
-            loss && 'bg-destructive/10 text-destructive',
-            thin && 'bg-draft-soft text-draft',
-            !loss && !thin && 'text-success',
-          )}
-          title={loss ? 'This line loses money' : thin ? `Thin margin: under ${THIN_MARGIN}%` : undefined}
-        >
-          {loss && <TriangleAlert className="size-3" aria-hidden />}
-          {loss ? `Loss ${label}` : label}
-        </span>
-      )}
-      <span className={cn('text-xs', loss ? 'text-destructive' : 'text-muted-foreground')}>
-        <Money value={margin} />
-      </span>
-    </div>
   )
 }
 
@@ -499,24 +169,6 @@ function SectionSummary({ section }: { section: BoqSection }) {
   )
 }
 
-/** MP-01: the line's materials per unit, under its name ("Cement 8 bags · M-sand 15 cft per cum"). */
-function MaterialsNote({ line, readOnly, onNorms }: { line: BoqLine; readOnly: boolean; onNorms: () => void }) {
-  if (line.materials.length === 0) {
-    return readOnly ? null : (
-      // Missing materials is something to do: it reads as a link, not as one more grey line.
-      <button type="button" className="mt-0.5 flex items-center gap-1 text-xs font-medium text-info hover:underline" onClick={onNorms}>
-        <Plus className="size-3" aria-hidden /> Add materials
-      </button>
-    )
-  }
-  const text = line.materials.map((m) => `${m.material} ${formatQuantity(m.quantity_per_unit)} ${m.unit}`).join(' · ')
-  return (
-    <button type="button" disabled={readOnly} className="mt-0.5 block text-left text-xs text-muted-foreground enabled:hover:text-foreground" onClick={onNorms} title="Materials per unit of this work">
-      {text} <span className="whitespace-nowrap">per {line.unit}</span>
-    </button>
-  )
-}
-
 const sameWork = (a: BoqLine, b: BoqLine) =>
   a.id !== b.id && a.unit === b.unit && a.work.trim().replace(/\s+/g, ' ').toLowerCase() === b.work.trim().replace(/\s+/g, ' ').toLowerCase()
 
@@ -540,48 +192,6 @@ function ScheduleOnly({ sections, readOnly, onAdd }: { sections: BoqSection[]; r
     </details>
   )
 }
-
-/** Work done on the line and the budget it earned, in one cell (UX-20): the bar is ink while under way, green when
- *  the line is finished, orange when more was done than planned. */
-function ProgressCell({ line }: { line: BoqLine }) {
-  const done = Number(line.done_quantity)
-  const pct = Math.round(Number(line.percent_done ?? 0))
-  const finished = !line.over_planned && pct >= 100
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <span className="tabular-nums whitespace-nowrap">
-        {done > 0 ? (
-          <>
-            {formatQuantity(line.done_quantity)} <span className="text-muted-foreground">of {formatQuantity(line.planned_quantity)} {line.unit} · </span>
-            <span className={cn('font-medium', line.over_planned && 'text-draft', finished && 'text-success')}>{pct}%</span>
-          </>
-        ) : (
-          <span className="text-muted-foreground">
-            Not started · {formatQuantity(line.planned_quantity)} {line.unit}
-          </span>
-        )}
-      </span>
-      <div className="h-1.5 w-full max-w-[260px] overflow-hidden rounded-full bg-muted" aria-hidden="true">
-        {done > 0 && (
-          <div
-            className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : finished ? 'bg-success' : 'bg-info')}
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        )}
-      </div>
-      {done > 0 && line.earned !== null && (
-        <span className="text-xs text-muted-foreground tabular-nums" title="The budget the work done so far has earned">
-          <Money value={line.earned} /> earned of <Money value={line.budget_cost} />
-        </span>
-      )}
-      {line.over_planned && <span className="text-xs font-medium text-draft">More than planned</span>}
-      {line.done_in_other_unit > 0 && (
-        <span className="text-xs text-muted-foreground">{line.done_in_other_unit} in another unit, not added</span>
-      )}
-    </div>
-  )
-}
-
 function formatDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
@@ -700,7 +310,15 @@ export default function ProjectBoqPage() {
 
   const [lineDialog, setLineDialog] = React.useState<LineDialogState>(null)
   const [sectionDialog, setSectionDialog] = React.useState<{ open: boolean; section: BoqSection | null }>({ open: false, section: null })
-  const [importing, setImporting] = React.useState(false)
+  // PS: the New project flow's "Import the estimate Excel" opens the BOQ on its import (?import=1).
+  const [importing, setImporting] = React.useState(() => new URLSearchParams(window.location.search).get('import') === '1')
+  // PS phase 2: start the BOQ from an earlier project's.
+  const [copying, setCopying] = React.useState(false)
+  // PS phase 2b: filters, the approved budget, the rate library.
+  const [site, setSite] = React.useState<string | null>(null)
+  const [unpricedOnly, setUnpricedOnly] = React.useState(false)
+  const [approving, setApproving] = React.useState(false)
+  const [libraryFor, setLibraryFor] = React.useState<BoqSection | null>(null)
   const [normsLine, setNormsLine] = React.useState<BoqLine | null>(null)
   const [confirm, setConfirm] = React.useState<{ kind: 'line'; line: BoqLine } | { kind: 'section'; section: BoqSection } | null>(null)
 
@@ -713,20 +331,12 @@ export default function ProjectBoqPage() {
   const saveLine = useMutation({
     mutationFn: async (input: LineInput) => {
       if (!lineDialog) return
-      const body: LineInput = {
-        work: input.work.trim(),
-        unit: input.unit.trim(),
-        planned_quantity: input.planned_quantity.trim(),
-        boq_code: blankToNull(input.boq_code),
-        client_rate: blankToNull(input.client_rate),
-        labour_rate: blankToNull(input.labour_rate),
-        material_rate: blankToNull(input.material_rate),
-        subcontract_rate: blankToNull(input.subcontract_rate),
-      }
+      // PS phase 2b: the editor sends the line already cleaned (empty rates as null, the split by site).
+      const { revision_reason: reason, ...body } = input
       if (lineDialog.line) {
-        await updateLine(id, lineDialog.line.id, { ...body, revision_reason: blankToNull(input.revision_reason) })
+        await updateLine(id, lineDialog.line.id, { ...body, revision_reason: reason ?? null })
       } else {
-        await createLine(id, lineDialog.section.id, body)
+        await createLine(id, lineDialog.section.id, { ...body, sites: body.sites?.length ? body.sites : undefined })
       }
     },
     onSuccess: () => {
@@ -780,6 +390,17 @@ export default function ProjectBoqPage() {
       refresh()
     },
     onError: fail('Could not save the materials'),
+  })
+
+  const toLibrary = useMutation({
+    mutationFn: (line: BoqLine) => saveToLibrary(id, line.id),
+    onSuccess: () => toast.success('Saved to the rate library', 'Add it to any project from a section\'s menu.'),
+    onError: fail('Could not save to the library'),
+  })
+  const exportFile = useMutation({
+    mutationFn: (withCosts: boolean) => exportBoq(id, withCosts),
+    onSuccess: (blob, withCosts) => downloadBlob(`${projectQuery.data?.name ?? 'Project'} - BOQ${withCosts ? ' with costs' : ''}.xlsx`, blob),
+    onError: fail('Could not export the BOQ'),
   })
 
   const putWork = useMutation({
@@ -844,6 +465,14 @@ export default function ProjectBoqPage() {
     return <PageError message="The BOQ could not be loaded." onRetry={() => boqQuery.refetch()} back={back} />
   }
   const boq = boqQuery.data
+  // PS phase 2b: one site's share, or only the lines still missing a rate; sections with nothing to show are left out.
+  const shownSections = boq.sections
+    .filter((s) => s.lines.length > 0 || !s.scheduled)
+    .map((s) => ({
+      ...s,
+      lines: s.lines.filter((l) => (!site || l.sites?.some((x) => x.site_id === site)) && (!unpricedOnly || l.budget_rate === null || l.client_rate === null)),
+    }))
+    .filter((s) => (!site && !unpricedOnly) || s.lines.length > 0)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -854,6 +483,24 @@ export default function ProjectBoqPage() {
           </Link>}>
         <div className="flex flex-wrap items-center gap-2">
             {!readOnly && <ActionButton kind="import-excel" onClick={() => setImporting(true)} data-guide="boq.import" />}
+            {boq.sections.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">More <ChevronDown className="size-3.5" aria-hidden /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">
+                  <DropdownMenuItem onClick={() => exportFile.mutate(false)}><Download className="mr-2 size-3.5" /> Export for the client (.xlsx)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportFile.mutate(true)}><Download className="mr-2 size-3.5" /> Export with our costs (.xlsx)</DropdownMenuItem>
+                  {!readOnly && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {mayBill(me?.role) && <DropdownMenuItem onClick={() => setApproving(true)}><BadgeCheck className="mr-2 size-3.5" /> Approve budget</DropdownMenuItem>}
+                      <DropdownMenuItem onClick={() => setCopying(true)}><Copy className="mr-2 size-3.5" /> Copy from a past project</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {!readOnly && (
               // One yellow button per page: while the BOQ is empty, the upload below is it; while site work waits
               // with suggested lines, "Add all" is.
@@ -870,13 +517,19 @@ export default function ProjectBoqPage() {
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               <ActionButton kind="import-excel" primary onClick={() => setImporting(true)}>Upload the BOQ Excel</ActionButton>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCopying(true)} data-guide="boq.copy">
+                <Copy className="size-4" /> Copy from a past project
+              </Button>
               <ActionButton kind="add" onClick={() => setSectionDialog({ open: true, section: null })}>Add the first section by hand</ActionButton>
             </div>
           )}
         </div>
       ) : (
         <>
-          <TotalsStrip totals={boq.totals} />
+          <BoqSummary boq={boq} />
+          <BoqNotices boq={boq} money={mayBill(me?.role)} readOnly={readOnly} onApprove={() => setApproving(true)} onShowUnpriced={() => setUnpricedOnly(true)}>
+            {mayBill(me?.role) && !readOnly && <ContractFromBoq projectId={id} boqTotal={boq.totals.contract_value} />}
+          </BoqNotices>
           {(workQuery.data?.length ?? 0) > 0 && (
             <DprSection
               icon={ClipboardCheck}
@@ -915,15 +568,26 @@ export default function ProjectBoqPage() {
               </ul>
             </DprSection>
           )}
-          <div className="flex flex-col">
-            {boq.sections.filter((s) => s.lines.length > 0 || !s.scheduled).map((section) => (
+          <BoqFilters sites={boq.sites ?? []} site={site} onSite={setSite} unpricedOnly={unpricedOnly} onUnpricedOnly={setUnpricedOnly}
+            anySplit={boq.sections.some((s) => s.lines.some((l) => !!l.sites?.length))} />
+          <div className="flex flex-col gap-1">
+            {shownSections.length === 0 && (
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                {unpricedOnly ? 'Every line has its cost rate.' : 'No line is split to this site yet.'}{' '}
+                <button type="button" className="font-medium underline underline-offset-2" onClick={() => { setSite(null); setUnpricedOnly(false) }}>Show all lines</button>
+              </p>
+            )}
+            {shownSections.map((section) => (
               <DprSection
                 key={section.id}
                 className="[&>header]:rounded-lg [&>header]:bg-muted [&>header]:px-3 [&>header]:py-2"
                 guide="boq.section"
                 icon={Calculator}
                 title={section.code ? `${section.code}. ${section.name}` : section.name}
-                meta={<SectionSummary section={section} />}
+                // PS phase 2b: filtered, the header says what is shown (its totals are the whole section's).
+                meta={site || unpricedOnly
+                  ? <span className="text-sm text-muted-foreground">{section.lines.length} line{section.lines.length === 1 ? '' : 's'} shown</span>
+                  : <SectionSummary section={section} />}
                 open={!closed.has(section.id)}
                 onToggle={section.lines.length ? () => toggle(section.id) : undefined}
                 action={
@@ -936,8 +600,9 @@ export default function ProjectBoqPage() {
                             <MoreHorizontal className="size-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <ActionMenuItem kind="edit" onClick={() => setSectionDialog({ open: true, section })}>Rename</ActionMenuItem>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem onClick={() => setLibraryFor(section)}><Library className="mr-2 size-3.5" /> Add from rate library</DropdownMenuItem>
+                          <ActionMenuItem kind="edit" onClick={() => setSectionDialog({ open: true, section })}>Rename section</ActionMenuItem>
                           <DropdownMenuSeparator />
                           <ActionMenuItem kind="delete" onClick={() => setConfirm({ kind: 'section', section })} />
                         </DropdownMenuContent>
@@ -946,14 +611,19 @@ export default function ProjectBoqPage() {
                   )
                 }
               >
-                <SectionTable
-                  section={section}
-                  readOnly={readOnly}
-                  onAdd={() => setLineDialog({ section, line: null })}
-                  onEdit={(line) => setLineDialog({ section, line })}
-                  onNorms={setNormsLine}
-                  onDelete={(line) => setConfirm({ kind: 'line', line })}
-                />
+                {section.lines.length === 0 ? (
+                  <p className="rounded-lg border border-dashed px-3 py-4 text-sm text-muted-foreground">
+                    No lines yet.{' '}
+                    {!readOnly && <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setLineDialog({ section, line: null })}>Add the first line</button>}
+                  </p>
+                ) : (
+                  <LinesTable section={section} readOnly={readOnly} site={site} actions={{
+                    onEdit: (line) => setLineDialog({ section: boq.sections.find((s) => s.id === section.id) ?? section, line }),
+                    onNorms: setNormsLine,
+                    onDelete: (line) => setConfirm({ kind: 'line', line }),
+                    onToLibrary: (line) => toLibrary.mutate(line),
+                  }} />
+                )}
               </DprSection>
             ))}
             <ScheduleOnly sections={boq.sections.filter((s) => s.lines.length === 0 && s.scheduled)} readOnly={readOnly} onAdd={(section) => setLineDialog({ section, line: null })} />
@@ -961,7 +631,9 @@ export default function ProjectBoqPage() {
         </>
       )}
 
-      <LineDialog state={lineDialog} onClose={() => setLineDialog(null)} onSave={(f) => saveLine.mutate(f)} saving={saveLine.isPending} />
+      <LineEditor state={lineDialog} sites={boq.sites ?? []} onClose={() => setLineDialog(null)} onSave={(f) => saveLine.mutate(f)} saving={saveLine.isPending} />
+      <ApproveBudgetDialog projectId={id} boq={boq} open={approving} onOpenChange={setApproving} />
+      <LibraryDialog projectId={id} section={libraryFor} open={!!libraryFor} onOpenChange={(o) => !o && setLibraryFor(null)} />
       <SectionDialog
         section={sectionDialog.section}
         open={sectionDialog.open}
@@ -995,6 +667,7 @@ export default function ProjectBoqPage() {
         saving={saveNorms.isPending}
       />
       <BoqImportDialog projectId={id} projectName={project?.name} open={importing} onOpenChange={setImporting} />
+      <CopyBoqDialog projectId={id} open={copying} onOpenChange={setCopying} />
     </div>
   )
 }

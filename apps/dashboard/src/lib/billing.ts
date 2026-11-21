@@ -31,7 +31,21 @@ export interface Contract {
   defect_liability_months: number | null
   payment_terms: string | null
   notes: string | null
+  /** PS-01..04 (migration 0563) */
+  client_payment_days?: number | null
+  contract_type?: ContractType | null
+  ld_pct_per_week?: string | null
+  ld_cap_pct?: string | null
+  escalation_applies?: boolean | null
+  escalation_terms?: string | null
 }
+
+export type ContractType = 'item_rate' | 'lump_sum' | 'cost_plus'
+export const CONTRACT_TYPES: { value: ContractType; label: string; note: string }[] = [
+  { value: 'item_rate', label: 'Item rate', note: 'Paid per BOQ quantity done, at the agreed rates' },
+  { value: 'lump_sum', label: 'Lump sum', note: 'A fixed price for the whole work' },
+  { value: 'cost_plus', label: 'Cost plus', note: 'Actual cost plus an agreed fee or %' },
+]
 
 export type ContractInput = Partial<Omit<Contract, 'client_name'>> & { new_client?: ClientInput | null }
 

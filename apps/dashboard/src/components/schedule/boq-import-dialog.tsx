@@ -37,6 +37,10 @@ export function BoqImportDialog({
   const [dragging, setDragging] = React.useState(false)
   const [error, setError] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
+  // PS phase 2: after Import the dialog shows its result from the top (it stayed scrolled at the old button).
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  // PS phase 2: a file whose title names another project is imported only once the person says it is the right one.
+  const [rightFile, setRightFile] = React.useState(false)
   const detail = (err: any, fallback: string) => err?.response?.data?.detail || fallback
 
   const preview = useMutation({
@@ -47,6 +51,7 @@ export function BoqImportDialog({
     mutationFn: (f: File) => runBoqImport(projectId, f),
     onSuccess: () => {
       for (const key of ['boq', 'schedule', 'project-start', 'lifecycle']) queryClient.invalidateQueries({ queryKey: [key] })
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     },
     onError: (err) => setError(detail(err, 'The import did not go through. Nothing was saved.')),
   })
@@ -57,6 +62,7 @@ export function BoqImportDialog({
 
   const reset = () => {
     setError('')
+    setRightFile(false)
     preview.reset()
     run.reset()
     setFile(null)
@@ -64,6 +70,7 @@ export function BoqImportDialog({
   }
   const choose = (f: File | null) => {
     setError('')
+    setRightFile(false)
     preview.reset()
     run.reset()
     setFile(f)
@@ -80,7 +87,7 @@ export function BoqImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o) }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent ref={contentRef} className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <FileSpreadsheet className="size-4 text-success" /> BOQ from Excel{projectName ? ` · ${projectName}` : ''}
@@ -154,14 +161,36 @@ export function BoqImportDialog({
                 </div>
               </div>
             ) : (
+              <>
+              {report.other_project && (
+                <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm" role="alert">
+                  <p className="flex items-start gap-2 font-medium">
+                    <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+                    This file looks like another project's estimate.
+                  </p>
+                  <p className="text-foreground/80">It says: “{report.title?.join(' · ')}”. You are importing into {projectName ?? 'this project'}.</p>
+                  <label className="flex items-center gap-2 font-medium">
+                    <input type="checkbox" className="size-4" checked={rightFile} onChange={(e) => setRightFile(e.target.checked)} />
+                    It's the right file: import it into {projectName ?? 'this project'}
+                  </label>
+                </div>
+              )}
+              {report.lines_added + report.sections_added + materialLines === 0 && report.lines_kept > 0 && (
+                <p className="rounded-xl border bg-muted/40 p-3 text-sm">
+                  Every line of this file is already in the BOQ ({plural(report.lines_kept, 'line')}): nothing to import, nothing doubled.
+                </p>
+              )}
               <p className="font-medium">
                 Found in “{report.sheet}”: <span className="text-success">{report.lines_added} lines to add</span>
                 {report.lines_kept ? `, ${report.lines_kept} already in the BOQ` : ''}
                 {report.materials_sheet ? `; materials per unit for ${plural(materialLines, 'line')} from “${report.materials_sheet}”${materialsKept ? ` (${materialsKept} already set)` : ''}` : ''}
                 {report.problems ? <span className="text-destructive">, {report.problems} cannot go in</span> : ''}. Nothing is saved yet.
               </p>
+              </>
             )}
 
+            {!report.saved && (
+            <>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Figure label="Sections" term="BOQ section" value={`${report.sections_added + report.sections_found}`} hint={report.sections_found ? `${report.sections_found} already there` : 'new'} />
               <Figure label="Lines" term="BOQ line" value={`${report.lines_added}`} hint={report.lines_kept ? `+${report.lines_kept} kept` : 'to add'} />
@@ -195,6 +224,8 @@ export function BoqImportDialog({
                 </table>
               </div>
             )}
+            </>
+            )}
 
             {problems.length > 0 && (
               <div className="overflow-hidden rounded-lg border border-destructive/30">
@@ -213,7 +244,7 @@ export function BoqImportDialog({
             {!report.saved && (
               <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
                 <Button variant="outline" onClick={reset}>Choose another file</Button>
-                <Button disabled={!file || run.isPending || report.lines_added + report.sections_added + materialLines === 0} onClick={() => file && run.mutate(file)} className="gap-1.5">
+                <Button disabled={!file || run.isPending || report.lines_added + report.sections_added + materialLines === 0 || (!!report.other_project && !rightFile)} onClick={() => file && run.mutate(file)} className="gap-1.5">
                   <CheckCircle2 className="size-4" /> {report.lines_added || !materialLines ? `Import ${report.lines_added} lines` : `Import materials for ${plural(materialLines, 'line')}`}
                 </Button>
               </div>

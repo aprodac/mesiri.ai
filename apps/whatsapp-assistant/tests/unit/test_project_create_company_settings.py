@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 
 from projects import router as projects_router
 
@@ -90,3 +91,49 @@ async def test_what_the_caller_sends_still_wins(monkeypatch: pytest.MonkeyPatch)
     made = await projects_router.create_project(body, ADMIN)
     assert conn.inserted["reporting_timezone"] == "Asia/Dubai" and conn.inserted["auto_generate_dpr"] is False
     assert conn.inserted["reporting_cutoff_time"] == "17:00" and made.dprSendDeadline == "21:00"
+
+
+# -- QA-04 step 2.1 and PS-05 on the router production serves ------------------------------------------------------
+
+class SiteConn(Conn):
+    """Also answers the project lookup and the project's sites."""
+
+    def __init__(self, sites: list[str]) -> None:
+        super().__init__(_report_project("Asia/Kolkata", True), "Asia/Kolkata")
+        self.sites = sites
+
+    async def execute(self, statement: Any, params: Any = None) -> Any:  # noqa: ANN401
+        sql = str(statement)
+        if "FROM sites" in sql and not getattr(statement, "is_insert", False):
+            return SimpleNamespace(fetchall=lambda: [SimpleNamespace(id=uuid.uuid4(), name=n) for n in self.sites])
+        if "FROM projects" in sql and "projects.id" in sql:
+            return SimpleNamespace(first=lambda: SimpleNamespace(id=uuid.uuid4()))
+        return await super().execute(statement, params)
+
+
+@pytest.mark.asyncio
+async def test_a_site_the_project_has_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = SiteConn(["Villa 1"])
+    monkeypatch.setattr(projects_router, "get_engine", lambda: Engine(conn))
+    with pytest.raises(HTTPException) as exc:
+        await projects_router.create_project_site(uuid.uuid4(), projects_router.SiteCreate(name="villa 1"), ADMIN)
+    assert exc.value.status_code == 409 and exc.value.detail == "Villa 1 is already a site of this project"
+    assert conn.inserted == {}
+
+
+@pytest.mark.asyncio
+async def test_guard_a_new_site_is_added(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = SiteConn(["Villa 1"])
+    monkeypatch.setattr(projects_router, "get_engine", lambda: Engine(conn))
+    made = await projects_router.create_project_site(uuid.uuid4(), projects_router.SiteCreate(name=" Villa 2 "), ADMIN)
+    assert made.name == "Villa 2" and conn.inserted["name"] == "Villa 2"
+
+
+@pytest.mark.asyncio
+async def test_the_project_size_is_stored(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = Conn(_report_project("Asia/Kolkata", True), "Asia/Kolkata")
+    monkeypatch.setattr(projects_router, "get_engine", lambda: Engine(conn))
+    body = projects_router.ProjectCreate(name="Palm Grove", projectType="villa", builtUpAreaSqft=12800, floors=2)
+    made = await projects_router.create_project(body, ADMIN)
+    assert conn.inserted["project_type"] == "villa" and conn.inserted["floors"] == 2
+    assert made.projectType == "villa" and made.builtUpAreaSqft == 12800 and made.floors == 2

@@ -145,7 +145,7 @@ async def test_get_project_rejects_project_outside_org(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_project_site_inserts_org_scoped_site(monkeypatch):
     project_id = uuid.uuid4()
-    conn = _Conn([[SimpleNamespace(id=project_id)], []])
+    conn = _Conn([[SimpleNamespace(id=project_id)], [], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
 
     site = await projects_router.create_project_site(
@@ -157,7 +157,7 @@ async def test_create_project_site_inserts_org_scoped_site(monkeypatch):
     assert site.project_id == project_id
     assert site.name == "Tower B"
     assert site.status == "active"
-    assert len(conn.executed) == 2  # project check, site insert
+    assert len(conn.executed) == 3  # project check, the project's sites (QA-04 2.1: no duplicate), site insert
 
 
 @pytest.mark.asyncio

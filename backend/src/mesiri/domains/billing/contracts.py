@@ -16,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 CLIENT_FIELDS = ("name", "contact_person", "phone", "email", "gstin", "address", "notes")
 TERM_FIELDS = ("contract_no", "contract_value", "signed_on", "retention_pct", "mobilisation_advance",
-               "advance_recovery_pct", "gst_pct", "tds_pct", "defect_liability_months", "payment_terms", "notes")
+               "advance_recovery_pct", "gst_pct", "tds_pct", "defect_liability_months", "payment_terms", "notes",
+               # PS-01..04 (migration 0563): payment days, contract type, delay penalty, escalation.
+               "client_payment_days", "contract_type", "ld_pct_per_week", "ld_cap_pct", "escalation_applies",
+               "escalation_terms")
 
 
 async def list_clients(conn: AsyncConnection, org: uuid.UUID) -> list[dict[str, Any]]:

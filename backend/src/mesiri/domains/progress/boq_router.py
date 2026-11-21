@@ -45,6 +45,14 @@ from mesiri.domains.progress.boq import (
     line_progress,
     suggest_line,
     totals,
+    with_overheads,
+)
+from mesiri.domains.progress.boq_extras import (
+    compare_with_baseline,
+    done_by_line_site,
+    latest_baseline,
+    set_line_sites,
+    sites_by_line,
 )
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
@@ -85,6 +93,11 @@ class SectionUpdate(BaseModel):
     _clean_text = field_validator("name", "code")(_clean)
 
 
+class SiteQuantity(BaseModel):
+    site_id: uuid.UUID
+    quantity: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+
+
 class LineCreate(BaseModel):
     work: str = Field(min_length=1, max_length=300, description="What is built: 'M20 concrete in columns'")
     unit: str = Field(min_length=1, max_length=40, description="cum, sqft, sqm, rft, nos, kg ...")
@@ -94,6 +107,11 @@ class LineCreate(BaseModel):
     labour_rate: Decimal | None = _Rate
     material_rate: Decimal | None = _Rate
     subcontract_rate: Decimal | None = _Rate
+    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0564)
+    other_rate: Decimal | None = _Rate  # PS phase 2b (0565)
+    is_provisional: bool = False
+    #: PS phase 2b: the quantity split by site; adds up to ``planned_quantity``. Left out: the whole project.
+    sites: list[SiteQuantity] | None = Field(default=None, max_length=200)
 
     _clean_text = field_validator("work", "unit", "boq_code")(_clean)
 
@@ -110,6 +128,11 @@ class LineUpdate(BaseModel):
     labour_rate: Decimal | None = _Rate
     material_rate: Decimal | None = _Rate
     subcontract_rate: Decimal | None = _Rate
+    machinery_rate: Decimal | None = _Rate  # PS phase 2 (0564)
+    other_rate: Decimal | None = _Rate  # PS phase 2b (0565)
+    is_provisional: bool | None = None
+    #: PS phase 2b: the split by site, replaced as a whole; [] makes it a whole-project line again.
+    sites: list[SiteQuantity] | None = Field(default=None, max_length=200)
     sort_order: int | None = None
 
     _clean_text = field_validator("work", "unit", "boq_code", "revision_reason")(_clean)
@@ -167,6 +190,9 @@ def _line_out(line: dict) -> dict:
         "labour_rate": line["labour_rate"],
         "material_rate": line["material_rate"],
         "subcontract_rate": line["subcontract_rate"],
+        "machinery_rate": line.get("machinery_rate"),
+        "other_rate": line.get("other_rate"),
+        "is_provisional": bool(line.get("is_provisional")),
         "revision_no": line["revision_no"],
         "sort_order": line["sort_order"],
         **line_amounts(line),
@@ -252,7 +278,31 @@ async def _boq(repo: PostgresBoqRepository, organization_id: uuid.UUID, project_
     for section in sections:
         own = [ln for ln in lines if ln["section_id"] == section["id"]]
         out.append({**section, "lines": own, "totals": totals(own)})
-    return _exact({"project_id": project_id, "sections": out, "totals": totals(lines)})
+    from sqlalchemy import text
+
+    overhead_pct = (await repo.conn.execute(text(
+        "SELECT overhead_pct FROM projects WHERE organization_id = :org AND id = :p"),
+        {"org": organization_id, "p": project_id})).scalar()
+    # PS phase 2b: each line's split by site, with each site's work done (the same counted work as the line's).
+    split = await sites_by_line(repo.conn, organization_id, project_id)
+    per_site = done_by_line_site(await _counted_work(repo, organization_id, project_id, raw))
+    for ln in lines:
+        ln["sites"] = [{**s, "done": per_site.get((ln["id"], s["site_id"]), Decimal(0))} for s in split.get(ln["id"], [])]
+    # GST on the contract value, from the contract (the BOQ's rates are before tax).
+    gst_pct = (await repo.conn.execute(text(
+        "SELECT gst_pct FROM project_contracts WHERE organization_id = :org AND project_id = :p"),
+        {"org": organization_id, "p": project_id})).scalar()
+    total = with_overheads(totals(lines), overhead_pct)
+    if gst_pct is not None and total.get("contract_value") is not None:
+        total["gst_pct"] = gst_pct
+        total["contract_value_with_gst"] = (total["contract_value"] * (100 + Decimal(gst_pct)) / 100).quantize(
+            Decimal("0.01"))
+    site_rows = (await repo.conn.execute(text(
+        "SELECT id, name FROM sites WHERE organization_id = :org AND project_id = :p AND status IS DISTINCT FROM "
+        "'archived' ORDER BY lower(name)"), {"org": organization_id, "p": project_id})).mappings().all()
+    boq = {"project_id": project_id, "sections": out, "totals": total, "sites": [dict(r) for r in site_rows]}
+    boq["baseline"] = compare_with_baseline(boq, await latest_baseline(repo.conn, organization_id, project_id))
+    return _exact(boq)
 
 
 async def _check_code(
@@ -359,8 +409,11 @@ async def create_line(
     unit_id = await _unit_id(conn, body.unit)
     await _duplicate_check(repo, section_id, body.work, unit_id)
     values = body.model_dump()
+    split = values.pop("sites")
     values.update(work_type=values.pop("work"), unit_id=unit_id)
     line_id = await repo.create_line(auth.organization_id, section_id, values, auth.user_id)
+    if split:
+        await set_line_sites(conn, auth.organization_id, project_id, line_id, body.planned_quantity, split)
     return _exact(_line_out(await repo.get_line(auth.organization_id, project_id, line_id)))
 
 
@@ -379,6 +432,9 @@ async def update_line(
     changes = body.model_dump(exclude_unset=True)
     quantity = changes.pop("planned_quantity", None)
     reason = changes.pop("revision_reason", None)
+    split = changes.pop("sites", None)
+    if changes.get("is_provisional") is None:
+        changes.pop("is_provisional", None)
     for required in ("work", "unit", "sort_order"):
         if required in changes and changes[required] is None:
             raise HTTPException(status_code=422, detail=f"{required} can't be empty")
@@ -395,8 +451,16 @@ async def update_line(
             exclude=line["id"],
         )
     await repo.update_line(line["id"], changes)
-    if quantity is not None and Decimal(quantity) != Decimal(line["planned_quantity"]):
+    new_quantity = quantity is not None and Decimal(quantity) != Decimal(line["planned_quantity"])
+    if new_quantity:
+        if split is None and (await sites_by_line(conn, auth.organization_id, project_id)).get(line["id"]):
+            # PS phase 2b: a split that would no longer add up is never left behind.
+            raise HTTPException(status_code=422, detail="This line is split by site: split the new quantity too")
         line_id = await repo.revise_quantity(auth.organization_id, line, quantity, reason, auth.user_id)
+    if split is not None:
+        await set_line_sites(conn, auth.organization_id, project_id, line_id,
+                             Decimal(quantity) if new_quantity else Decimal(line["planned_quantity"]),
+                             [s for s in split])
     return _exact(_line_out(await repo.get_line(auth.organization_id, project_id, line_id)))
 
 
@@ -769,6 +833,178 @@ async def boq_import(project_id: uuid.UUID, body: BoqImportFile,
 
     await _scope(project_id, auth, conn)
     return await run(conn, auth.organization_id, project_id, auth.user_id, _sheet(body))
+
+
+# -- PS phase 2b: export, the approved budget, the rate library ---------------------------------------------------
+
+@router.get("/export")
+@saves_nothing
+async def boq_export(project_id: uuid.UUID, with_costs: bool = False,
+                     auth: AuthorizationContext = Depends(get_auth_context),
+                     conn: AsyncConnection = Depends(get_db_conn)):
+    """The BOQ as an .xlsx: for the client (rates and amounts, GST) or, with ``with_costs``, with our cost split and
+    margin. The import reads it back."""
+    from sqlalchemy import text
+
+    from mesiri.domains.progress.boq_extras import export_xlsx
+
+    repo = await _scope(project_id, auth, conn)
+    boq = await _boq(repo, auth.organization_id, project_id)
+    project = (await conn.execute(text(
+        "SELECT p.name, COALESCE(cl.name, p.client) AS client, c.gst_pct FROM projects p "
+        "LEFT JOIN project_contracts c ON c.project_id = p.id LEFT JOIN clients cl ON cl.id = c.client_id "
+        "WHERE p.organization_id = :org AND p.id = :p"), {"org": auth.organization_id, "p": project_id})).mappings().one()
+    data = export_xlsx(boq, project["name"], project["client"], project["gst_pct"], with_costs)
+    name = "".join(c if c.isalnum() or c in " -" else " " for c in project["name"]).strip() or "project"
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name} - BOQ.xlsx"'})
+
+
+class BaselineIn(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    note: str | None = Field(default=None, max_length=300)
+
+
+@router.post("/baselines", status_code=201)
+async def boq_lock_baseline(project_id: uuid.UUID, body: BaselineIn,
+                            auth: AuthorizationContext = Depends(get_auth_context),
+                            conn: AsyncConnection = Depends(get_db_conn)):
+    """Lock the BOQ as it is now as the approved budget; later changes are shown against it."""
+    from mesiri.authorization.roles import may_manage_money
+    from mesiri.domains.progress.boq_extras import lock_baseline
+
+    repo = await _scope(project_id, auth, conn)
+    if not may_manage_money(auth.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin or accounts can approve the budget")
+    boq = await _boq(repo, auth.organization_id, project_id)
+    if not boq["totals"]["line_count"]:
+        raise HTTPException(status_code=422, detail="The BOQ has no lines to approve yet")
+    made = await lock_baseline(conn, auth.organization_id, project_id, auth.user_id, boq, body.name, body.note)
+    return _exact({**made, **(await _boq(repo, auth.organization_id, project_id))})
+
+
+@router.get("/library")
+async def boq_library(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                      conn: AsyncConnection = Depends(get_db_conn)):
+    """The company's rate library (lines saved with their rates and materials per unit)."""
+    from mesiri.domains.progress.boq_extras import library
+
+    await _scope(project_id, auth, conn)
+    return _exact(await library(conn, auth.organization_id))
+
+
+@router.post("/lines/{line_id}/to-library", status_code=201)
+async def boq_line_to_library(project_id: uuid.UUID, line_id: uuid.UUID,
+                              auth: AuthorizationContext = Depends(get_auth_context),
+                              conn: AsyncConnection = Depends(get_db_conn)):
+    """Save this line (work, unit, rates, materials per unit) in the rate library; the same work and unit is updated."""
+    from mesiri.domains.progress.boq_extras import save_to_library
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    repo = await _scope(project_id, auth, conn)
+    line = await repo.get_line(auth.organization_id, project_id, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Line not found")
+    norms = await MaterialNormRepository(conn).for_line(auth.organization_id, line_id)
+    return _exact(await save_to_library(conn, auth.organization_id, line, norms, auth.user_id))
+
+
+class FromLibrary(BaseModel):
+    item_id: uuid.UUID
+    planned_quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+    boq_code: str | None = Field(default=None, max_length=40)
+
+
+@router.post("/sections/{section_id}/from-library", status_code=201)
+async def boq_line_from_library(project_id: uuid.UUID, section_id: uuid.UUID, body: FromLibrary,
+                                auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    """A line from the rate library, with its rates and materials per unit, at this project's quantity."""
+    from mesiri.domains.progress.boq_extras import RATES, library_item
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    repo = await _scope(project_id, auth, conn)
+    if await repo.get_section(auth.organization_id, project_id, section_id) is None:
+        raise HTTPException(status_code=404, detail="Section not found")
+    item = await library_item(conn, auth.organization_id, body.item_id)
+    await _duplicate_check(repo, section_id, item["work"], item["unit_id"])
+    line_id = await repo.create_line(auth.organization_id, section_id, {
+        "work_type": item["work"], "unit_id": item["unit_id"], "planned_quantity": body.planned_quantity,
+        "boq_code": body.boq_code, **{r: item.get(r) for r in RATES}}, auth.user_id)
+    materials = item["materials"] if isinstance(item["materials"], list) else []
+    if materials:
+        await MaterialNormRepository(conn).replace(auth.organization_id, line_id, [
+            {"material_id": uuid.UUID(m["material_id"]), "unit_id": uuid.UUID(m["unit_id"]),
+             "quantity_per_unit": Decimal(m["quantity_per_unit"]), "wastage_pct": Decimal(m.get("wastage_pct") or 0)}
+            for m in materials], auth.user_id)
+    return _exact(_line_out(await repo.get_line(auth.organization_id, project_id, line_id)))
+
+
+@router.delete("/library/{item_id}", status_code=204)
+async def boq_library_delete(project_id: uuid.UUID, item_id: uuid.UUID,
+                             auth: AuthorizationContext = Depends(get_auth_context),
+                             conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.progress.boq_extras import delete_library_item
+
+    await _scope(project_id, auth, conn)
+    await delete_library_item(conn, auth.organization_id, item_id)
+
+
+class CopyFrom(BaseModel):
+    source_project_id: uuid.UUID
+    with_quantities: bool = Field(default=True, description="Keep the quantities; off: the lines come empty to measure")
+    with_rates: bool = Field(default=True, description="Keep the client and budget rates")
+
+
+@router.post("/copy-from")
+async def boq_copy_from(project_id: uuid.UUID, body: CopyFrom,
+                        auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """PS phase 2: start this project's BOQ from an earlier project's: its sections, lines (work, unit, code, rates,
+    quantities) and materials per unit. Like the Excel import it never overwrites: a section is reused by name, and a
+    line the section already has (same work and unit) is left as it is and counted as kept. Without quantities each
+    line comes in at 1 unit, to be measured for this project.
+    """
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    if body.source_project_id == project_id:
+        raise HTTPException(status_code=422, detail="Pick another project to copy from")
+    repo = await _scope(project_id, auth, conn)
+    await _scope(body.source_project_id, auth, conn)  # the same rights on the project copied from
+    org = auth.organization_id
+    norms = MaterialNormRepository(conn)
+    source_sections = await repo.list_sections(org, body.source_project_id)
+    source_lines = await repo.list_lines(org, body.source_project_id)
+    if not source_lines:
+        raise HTTPException(status_code=422, detail="That project has no BOQ lines to copy")
+    source_norms = await norms.for_project(org, body.source_project_id)
+    ours = {sec["name"].lower(): sec["id"] for sec in await repo.list_sections(org, project_id)}
+    rates = ("client_rate", "labour_rate", "material_rate", "subcontract_rate", "machinery_rate", "other_rate")
+    sections_added = lines_added = lines_kept = material_lines = 0
+    for sec in source_sections:
+        lines = [ln for ln in source_lines if ln["work_package_id"] == sec["id"]]
+        if not lines:
+            continue
+        target = ours.get(sec["name"].lower())
+        if target is None:
+            target = await repo.create_section(org, project_id, sec["name"], None, sec.get("code"), auth.user_id)
+            ours[sec["name"].lower()] = target
+            sections_added += 1
+        for ln in lines:
+            if await repo.current_line_with(target, ln["work_type"], ln["unit_id"]):
+                lines_kept += 1
+                continue
+            line_id = await repo.create_line(org, target, {
+                "work_type": ln["work_type"], "unit_id": ln["unit_id"], "boq_code": ln["boq_code"],
+                "planned_quantity": ln["planned_quantity"] if body.with_quantities else Decimal(1),
+                **({k: ln.get(k) for k in rates} if body.with_rates else {}),
+            }, auth.user_id)
+            lines_added += 1
+            if source_norms.get(ln["id"]):
+                await norms.replace(org, line_id, source_norms[ln["id"]], auth.user_id)
+                material_lines += 1
+    return {"sections_added": sections_added, "lines_added": lines_added, "lines_kept": lines_kept,
+            "material_lines": material_lines, **_exact(await _boq(repo, org, project_id))}
 
 
 class DraftLine(BaseModel):

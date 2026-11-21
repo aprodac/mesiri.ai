@@ -222,6 +222,9 @@ export interface BoqImportReport {
   material_lines_kept?: number
   /** `sheet` is set on the rows of the materials sheet (their row numbers are that sheet's). */
   rows: { row: number; result: 'added' | 'kept' | 'section' | 'problem'; what: string; section: string | null; message: string | null; sheet?: string | null }[]
+  /** PS phase 2: the words above the header row, and whether they name another project (preview only). */
+  title?: string[]
+  other_project?: boolean
 }
 
 export async function downloadBoqTemplate(projectId: string): Promise<Blob> {

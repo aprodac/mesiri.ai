@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 _LINE_COLUMNS = (
     "i.id, i.work_package_id, i.work_type, i.unit_id, u.code AS unit, u.display_name AS unit_name, "
     "i.planned_quantity, i.boq_code, i.client_rate, i.labour_rate, i.material_rate, "
-    "i.subcontract_rate, i.sort_order, i.revision_no, i.revision_reason, i.created_at"
+    "i.subcontract_rate, i.machinery_rate, i.other_rate, i.is_provisional, i.sort_order, i.revision_no, i.revision_reason, i.created_at"
 )
-_LINE_FIELDS = ("work_type", "unit_id", "boq_code", "client_rate", "labour_rate", "material_rate", "subcontract_rate", "sort_order")
+_LINE_FIELDS = ("work_type", "unit_id", "boq_code", "client_rate", "labour_rate", "material_rate", "subcontract_rate",
+                "machinery_rate", "other_rate", "is_provisional", "sort_order")
 
 
 class PostgresBoqRepository:
@@ -288,13 +289,14 @@ class PostgresBoqRepository:
     ) -> uuid.UUID:
         line_id = uuid.uuid4()
         fields = {k: values.get(k) for k in _LINE_FIELDS if k != "sort_order"}
+        fields["is_provisional"] = bool(fields.get("is_provisional"))
         await self.conn.execute(
             text(
                 "INSERT INTO work_package_planned_items (id, organization_id, work_package_id, work_type, "
                 "unit_id, planned_quantity, boq_code, client_rate, labour_rate, material_rate, "
-                "subcontract_rate, sort_order, changed_by) VALUES (:id, :org, :s, :work_type, :unit_id, "
-                ":planned_quantity, :boq_code, :client_rate, :labour_rate, :material_rate, "
-                ":subcontract_rate, (SELECT COALESCE(max(sort_order), 0) + 1 FROM "
+                "subcontract_rate, machinery_rate, other_rate, is_provisional, sort_order, changed_by) VALUES (:id, "
+                ":org, :s, :work_type, :unit_id, :planned_quantity, :boq_code, :client_rate, :labour_rate, "
+                ":material_rate, :subcontract_rate, :machinery_rate, :other_rate, :is_provisional, (SELECT COALESCE(max(sort_order), 0) + 1 FROM "
                 "work_package_planned_items WHERE work_package_id = :s), :by)"
             ),
             {**fields, "id": line_id, "org": organization_id, "s": section_id,
@@ -332,15 +334,22 @@ class PostgresBoqRepository:
             text(
                 "INSERT INTO work_package_planned_items (id, organization_id, work_package_id, work_type, "
                 "unit_id, planned_quantity, boq_code, client_rate, labour_rate, material_rate, "
-                "subcontract_rate, sort_order, revision_no, revision_reason, changed_by) "
-                "SELECT :new, organization_id, work_package_id, work_type, unit_id, :q, boq_code, "
-                "client_rate, labour_rate, material_rate, subcontract_rate, sort_order, revision_no + 1, "
+                "subcontract_rate, machinery_rate, other_rate, is_provisional, sort_order, revision_no, "
+                "revision_reason, changed_by) "
+                "SELECT :new, organization_id, work_package_id, work_type, unit_id, :q, boq_code, client_rate, "
+                "labour_rate, material_rate, subcontract_rate, machinery_rate, other_rate, is_provisional, sort_order, "
+                "revision_no + 1, "
                 ":reason, :by FROM work_package_planned_items WHERE id = :old"
             ),
             {"new": new_id, "q": quantity, "reason": reason, "by": changed_by, "old": line["id"]},
         )
         await self.conn.execute(
             text("UPDATE work_package_planned_items SET superseded_by_id = :new WHERE id = :old"),
+            {"new": new_id, "old": line["id"]},
+        )
+        # PS phase 2b (0565): so does the line's split by site.
+        await self.conn.execute(
+            text("UPDATE boq_line_sites SET planned_item_id = :new, updated_at = now() WHERE planned_item_id = :old"),
             {"new": new_id, "old": line["id"]},
         )
         # MP-01: material norms belong to the current revision; they move with it.

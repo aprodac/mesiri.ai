@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { AddEditProjectDialog } from '@/components/project-dialogs'
+import { NewProjectFlow } from '@/components/new-project-flow'
 import { useAuth } from '@/lib/AuthContext'
 import { mayCreateProject } from '@/lib/permissions'
 import { useReadOnly } from '@/lib/trial'
@@ -33,7 +33,7 @@ export function NewProjectButton({
       <Button size={size} variant={variant} className={className ?? 'gap-1.5 font-semibold'} onClick={() => setOpen(true)} data-guide={guide}>
         <Plus className="size-4" /> New project
       </Button>
-      <AddEditProjectDialog open={open} onOpenChange={setOpen} onSuccess={() => undefined} afterCreate={afterCreate} />
+      <NewProjectFlow open={open} onOpenChange={setOpen} afterCreate={afterCreate} />
     </>
   )
 }

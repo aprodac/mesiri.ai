@@ -35,10 +35,13 @@ import {
   createSite,
   updateSite,
   addProjectMember,
+  PROJECT_TYPES,
   type Project,
+  type ProjectType,
   type Site,
 } from '@/lib/projects'
 import { fetchUsers, type User } from '@/lib/api'
+import { expandSiteNames, MAX_SITES_AT_ONCE, sameSiteName } from '@/lib/site-batch'
 
 interface AddEditProjectDialogProps {
   open: boolean
@@ -66,11 +69,20 @@ export function AddEditProjectDialog({
   const [location, setLocation] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [status, setStatus] = React.useState('success')
+  // PS-05: the project's kind and size
+  const [projectType, setProjectType] = React.useState<ProjectType | ''>('')
+  const [area, setArea] = React.useState('')
+  const [floors, setFloors] = React.useState('')
+  const [overhead, setOverhead] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
 
   React.useEffect(() => {
     if (open) {
+      setProjectType((project?.projectType as ProjectType) ?? '')
+      setArea(project?.builtUpAreaSqft != null ? String(project.builtUpAreaSqft) : '')
+      setFloors(project?.floors != null ? String(project.floors) : '')
+      setOverhead(project?.overheadPct != null ? String(project.overheadPct) : '')
       if (project) {
         setName(project.name || '')
         setCode(project.code || '')
@@ -111,7 +123,22 @@ export function AddEditProjectDialog({
   const handleSubmit = async (e: React.FormEvent, openAfter = false) => {
     e.preventDefault()
     if (!name.trim()) {
-      setError('Project Name is required.')
+      setError('Give the project a name')
+      return
+    }
+    const areaNum = area.trim() ? Number(area.replace(/,/g, '')) : null
+    const floorsNum = floors.trim() ? Number(floors) : null
+    if (areaNum !== null && !(areaNum > 0)) {
+      setError('Built-up area is a number of sq ft')
+      return
+    }
+    if (floorsNum !== null && !(Number.isInteger(floorsNum) && floorsNum >= 1 && floorsNum <= 200)) {
+      setError('Floors is a whole number, 1 or more')
+      return
+    }
+    const overheadNum = overhead.trim() ? Number(overhead) : null
+    if (overheadNum !== null && !(overheadNum >= 0 && overheadNum <= 100)) {
+      setError('Overheads is a % from 0 to 100')
       return
     }
 
@@ -127,6 +154,10 @@ export function AddEditProjectDialog({
           location: location.trim() || null,
           description: description.trim() || null,
           status,
+          projectType: projectType || null,
+          builtUpAreaSqft: areaNum,
+          floors: floorsNum,
+          overheadPct: overheadNum,
         })
         queryClient.invalidateQueries({ queryKey: ['projects-list'] })
         queryClient.invalidateQueries({ queryKey: ['scope-projects'] })
@@ -140,6 +171,9 @@ export function AddEditProjectDialog({
           client: client.trim() || null,
           location: location.trim() || null,
           description: description.trim() || null,
+          projectType: projectType || null,
+          builtUpAreaSqft: areaNum,
+          floors: floorsNum,
         })
         for (const key of ['projects-list', 'scope-projects', 'lifecycle']) queryClient.invalidateQueries({ queryKey: [key] })
         onSuccess()
@@ -189,17 +223,54 @@ export function AddEditProjectDialog({
 
           <div className="grid gap-1.5">
             <Label htmlFor="projName" className="text-sm font-medium">Project name</Label>
-            <Input id="projName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Green Villa" className="h-11 text-base" required autoFocus />
+            <Input id="projName" value={name} onChange={(e) => { setName(e.target.value); setError('') }} placeholder="e.g. Rose Garden Villas" className="h-11 text-base" required autoFocus />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {field('projClient', 'Client', <UserIcon className="size-4" />, client, setClient, 'Mr Thomas', {
+            {field('projClient', 'Client', <UserIcon className="size-4" />, client, setClient, 'e.g. Dr. Meera Nair', {
               title: 'Client', text: 'Who the building is for and who pays you. Their bills and payments are kept under this name.',
             })}
-            {field('projLocation', 'Location', <MapPin className="size-4" />, location, setLocation, 'Kakkanad, Kochi', {
+            {field('projLocation', 'Location', <MapPin className="size-4" />, location, setLocation, 'e.g. Kakkanad, Kochi', {
               title: 'Location', text: 'Where the site is. It goes on the daily report and the bills.',
             })}
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label className="text-sm font-medium">Type</Label>
+              <Select value={projectType} onValueChange={(v) => setProjectType(v as ProjectType)}>
+                <SelectTrigger className="h-10"><SelectValue placeholder="Choose" /></SelectTrigger>
+                <SelectContent>{PROJECT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <span className="flex items-center gap-1">
+                <Label htmlFor="projArea" className="text-sm font-medium">Built-up area</Label>
+                <Hint title="Built-up area" text="The floor area you build, all floors together. It gives the cost per sq ft." />
+              </span>
+              <div className="relative">
+                <Input id="projArea" value={area} onChange={(e) => { setArea(e.target.value); setError('') }} inputMode="decimal" placeholder="e.g. 12,800" className="h-10 pr-12" />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">sq ft</span>
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="projFloors" className="text-sm font-medium">Floors</Label>
+              <Input id="projFloors" value={floors} onChange={(e) => { setFloors(e.target.value); setError('') }} inputMode="numeric" placeholder="e.g. 2" className="h-10" />
+            </div>
+          </div>
+
+          {isEdit && (
+            <div className="grid gap-1.5 sm:max-w-[50%]">
+              <span className="flex items-center gap-1">
+                <Label htmlFor="projOverhead" className="text-sm font-medium">Overheads</Label>
+                <Hint title="Overheads" text="Site and office costs not on any BOQ line (supervision, site office, insurance, interest), as a % of the BOQ budget cost. The BOQ then shows the margin after them." example="8% on a ₹67 lakh budget: ₹5.4 lakh" />
+              </span>
+              <div className="relative">
+                <Input id="projOverhead" value={overhead} onChange={(e) => { setOverhead(e.target.value); setError('') }} inputMode="decimal" placeholder="e.g. 8" className="h-10 pr-24" />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">% of budget</span>
+              </div>
+            </div>
+          )}
 
           {more ? (
             <div className="grid gap-4 rounded-lg border bg-muted/30 p-3">
@@ -248,7 +319,7 @@ export function AddEditProjectDialog({
           <DialogFooter className="gap-2 pt-1 sm:gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
             {!isEdit && !afterCreate && (
-              <Button type="button" variant="outline" disabled={loading} onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}>
+              <Button type="button" variant="outline" disabled={loading || !name.trim()} onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}>
                 Create and open Today
               </Button>
             )}
@@ -297,29 +368,59 @@ export function AddEditSiteDialog({
     }
   }, [open, site])
 
+  // QA-04 step 2: several sites at once ("Villa 1-4", one per line), checked against the project's sites first.
+  const known = (queryClient.getQueryData<Site[]>(['project-sites', projectId]) ?? [])
+    .filter((s) => s.id !== site?.id).map((s) => sameSiteName(s.name))
+  const parsed = React.useMemo(() => (isEdit ? { names: name.trim() ? [name.trim()] : [], tooMany: false } : expandSiteNames(name)), [name, isEdit])
+  const clash = parsed.names.filter((n) => known.includes(sameSiteName(n)))
+  const fresh = parsed.names.filter((n) => !known.includes(sameSiteName(n)))
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) {
-      setError('Site Name is required.')
+    if (!parsed.names.length) {
+      setError('Give the site a name')
+      return
+    }
+    if (parsed.tooMany) {
+      setError(`At most ${MAX_SITES_AT_ONCE} sites at once`)
+      return
+    }
+    if (isEdit && clash.length) {
+      setError(`${clash[0]} is already a site of this project`)
+      return
+    }
+    if (!isEdit && !fresh.length) {
+      setError(clash.length === 1 ? `${clash[0]} is already a site of this project` : 'These are already sites of this project')
       return
     }
 
     setLoading(true)
     setError('')
 
+    const failed: string[] = []
     try {
       if (isEdit && site) {
         await updateSite(projectId, site.id, { name: name.trim(), status })
       } else {
-        await createSite(projectId, { name: name.trim() })
+        for (const n of fresh) {
+          try {
+            await createSite(projectId, { name: n })
+          } catch (err: any) {
+            failed.push(err.response?.data?.detail || `${n} was not added`)
+          }
+        }
       }
-
       queryClient.invalidateQueries({ queryKey: ['project-sites', projectId] })
       queryClient.invalidateQueries({ queryKey: ['scope-sites', projectId] })
+      if (failed.length) {
+        setError(failed.join('. '))
+        setName(failed.length < fresh.length ? '' : name)
+        return
+      }
       onSuccess()
       onOpenChange(false)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'An error occurred. Please try again.')
+      setError(err.response?.data?.detail || 'The site was not saved. Try again.')
     } finally {
       setLoading(false)
     }
@@ -327,27 +428,44 @@ export function AddEditSiteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `Rename ${site?.name ?? 'site'}` : 'Add a site'}</DialogTitle>
+          <DialogTitle>{isEdit ? `Rename ${site?.name ?? 'site'}` : 'Add sites'}</DialogTitle>
+          {!isEdit && <DialogDescription>Each villa, tower or block that reports on its own.</DialogDescription>}
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
-          {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive p-2.5 rounded flex items-center gap-2">
-              <ShieldAlert className="size-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
+        <form onSubmit={handleSubmit} className="space-y-4 py-2 text-sm">
           <div className="grid gap-1.5">
-            <Label htmlFor="siteName">Name</Label>
-            <Input
-              id="siteName"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Tower 1, Block A"
-              required
-            />
+            <Label htmlFor="siteName">{isEdit ? 'Name' : 'Names'}</Label>
+            {isEdit ? (
+              <Input id="siteName" value={name} onChange={(e) => { setName(e.target.value); setError('') }} placeholder="e.g. Villa 1" aria-invalid={!!error} />
+            ) : (
+              <textarea
+                id="siteName"
+                value={name}
+                onChange={(e) => { setName(e.target.value); setError('') }}
+                rows={2}
+                autoFocus
+                aria-invalid={!!error}
+                placeholder="e.g. Villa 1-4   or   Tower A, Tower B"
+                className="flex min-h-[56px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            )}
+            {error ? (
+              <p className="flex items-center gap-1 text-xs text-destructive" role="alert"><ShieldAlert className="size-3.5 shrink-0" /> {error}</p>
+            ) : !isEdit && parsed.names.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 pt-1" aria-label="Sites to add">
+                {parsed.names.map((n) => {
+                  const taken = known.includes(sameSiteName(n))
+                  return (
+                    <span key={sameSiteName(n)} className={taken ? 'rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground line-through' : 'rounded-md bg-muted px-2 py-0.5 text-xs font-medium'}
+                      title={taken ? 'Already a site of this project' : undefined}>{n}</span>
+                  )
+                })}
+                {clash.length > 0 && <span className="text-xs text-muted-foreground">crossed out: already a site</span>}
+              </div>
+            ) : !isEdit ? (
+              <p className="text-xs text-muted-foreground">"Villa 1-4" adds Villa 1, 2, 3 and 4.</p>
+            ) : null}
           </div>
 
           {isEdit && (
@@ -369,8 +487,8 @@ export function AddEditSiteDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving…' : isEdit ? 'Save' : 'Add site'}
+            <Button type="submit" disabled={loading || (isEdit ? !name.trim() : !fresh.length)}>
+              {loading ? 'Saving…' : isEdit ? 'Save' : fresh.length > 1 ? `Add ${fresh.length} sites` : 'Add site'}
             </Button>
           </DialogFooter>
         </form>

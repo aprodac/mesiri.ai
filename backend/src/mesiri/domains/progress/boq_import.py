@@ -58,6 +58,9 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "labour_rate": ("labourrate", "laborrate", "labour", "labor"),
     "material_rate": ("materialrate", "material"),
     "subcontract_rate": ("subcontractrate", "subcontract", "subcontractorrate"),
+    # PS phase 2 (0564)
+    "machinery_rate": ("machineryrate", "machinery", "machinerate", "equipmentrate", "equipment", "plantrate", "plant"),
+    "other_rate": ("otherrate", "other", "othercost", "others"),
     "start": ("start", "startdate", "from", "plannedstart"),
     "finish": ("finish", "end", "enddate", "finishdate", "to", "plannedfinish", "plannedend"),
     "after": ("startsafter", "after", "predecessor", "dependson"),
@@ -175,6 +178,9 @@ class Sheet:
     #: CC-13: the optional "Materials per unit" sheet.
     norms_sheet: str | None = None
     norms: list[NormRow] = field(default_factory=list)
+    #: PS phase 2: the words above the header row ("GREEN VILLA, PUTHUR ROAD: ESTIMATE", "Client: ..."), to catch the
+    #: estimate of another project imported by mistake.
+    title: list[str] = field(default_factory=list)
 
 
 def _text(value: Any) -> str | None:
@@ -222,7 +228,8 @@ def read_sheet(data: bytes) -> Sheet:
                 elif h is not None and str(h).strip():
                     unknown.append(str(h).strip())
             if "work" in where and ("quantity" in where or "unit" in where):
-                sheet = Sheet(name, {k: str(header[i]).strip() for k, i in where.items()}, unknown=unknown)
+                sheet = Sheet(name, {k: str(header[i]).strip() for k, i in where.items()}, unknown=unknown,
+                              title=[t for row in rows[:at] for t in (_text(c) for c in (row or ())) if t][:3])
                 sheet.rows = _rows(rows[at + 1:], where, first=at + 2)
                 if not sheet.rows:
                     raise ImportFileError(f"The '{name}' sheet has the headers but no rows under them.")
@@ -253,7 +260,8 @@ def _rows(cells: list[tuple], where: dict[str, int], first: int) -> list[BoqRow]
         heading = bool(work) and not unit and not has_qty
         if not work and not unit and not has_qty:
             continue
-        rates = {k: get(values, k) for k in ("client_rate", "labour_rate", "material_rate", "subcontract_rate")}
+        rates = {k: get(values, k) for k in ("client_rate", "labour_rate", "material_rate", "subcontract_rate",
+                                             "machinery_rate", "other_rate")}
         out.append(BoqRow(number, section, code, work, unit, qty, rates, get(values, "start"), get(values, "finish"),
                           _text(get(values, "after")), heading))
     return out
@@ -408,12 +416,42 @@ class Report:
 async def preview(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, user_id: uuid.UUID,
                   sheet: Sheet) -> dict[str, Any]:
     """What ``run`` would do, nothing kept: the same code in a savepoint that is rolled back."""
+    from sqlalchemy import text
+
     savepoint = await conn.begin_nested()
     try:
         report = await _apply(conn, org, project_id, user_id, sheet)
     finally:
         await savepoint.rollback()
-    return _out(report, sheet, saved=False)
+    project = (await conn.execute(text("SELECT name FROM projects WHERE organization_id = :org AND id = :p"),
+                                  {"org": org, "p": project_id})).scalar()
+    return {**_out(report, sheet, saved=False), "other_project": names_another_project(sheet.title, project)}
+
+
+def _words(value: str | None) -> list[str]:
+    return [w for w in "".join(c if c.isalnum() else " " for c in str(value or "").casefold()).split() if len(w) > 2]
+
+
+#: Words every estimate title has, which say nothing about which project it is.
+_TITLE_WORDS = frozenset({"estimate", "estimation", "boq", "bill", "quantities", "quantity", "abstract", "rates", "rate",
+                          "client", "project", "work", "works", "construction", "residence", "building", "proposed",
+                          "road", "the", "and", "for", "with", "rupees", "per", "unit", "sqft", "cost", "our", "are",
+                          # kinds of building: "Palm Grove Villas" and "Green Villa" are not the same project
+                          "villa", "villas", "apartment", "apartments", "tower", "towers", "block", "house", "houses",
+                          "residency", "residences", "homes", "flats", "complex", "phase", "plaza", "mall", "school"})
+
+
+def names_another_project(title: list[str], project_name: str | None) -> bool:
+    """True when the file's title names a place or project, and none of this project's name is in it.
+
+    "GREEN VILLA, PUTHUR ROAD: ESTIMATE" into Palm Grove Villas -> True. A title with this project's name, a bare
+    "ESTIMATE", or no title at all -> False: the warning is for the file that says it is another project's.
+    """
+    said = [w for w in _words(" ".join(title)) if w not in _TITLE_WORDS and not w.isdigit()]
+    ours = [w for w in _words(project_name) if w not in _TITLE_WORDS]
+    if not said or not ours:
+        return False
+    return not any(w in said or w.rstrip("s") in said for w in ours)
 
 
 async def run(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, user_id: uuid.UUID,
@@ -428,6 +466,7 @@ def _out(report: Report, sheet: Sheet, *, saved: bool) -> dict[str, Any]:
         "lines_added": report.lines_added, "lines_kept": report.lines_kept, "problems": report.problems,
         "contract_value": str(report.contract_value), "budget_cost": str(report.budget_cost),
         "dated_sections": report.dated_sections, "links": report.links,
+        "title": sheet.title,
         "materials_sheet": sheet.norms_sheet, "material_lines_set": report.material_lines_set,
         "material_lines_kept": report.material_lines_kept,
         "sections": report.sections, "rows": report.rows,

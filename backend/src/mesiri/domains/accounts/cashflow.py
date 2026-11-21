@@ -3,7 +3,8 @@
 Money in:
 
 - ``client_bills``: RA bills sent to the client and not fully paid (``billing/receivables.settle``), expected
-  ``client_days`` after the bill's date (the contract has no payment term yet: 30 by default, changeable on the page).
+  the contract's ``client_payment_days`` after the bill's date (PS-01), else ``client_days`` (30 by default,
+  changeable on the page).
 - ``to_bill``: measured work on no bill yet (``billing/bills.unbilled_lines``), as if billed today: expected
   ``client_days`` from today. Off by default on the page ("if you bill it now").
 
@@ -137,10 +138,19 @@ async def gather(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
 
     owed = await receipts.owed(conn, org, project_ids, today)
     client_name = {c["id"]: c.get("name") for c in await contracts.list_clients(conn, org)}
+    # PS-01: a contract that says when the client pays wins over the page's assumed days.
+    terms = {r.project_id: r.client_payment_days for r in (await conn.execute(text(
+        "SELECT project_id, client_payment_days FROM project_contracts "
+        "WHERE organization_id = :org AND client_payment_days IS NOT NULL"), {"org": org})).all()}
+
+    def pay_days(project_id: Any) -> int:
+        return terms.get(project_id if isinstance(project_id, uuid.UUID) else uuid.UUID(str(project_id)),
+                         client_days)
+
     for b in owed["bills"]:
         if Decimal(b["left"]) <= 0:
             continue
-        items.append({"kind": "client_bills", "date": _iso(b["bill_date"]) + days(days=client_days),
+        items.append({"kind": "client_bills", "date": _iso(b["bill_date"]) + days(days=pay_days(b["project_id"])),
                       "amount": money(b["left"]), "title": b.get("ref") or "RA bill",
                       "who": client_name.get(b.get("client_id")),
                       "project_id": str(b["project_id"]), "project": b.get("project"),
@@ -158,7 +168,7 @@ async def gather(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
         lines = await bill_store.unbilled_lines(conn, org, p.id)
         amount = sum((ra.line_amount(ln["quantity"], ln["line"]["client_rate"]) for ln in lines), _ZERO)
         if amount > 0:
-            items.append({"kind": "to_bill", "date": today + days(days=client_days), "amount": money(amount),
+            items.append({"kind": "to_bill", "date": today + days(days=pay_days(p.id)), "amount": money(amount),
                           "title": f"Work done on {len(lines)} BOQ line{'s' if len(lines) != 1 else ''}, not billed",
                           "who": None, "project_id": str(p.id), "project": p.name,
                           "link": f"/billing/ra-bills?project={p.id}"})

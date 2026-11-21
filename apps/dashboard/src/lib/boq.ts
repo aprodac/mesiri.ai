@@ -12,6 +12,14 @@ export interface BoqTotals {
   lines_without_budget_rate: number
   /** CC-04: budget earned by the work done; null when no priced line has work. */
   earned?: string | null
+  /** PS phase 2: the margin of the lines priced both ways ("on 31 of 34 lines"); `margin` needs every line priced. */
+  priced_lines?: number
+  priced_margin?: string | null
+  priced_contract_value?: string | null
+  /** PS phase 2 (0564): the project's overheads (% of budget cost) and the margin after them; null when not set. */
+  overhead_pct?: string | null
+  overhead_cost?: string | null
+  margin_after_overheads?: string | null
 }
 
 export interface BoqLine {
@@ -26,6 +34,15 @@ export interface BoqLine {
   labour_rate: string | null
   material_rate: string | null
   subcontract_rate: string | null
+  /** PS phase 2 (0564): machines (mixer, JCB, crane hire) per unit, the fourth budget rate. */
+  machinery_rate?: string | null
+  /** PS phase 2b (0565): the fifth budget rate (temporary works, testing, small tools), and a provisional sum. */
+  other_rate?: string | null
+  is_provisional?: boolean
+  /** PS phase 2b: the quantity split by site, with each site's work done; empty = the whole project. */
+  sites?: { site_id: string; site: string; quantity: string; done: string }[]
+  /** PS phase 2b: the line as approved (null = added since); absent when no budget is approved. */
+  baseline?: { planned_quantity: string; client_rate: string | null; budget_rate: string | null; budget_cost: string | null; contract_value: string | null } | null
   budget_rate: string | null
   contract_value: string | null
   budget_cost: string | null
@@ -94,7 +111,36 @@ export interface BoqSection {
 export interface Boq {
   project_id: string
   sections: BoqSection[]
-  totals: BoqTotals
+  totals: BoqTotals & { gst_pct?: string | null; contract_value_with_gst?: string | null }
+  /** PS phase 2b: the project's sites, and the latest approved budget compared with now. */
+  sites?: { id: string; name: string }[]
+  baseline?: BoqBaseline | null
+}
+
+export interface BoqBaseline {
+  id: string
+  name: string
+  note: string | null
+  locked_at: string
+  locked_by: string | null
+  contract_value: string | null
+  budget_cost: string | null
+  lines_changed: number
+  lines_added: number
+  lines_removed: number
+}
+
+export interface LibraryItem {
+  id: string
+  work: string
+  unit: string
+  client_rate: string | null
+  labour_rate: string | null
+  material_rate: string | null
+  subcontract_rate: string | null
+  machinery_rate: string | null
+  other_rate: string | null
+  materials: unknown[]
 }
 
 export interface LineInput {
@@ -106,6 +152,10 @@ export interface LineInput {
   labour_rate?: string | null
   material_rate?: string | null
   subcontract_rate?: string | null
+  machinery_rate?: string | null
+  other_rate?: string | null
+  is_provisional?: boolean
+  sites?: { site_id: string; quantity: string }[]
   revision_reason?: string | null
 }
 
@@ -212,4 +262,45 @@ export async function fetchStandardNorms(projectId: string): Promise<StandardNor
 /** BOQ-04: put them on every line they fit (never a line that has materials). */
 export async function applyStandardNorms(projectId: string, lineIds?: string[]): Promise<{ line_id: string }[]> {
   return (await api.post<{ lines: { line_id: string }[] }>(`${base(projectId)}/norms/standard`, { line_ids: lineIds ?? null })).data.lines
+}
+
+/** PS phase 2: start this project's BOQ from an earlier project's (sections, lines, rates, materials per unit). */
+export interface BoqCopyResult {
+  sections_added: number
+  lines_added: number
+  lines_kept: number
+  material_lines: number
+}
+
+export async function copyBoqFrom(
+  projectId: string,
+  body: { source_project_id: string; with_quantities: boolean; with_rates: boolean },
+): Promise<BoqCopyResult> {
+  return (await api.post<BoqCopyResult>(`${base(projectId)}/copy-from`, body)).data
+}
+
+/** PS phase 2b: the BOQ as an .xlsx (for the client; `withCosts` adds our cost split and margin). */
+export async function exportBoq(projectId: string, withCosts: boolean): Promise<Blob> {
+  return (await api.get(`${base(projectId)}/export`, { params: { with_costs: withCosts }, responseType: 'blob' })).data as Blob
+}
+
+/** PS phase 2b: lock the BOQ as it is now as the approved budget. */
+export async function approveBudget(projectId: string, body: { name?: string; note?: string }) {
+  return (await api.post(`${base(projectId)}/baselines`, body)).data
+}
+
+export async function fetchLibrary(projectId: string): Promise<LibraryItem[]> {
+  return (await api.get<LibraryItem[]>(`${base(projectId)}/library`)).data
+}
+
+export async function saveToLibrary(projectId: string, lineId: string) {
+  return (await api.post(`${base(projectId)}/lines/${lineId}/to-library`)).data
+}
+
+export async function addFromLibrary(projectId: string, sectionId: string, body: { item_id: string; planned_quantity: string; boq_code?: string | null }) {
+  return (await api.post(`${base(projectId)}/sections/${sectionId}/from-library`, body)).data
+}
+
+export async function deleteLibraryItem(projectId: string, itemId: string) {
+  await api.delete(`${base(projectId)}/library/${itemId}`)
 }

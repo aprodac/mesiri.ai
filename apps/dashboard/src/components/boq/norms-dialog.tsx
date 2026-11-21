@@ -94,12 +94,22 @@ export function NormsDialog({
                   <ActionIcon kind="delete" className="size-4" />
                 </Button>
                 <div className="relative">
-                  <Input inputMode="decimal" aria-label="Amount per unit" placeholder="8" value={r.quantity_per_unit}
+                  <Input inputMode="decimal" aria-label="Amount per unit" placeholder="e.g. 8" value={r.quantity_per_unit}
                     onChange={(e) => set(i, { quantity_per_unit: e.target.value })} className="pr-12" />
                   <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">{m?.default_unit ?? ''}</span>
                 </div>
                 <Input inputMode="decimal" aria-label="Wastage %" placeholder="0" value={r.wastage_pct}
                   onChange={(e) => set(i, { wastage_pct: e.target.value })} />
+                {/* QA-04 3.8: what this comes to for the whole line, as the line dialog shows its ₹ total. */}
+                {line && m && Number(r.quantity_per_unit) > 0 && (
+                  <p className="col-span-full -mt-1 text-xs text-muted-foreground tabular-nums">
+                    {formatQuantity(line.planned_quantity)} {line.unit} × {formatQuantity(r.quantity_per_unit)}
+                    {Number(r.wastage_pct) > 0 ? ` + ${Number(r.wastage_pct)}% wastage` : ''} ={' '}
+                    <span className="font-semibold text-foreground">
+                      {formatQuantity(String(Math.ceil(Number(line.planned_quantity) * Number(r.quantity_per_unit) * (1 + (Number(r.wastage_pct) || 0) / 100))))} {m.default_unit}
+                    </span>{' '}for the whole line
+                  </p>
+                )}
               </div>
             )
           })}

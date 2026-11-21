@@ -41,6 +41,10 @@ class PostgresProjectRepository(ProjectRepository):
             sa.Column("auto_generate_dpr", sa.Boolean),
             sa.Column("dpr_send_deadline", sa.String),
             sa.Column("required_report_types", sa.JSON),
+            sa.Column("project_type", sa.String),
+            sa.Column("built_up_area_sqft", sa.Numeric),
+            sa.Column("floors", sa.Integer),
+            sa.Column("overhead_pct", sa.Numeric),
         )
 
     async def list_projects_by_scope(
@@ -81,6 +85,10 @@ class PostgresProjectRepository(ProjectRepository):
             self._projects.c.auto_generate_dpr,
             self._projects.c.dpr_send_deadline,
             self._projects.c.required_report_types,
+            self._projects.c.project_type,
+            self._projects.c.built_up_area_sqft,
+            self._projects.c.floors,
+            self._projects.c.overhead_pct,
         ).where(self._projects.c.organization_id == organization_id)
 
         # Add project ID filter for custom access scope
@@ -112,6 +120,10 @@ class PostgresProjectRepository(ProjectRepository):
                 auto_generate_dpr=bool(row.auto_generate_dpr),
                 dpr_send_deadline=row.dpr_send_deadline or "21:00",
                 required_report_types=row.required_report_types or None,
+                project_type=row.project_type,
+                built_up_area_sqft=float(row.built_up_area_sqft) if row.built_up_area_sqft is not None else None,
+                floors=row.floors,
+                overhead_pct=float(row.overhead_pct) if row.overhead_pct is not None else None,
             )
             for row in rows
         ]

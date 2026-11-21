@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast-notification'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { fetchClients, fetchContract, putContract, rupees, type Contract, type ContractInput } from '@/lib/billing'
+import { CONTRACT_TYPES, fetchClients, fetchContract, putContract, rupees, type Contract, type ContractInput } from '@/lib/billing'
 
 // NXT-01: a project's client and contract terms. The RA bills (NXT-02) use them: retention held from each bill,
 // the mobilisation advance recovered from each bill, GST added and TDS taken off.
@@ -26,7 +26,13 @@ const TERMS: { key: keyof Contract; label: string; explain?: React.ComponentProp
   { key: 'gst_pct', label: 'GST', suffix: '%', explain: { term: 'GST' } },
   { key: 'tds_pct', label: 'TDS', suffix: '%', explain: { term: 'TDS' } },
   { key: 'defect_liability_months', label: 'Defect liability', suffix: 'months', explain: { term: 'defects period' } },
+  // PS-01, PS-03 (migration 0563)
+  { key: 'client_payment_days', label: 'Client pays in', suffix: 'days', explain: { title: 'Client pays in', text: 'Days the client takes to pay an RA bill. Cash flow expects the money then; after it the bill is overdue.' } },
+  { key: 'ld_pct_per_week', label: 'Delay penalty', suffix: '% a week', explain: { title: 'Delay penalty (LD)', text: 'What the client may cut for each week of delay past handover, as a % of the contract value.', example: '0.5% a week on ₹82 lakh: ₹41,000 a week.' } },
+  { key: 'ld_cap_pct', label: 'Penalty cap', suffix: '%', explain: { title: 'Penalty cap', text: 'The most the delay penalty can reach, as a % of the contract value.' } },
 ]
+
+const WHOLE = new Set<string>(['defect_liability_months', 'client_payment_days'])
 
 type Form = Record<string, string>
 
@@ -48,6 +54,9 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
     const f: Form = {}
     for (const t of TERMS) f[t.key] = blank(c?.[t.key])
     f.payment_terms = c?.payment_terms ?? ''
+    f.contract_type = c?.contract_type ?? ''
+    f.escalation_applies = c?.escalation_applies ? 'yes' : ''
+    f.escalation_terms = c?.escalation_terms ?? ''
     setForm(f)
     setClientId(c?.client_id ?? '')
     setNewName('')
@@ -55,12 +64,23 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
 
   const save = useMutation({
     mutationFn: () => {
+      // The PUT writes every term (one not sent becomes empty): start from what is stored, so a term this form does not
+      // show (notes, and any term added later) keeps its value instead of being wiped.
+      const stored = contract.data?.contract
       const body: ContractInput = {}
+      if (stored) {
+        for (const [k, v] of Object.entries(stored)) {
+          if (k !== 'client_name' && k !== 'updated_at') (body as Record<string, unknown>)[k] = v
+        }
+      }
       for (const t of TERMS) {
         const v = (form[t.key] ?? '').trim()
-        ;(body as Record<string, unknown>)[t.key] = v === '' ? null : t.key === 'defect_liability_months' ? Number(v) : v
+        ;(body as Record<string, unknown>)[t.key] = v === '' ? null : WHOLE.has(t.key) ? Number(v) : v
       }
       body.payment_terms = form.payment_terms?.trim() || null
+      body.contract_type = (form.contract_type || null) as ContractInput['contract_type']
+      body.escalation_applies = form.escalation_applies === 'yes' ? true : null
+      body.escalation_terms = form.escalation_applies === 'yes' ? form.escalation_terms?.trim() || null : null
       if (clientId === 'new') body.new_client = { name: newName.trim() }
       else body.client_id = clientId || null
       return putContract(projectId, body)
@@ -107,7 +127,31 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Term t={field('signed_on')} value={form.signed_on} onChange={set('signed_on')} />
+              <div className="grid gap-1.5">
+                <Label htmlFor="ct-type" className="text-sm font-medium">Contract type</Label>
+                <Select value={form.contract_type || NO_CLIENT} onValueChange={(v) => set('contract_type')(v === NO_CLIENT ? '' : v)}>
+                  <SelectTrigger id="ct-type" className="h-10 w-full"><SelectValue placeholder="Choose" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CLIENT}>Not set</SelectItem>
+                    {CONTRACT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+          </Group>
+
+          <Group title="Delay and price rises">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Term t={field('ld_pct_per_week')} value={form.ld_pct_per_week} onChange={set('ld_pct_per_week')} />
+              <Term t={field('ld_cap_pct')} value={form.ld_cap_pct} onChange={set('ld_cap_pct')} />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4" checked={form.escalation_applies === 'yes'} onChange={(e) => set('escalation_applies')(e.target.checked ? 'yes' : '')} />
+              The client pays price rises (escalation)
+            </label>
+            {form.escalation_applies === 'yes' && (
+              <Input aria-label="Escalation terms" className="h-10" placeholder="e.g. Steel and cement above 5% of the base month" value={form.escalation_terms ?? ''} onChange={(e) => set('escalation_terms')(e.target.value)} />
+            )}
           </Group>
 
           <Group title="Held back and paid back">
@@ -123,6 +167,12 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
             <div className="grid grid-cols-2 gap-3">
               <Term t={field('gst_pct')} value={form.gst_pct} onChange={set('gst_pct')} />
               <Term t={field('tds_pct')} value={form.tds_pct} onChange={set('tds_pct')} />
+            </div>
+          </Group>
+
+          <Group title="Getting paid">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Term t={field('client_payment_days')} value={form.client_payment_days} onChange={set('client_payment_days')} />
             </div>
           </Group>
 
