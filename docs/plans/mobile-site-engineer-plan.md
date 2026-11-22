@@ -8,7 +8,7 @@
 > the "Mesiri Site Engineer App" design canvas shared in session.
 >
 > Status: **building (21 Nov).** Done: MOB-01 design, MOB-02 shell, MOB-03 say anything, MOB-04 Today, MOB-05 forms
-> filled by voice, MOB-07 no signal, MOB-08 sign-in, MOB-10 site and requests. Next: MOB-06, MOB-12, then a real phone.
+> filled by voice, MOB-07 no signal, MOB-08 sign-in, MOB-10 site and requests. MOB-06 one field and MOB-13 the look done 22 Nov. Next: a real phone, MOB-12.
 > §9's defaults were taken (asked to "go implement" 21 Nov): Android first, phone + WhatsApp code sign-in, replies in
 > the app only, English and Malayalam.
 
@@ -117,10 +117,11 @@ ready entries (tool + fields) and the app to say which form is open, so Mesiri p
 
 ### 5.3 Speak into one field
 
-Every field has a small mic. For a text field (a note, a problem's description) the words are heard,
-shown in their script, and **put into the field in English** (Sarvam's translation, the same as today),
-with their own words above it. For a number, a material or a supplier, the words go through the assistant
-like 5.2 but only that field is taken. Nothing new learns Malayalam numbers: the model already does.
+Every field has a small mic. The words are heard by the assistant's own speech step (`POST /assistant/dictate`,
+no turn: nothing prepared or saved) and **put into that field in English**, with what was heard shown under it.
+Material: the words search the catalog. Quantity: the number in the English words, written as figures or words
+(the speech step writes either), and the unit when one is named. (Built 22 Nov: simpler than going through the
+assistant for one field, and "2 bags were torn" stays a note instead of becoming an entry.)
 
 ## 6. The screens (mockups)
 
