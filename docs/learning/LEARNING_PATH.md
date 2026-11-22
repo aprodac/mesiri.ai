@@ -30,20 +30,24 @@ contractor meets each thing. "Sim" is the simulation's chapter (`JOURNEY_CHAPTER
 Green Villa's own days with "Your turn" steps Mesiri checks; "general" means it plays the general walkthrough, not yet
 Green Villa's story.
 
+Brought up to date 22 Nov 2026 (UX-108): the simulation has 15 chapters (`JOURNEY_CHAPTERS`), each on its own story
+day, its practice on the dashboard's own forms (UX-101); ch. 9 "The store counted" (day 16) and ch. 14 "All your
+projects" (day 40) have no film of their own. A chapter card names a film only once it is made (UX-107).
+
 | Step | Watch | Then play (role) | You can then... | Episode | Sim chapter |
 |---|---|---|---|---|---|
 | 0 | **Prologue:** how a construction company works | Open the sample company, look around (Owner) | name the phases, the people, how money flows, the big leaks | done (19 Nov) | ch. 1 "Your sample company": done |
 | 1 | **Ep 1: The job is won** (drawings, BOQ, rates, contract, retention, advance) | ch. 2 "Set up Green Villa" (contract, BOQ upload) and ch. 3 "The BOQ" (Owner) | say what is agreed before the first brick and why the BOQ is the yardstick | **built, for review** (9.8 min; script [film/scripts/episode-01.md](film/scripts/episode-01.md)) | **written**, tested and fixed 20 Nov (UX-77) |
-| 2 | **Ep 2: Setting up** (sites, team on WhatsApp, items, suppliers, rates, schedule, report time) | Project start's other steps: schedule, team, suppliers (Owner) | list what must exist before day 1, and who sets it up | **built, for review** (9 min; [film/scripts/episode-02.md](film/scripts/episode-02.md)) | **missing**: the sample company comes already set up; needs a short chapter (see 3.2) |
-| 3 | **Ep 3: A day on site** | ch. 4 "A day on site" (Ravi, then the Owner's evening report) | follow one site day from Ravi's message to the daily report | **scripted, for review** ([film/scripts/episode-03.md](film/scripts/episode-03.md)) | general |
-| 4 | **Ep 4: Cement runs short** (request, quote, order, delivery, short load, stock, supplier bill, payment) | ch. 5 "Material" (Ravi, Anil) and ch. 8 "Money out" (Meera) | walk the material chain across all four people | **built, for review** (8.4 min, recorded from real entries, 21 Nov; [film/scripts/episode-04.md](film/scripts/episode-04.md)) | general |
-| 5 | **Ep 5: Wages week** | ch. 6 "Labour and wages" (Ravi, Owner, Meera) | run the weekly labour cycle, advances included | **built, for review** (5.6 min, recorded from real entries, 20 Nov; [film/scripts/episode-05.md](film/scripts/episode-05.md)) | general |
-| 6 | **Ep 6: Problems and machines** | none yet | follow a problem from WhatsApp to closed; a machine's day | recorded 21 Nov ([plan](film/EPISODE_06_PLAN.md)); waits for review | **missing** (see 3.3) |
-| 7 | **Ep 7: The subcontractor** | ch. 7 "A subcontractor" (Anil, Meera) | pay a subcontractor only for measured work | recorded 21 Nov ([plan](film/EPISODE_07_PLAN.md)); waits for review | general |
-| 8 | **Ep 8: Billing the client** | ch. 9 "Billing the client" (Owner) | explain how money comes in, variations included | to script | general |
-| 9 | **Ep 9: Is it making money?** ("Where every entry goes") | ch. 10 "Is it making money?" (Owner, Anil) | read a project's health halfway and act on a red line | recorded 21 Nov ([plan](film/EPISODE_09_PLAN.md)); waits for review | general |
-| 10 | **Ep 10: Month end** | ch. 11 "Month end" (Meera) | close a month: GST, TDS, cash and bank, the books, Tally | to script; needs story batch 1 | general |
-| 11 | **Ep 11: Handover, and after** | none yet (the 62-day plan's last days, played with Next day) | close a project: snags, final bill, handover, defects period, retention | to script | **missing** (see 3.3) |
+| 2 | **Ep 2: Setting up** (sites, team on WhatsApp, items, suppliers, rates, schedule, report time) | ch. 3's "Your turn: the schedule" (Quick plan); the team counts by itself in the sample (Owner) | list what must exist before day 1, and who sets it up | **built, for review** (9 min; [film/scripts/episode-02.md](film/scripts/episode-02.md)) | **in ch. 3** (UX-109, 22 Nov): the schedule; suppliers and opening stock are look-only |
+| 3 | **Ep 3: A day on site** | ch. 4 "A day on site" (day 2: Ravi's day, then the crew he missed typed on the site's day forms) | follow one site day from Ravi's message to the daily report | **scripted, for review** ([film/scripts/episode-03.md](film/scripts/episode-03.md)) | general |
+| 4 | **Ep 4: Cement runs short** (request, quote, order, delivery, short load, stock, supplier bill, payment) | ch. 5 "Cement runs short" (day 6) and ch. 8 "Money out" (day 10, your turn: the tea bill on the expense form) | walk the material chain across all four people | **built, for review** (8.4 min, recorded from real entries, 21 Nov; [film/scripts/episode-04.md](film/scripts/episode-04.md)) | general |
+| 5 | **Ep 5: Wages week** | ch. 6 "Wages week" (day 7, your turn: approve the wage sheet) | run the weekly labour cycle, advances included | **built, for review** (5.6 min, recorded from real entries, 20 Nov; [film/scripts/episode-05.md](film/scripts/episode-05.md)) | general |
+| 6 | **Ep 6: Problems and machines** | ch. 7 "Problems and machines" (day 9, your turn: report a problem on the issue form) | follow a problem from WhatsApp to closed; a machine's day | recorded 21 Nov ([plan](film/EPISODE_06_PLAN.md)); waits for review | written (UX-100, UX-101) |
+| 7 | **Ep 7: The subcontractor** | ch. 12 "A subcontractor" (day 39) | pay a subcontractor only for measured work | recorded 21 Nov ([plan](film/EPISODE_07_PLAN.md)); waits for review | general |
+| 8 | **Ep 8: Billing the client** | ch. 10 "Billing the client" (day 30, your turn: draft and send RA-01) | explain how money comes in, variations included | to script | general |
+| 9 | **Ep 9: Is it making money?** ("Where every entry goes") | ch. 11 "Is it making money?" (day 31) | read a project's health halfway and act on a red line | recorded 21 Nov ([plan](film/EPISODE_09_PLAN.md)); waits for review | general |
+| 10 | **Ep 10: Month end** | ch. 13 "Month end" (day 40) | close a month: GST, TDS, cash and bank, the books, Tally | to script; needs story batch 1 | general |
+| 11 | **Ep 11: Handover, and after** | ch. 15 "Handover, to closed" (day 62, your turn: the final bill, Handover, Defect period, Closed) | close a project: snags, final bill, handover, defects period, retention | to script | written (UX-100) |
 
 ## 3. Is this the right syllabus and order? The review (20 Nov)
 

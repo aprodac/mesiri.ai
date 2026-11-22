@@ -110,6 +110,19 @@ step's words in another place.
   to copy (a contract's figures) never have to be remembered (UX-77). Write those steps with the figures in `text`.
 - **Counts in the bubble are per chapter** in the guided project ("Set up Green Villa · 2 of 5").
 - **Day 0 is "Before day 1"**: name a sample-company day with `dayTitle(day)` (`lib/sandbox.ts`), never `Day ${n}`.
+- **The simulation's practice is on the dashboard's own forms, never Tell Mesiri** (asked 22 Nov 2026: "remove the tell
+  mesiri and data entry parts to data entry through normal forms", UX-101): a your-turn opens the page's form, the person
+  fills it, and `poll` checks the record arrived. A site's day has its own forms (a site's day page: Attendance and Work
+  done, `components/site-day/record-day-dialogs.tsx`, the same routes WhatsApp saves through). Material movements stay out
+  of your-turns: an extra bag used or delivered breaks the story's own count (chapter 9's three bags short).
+- **A your-turn that leads into another page** (Today's site row opens that site's day under /reports): list it in
+  `alsoOn`, else leaving the step's page ends the walkthrough. A target `a|b` lights the first on screen (Today's rows,
+  then the day's Attendance button).
+- **Each chapter names the plan entries it leaves the person** (`keep` in `JOURNEY_CHAPTERS`, ids from
+  `application/learn/sample_plan.py`, UX-104): playing on to its day, the cast does every other entry, the person's role
+  too, so For you and the morning briefing hold only the chapter's own to-do. A new your-turn that is a plan entry (an
+  approval, a bill) goes in its chapter's `keep`, or the cast does it first.
+- **A chapter's lesson** (`learned`, one line) is listed on the closing card (`JourneyFinished`).
 - **A quick check** (SS-72): `ask: { answer, right, wrong }`, the answer a `data-guide` marker (the build checks it).
   The bubble docks in the corner with nothing dimmed until they tap; a wrong tap lights the answer.
 - **Inside the sample company no page tour opens by itself** (the guided project does the showing); Help's "Show me

@@ -949,3 +949,22 @@ needs a key on the VPS and changes the voice shared with Live) is not done.
 - With sound on the opening lasts as long as its lines (about 17 s new, 4 s again) and a chapter card until its line is
   said; with sound off, the UX-72 timings.
 
+
+## 23. The play-through review and its fixes (22 Nov 2026, UX-101..UX-109)
+
+Asked 22 Nov: "check if the simulation is fully built ... storytelling and everything till end", then "sort and fix them
+all and remove the tell mesiri and data entry parts to data entry through normal forms". Played as the owner from a
+fresh sample company through all 15 chapters on a local copy of the app and database; what was found is in the tracker
+(UX-101 to UX-109), and was fixed as follows.
+
+| Found | Fixed |
+|---|---|
+| Chapter 4's only practice typed a site update into Tell Mesiri (the AI) | A site's day page has **Attendance** and **Work done** forms (`components/site-day/record-day-dialogs.tsx`, the existing `POST /labour/attendance` and `POST /progress/activities`, source `dashboard`). Chapter 4: "a crew Ravi missed": open the Annex's day from Today, add 2 carpenters at ₹1,000, then 6 rmt of plinth beam. Engine: `alsoOn` (a step may lead into another page) |
+| 8 of 15 chapters were look-only | Your-turns on real forms where they cannot break the story: the schedule's Quick plan (ch. 3), the issue form (ch. 7), the expense form (ch. 8). No material movements (they would change ch. 9's count) |
+| Tell Mesiri in the sample company added the letterhead offer, in Manglish | `message_journey`: neither setup nudge for a sample company's sender (UX-102) |
+| A closed project still asked for its schedule and site engineer; the sidebar said "Set up 2 of 6" | Project start names no "Next" from the handover on; the site team counts a sample company's people (`sandbox_gate.CAN_REPORT_SQL`, also the company setup's "has a reporter"); no setup list in the sidebar in a sample company; the schedule is a your-turn now (UX-103, UX-109) |
+| The finish was a corner toast | `JourneyFinished`: Green Villa is closed, each chapter's lesson (`learned`), Use it on my company / Play it again / Learn |
+| The briefing listed off-story to-dos and its Start left the chapter | `POST /learn/sandbox/next-day` takes `keep`: the guided project names each chapter's own plan entries; the cast plays every other one on the way. The briefing's one button is "Go on with the story" while the guided project runs (UX-104) |
+| The final bill read as "all the work" at ₹25 L of ₹82 L | The words say the running bills before Mesiri were on paper (UX-105); the real fix stays UX-78 |
+| The count step's bubble covered the card to open; the bubble went below a short screen; a page slid sideways | Count step lights the list until the sheet opens; a bubble placed by its top is never taller than the room under it; targets are scrolled into view up and down only (UX-106) |
+| Chapter cards named films out of order, some not made | Cards say "Film: Episode N", and only for made films (UX-107) |
