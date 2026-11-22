@@ -980,12 +980,10 @@ new guided-keep test) passed on a local Postgres. In a browser (v2 play-through)
 "Your turn: the schedule" (Quick plan) passed, and the sidebar no longer shows Set up in the sample company.
 
 **Not verified, do this first:**
-1. **The v2 play-through stalled after chapter 3**: day 2 was reached (`POST /learn/sandbox/next-day` 200, no page
-   error) but the guide did not reappear for "Monday, day 2"; the page stayed on the BOQ. Suspects, in order: the
-   morning briefing's new single button (`sandbox-scenes.tsx` Briefing `guided`) or `guidedProjectUnderWay()` (reads
-   sessionStorage `mesiri_walk_run`) leaving `sceneBusy` on; the `keep` change in `sandbox-clock.tsx`; or the play
-   script itself (it looks for `Go on with the story|Later|Close`). Reproduce with the script below and a screenshot of
-   that moment; compare with `git stash` of the sandbox-clock/sandbox-scenes changes.
+1. **The v2 play-through stopped after chapter 3, at the script, not the app**: its last screenshot is the day-2
+   briefing working as UX-104 meant (Owner: 1 contract, 2 wages approved by the cast; "Your part today: Nothing for you
+   today"; one button, "Go on with the story"). The script's text match missed that button (fixed in
+   `play_all_chapters.cjs`, not re-run). Re-run it from a fresh sample company first.
 2. Then play to the end and look at: chapter 4's forms (open the Annex's day from Today, Attendance 2 Carpenter at
    ₹1,000, Work done Plinth beam 6 rmt; the step must survive the move to `/reports/...` via `alsoOn`), ch. 7 issue
    form, ch. 8 expense form (category Food, Tea stall), ch. 9 count, the briefings (only the chapter's to-do), the

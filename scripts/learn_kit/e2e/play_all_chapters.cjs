@@ -70,7 +70,7 @@ const MODE_LABEL = { new_to_construction: "I'm new to construction", guided: 'Sh
   const clickIf = async (loc, label) => { if (await loc.count()) { await loc.first().click({ timeout: 8000 }).catch((e) => console.log('   click fail', label || '', e.message.split('\n')[0])); await pg.waitForTimeout(1500); return true } console.log('   not found:', label || ''); return false }
   const skipScenes = async () => { for (let i = 0; i < 4; i++) { const s = pg.getByRole('button', { name: /^Skip$/ }); if (await s.count() && await s.first().isVisible()) { await s.first().click().catch(() => {}); await pg.waitForTimeout(1200) } else break } }
   const briefing = async () => {
-    const go = pg.locator('button:visible').filter({ hasText: /^(Go on with the story|Later|Close)$/ })
+    const go = pg.locator('button:visible').filter({ hasText: /Go on with the story|^\s*(Later|Close)\s*$/ })
     if (!(await go.count())) return false
     const part = (await pg.locator('body').innerText()).match(/Your part today[\s\S]{0,260}?(Go on with the story|Later|Close)/)
     console.log('   BRIEFING:', (part ? part[0] : '?').replace(/\n/g, ' · '))
