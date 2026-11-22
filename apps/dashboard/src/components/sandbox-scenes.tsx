@@ -544,11 +544,10 @@ const UNITS_SAID: [RegExp, string][] = [
   [/\bhrs\b/g, 'hours'], [/\bkg\b/g, 'kilos'], [/\bm sand\b/g, 'M sand'],
 ]
 
-/** Words for the ear: rupees, units and letters said as they are spoken. */
+/** Words for the ear: units and letters as they are spoken; amounts stay "₹1,840" for the voice to say. */
 function aloud(text: string): string {
   let t = text
     .replace(/\b[A-Z]{2,}\/[\w/]+,?\s*/g, '') // a contract or bill number is never read out
-    .replace(/₹\s?(\d[\d,]*\d|\d)(\.\d+)?/g, '$1$2 rupees')
     .replace(/(\d)%/g, '$1 percent')
     .replace(/:\s+/g, ', ')
     .replace(/\s*&\s*/g, ' and ')
@@ -590,7 +589,7 @@ export function spokenDay(who: string, entries: StoryEntry[], limit = 690): stri
       else for (const e of of) parts.push(k === 'work' ? `they built ${builtAloud(e.what)}` : lower(told(e)).replace(/ for (Main block|Annex|Tower [AB])$/, ''))
     }
     const spent = es.filter((e) => e.kind === 'expense').reduce((t, e) => t + (Number(/₹\s?([\d,]+)/.exec(e.what)?.[1].replace(/,/g, '')) || 0), 0)
-    if (spent) parts.push(`${spent.toLocaleString('en-IN')} rupees went on small things`)
+    if (spent) parts.push(`₹${spent.toLocaleString('en-IN')} went on small things`)
     if (!parts.length && es.some((e) => e.kind === 'use')) parts.push('material was used')
     if (parts.length) sentences.push(`${place === 'The company' ? 'For the company' : `At ${place.split(' · ').pop()}`}, ${listed(parts)}.`)
   }

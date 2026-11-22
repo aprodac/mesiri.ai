@@ -129,6 +129,18 @@ class SarvamSettings(_Section):
     guide_tts_model: str = "bulbul:v3"
 
 
+class ElevenLabsSettings(_Section):
+    """UX-106: the walkthroughs' narrator (George, as the recorded lines) for lines made on the day: the morning
+    briefing, hints, a step changed since it was recorded. Unset = those lines stay with Sarvam."""
+
+    api_key: SecretStr | None = None
+    #: The recordings' voice and model (scripts/scene_audio); change both only with the recordings.
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    model: str = "eleven_multilingual_v2"
+    timeout_seconds: float = 15.0
+    max_retries: int = 1
+
+
 class GeminiSettings(_Section):
     api_key: SecretStr | None = None
     model: str = "gemini-2.5-flash"
@@ -211,6 +223,7 @@ class Settings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     object_storage: ObjectStorageSettings = Field(default_factory=ObjectStorageSettings)
     sarvam: SarvamSettings = Field(default_factory=SarvamSettings)
+    elevenlabs: ElevenLabsSettings = Field(default_factory=ElevenLabsSettings)
     gemini: GeminiSettings = Field(default_factory=GeminiSettings)
     deepseek: DeepSeekSettings = Field(default_factory=DeepSeekSettings)
     whatsapp: WhatsAppSettings = Field(default_factory=WhatsAppSettings)

@@ -135,7 +135,8 @@ step's words in another place.
 - **The voiced walkthroughs' steps are recorded once with ElevenLabs** (UX-76: `node scripts/scene_audio/guide_lines.mjs`,
   then `python3 scripts/scene_audio/make_guide_audio.py` → `public/learn/voice`); **changed words need both run again**,
   or that step falls back to the server's voice (`GET /dpr/live/voice?voice=guide`, Sarvam, made the first time it is
-  heard). Hints still use the server's voice.
+  heard). Hints, the briefing and any step not recorded are read on the day by the same ElevenLabs voice when the server
+  has `MESIRI_ELEVENLABS__API_KEY` (UX-106, `adapters/elevenlabs/voice.py`), else by Sarvam.
 - The player (play / pause, 1x to 2x, mute) lives in the bubble (`components/guide-voice.tsx`, one player for
   walkthroughs and page tours); the choice is kept per browser.
 - A page walkthrough's id in `VOICED` (`page-boq`) also gives that page's own tour (first visit, Help's "Show me
@@ -146,7 +147,7 @@ step's words in another place.
   the guide voice. A new or renamed chapter in `JOURNEY_CHAPTERS`, or a changed line, means running that script again;
   until then its card is simply silent.
 - **The morning briefing speaks each person's day** (UX-105): opening a person in it says their day in the guide's voice
-  (`spokenDay`, the server's voice: the words change every day).
+  (`spokenDay`; the words change every day, so the server reads them: ElevenLabs with its key, UX-106).
 - **One narrator at a time** (UX-101, `lib/narration.ts`): a scene's lines have the floor; a guide line waits for them,
   one playing pauses and goes on after, and a new line from any voice (tour, walkthrough, hint, Live) stops the others.
   Never play sound around these two systems.

@@ -132,3 +132,40 @@ async def test_voice_samples_are_a_fixed_list_reading_a_fixed_line(_fresh, monke
     with pytest.raises(HTTPException) as exc:
         await dpr_router.guide_voice_sample("anything_else", _auth=ME, settings=None)
     assert exc.value.status_code == 404
+
+
+# UX-106: a guide line made on the day (the briefing, a hint) is read by the recordings' ElevenLabs voice when its key
+# is set; Sarvam reads it without a key or when ElevenLabs fails. Live's own voice never changes.
+
+
+async def test_ux106_a_guide_line_is_read_by_the_narrator_when_set(_fresh, monkeypatch):
+    narrator = _Voice()
+    dpr_router._voices["narrator"] = narrator
+    res = await dpr_router.live_voice("Ravi, your site engineer.", voice_name="guide", _auth=ME, settings=None)
+    assert narrator.said == [("en-IN", "Ravi, your site engineer.")] and _fresh.said == []
+    assert res.media_type == "audio/mpeg"
+    again = await dpr_router.live_voice("Ravi, your site engineer.", voice_name="guide", _auth=ME, settings=None)
+    assert again.body == res.body and len(narrator.said) == 1  # cached
+
+
+async def test_ux106_sarvam_reads_it_when_the_narrator_fails(_fresh):
+    dpr_router._voices["narrator"] = _Voice(broken=True)
+    await dpr_router.live_voice("Ravi, your site engineer.", voice_name="guide", _auth=ME, settings=None)
+    assert _fresh.said == [("en-IN", "Ravi, your site engineer.")]
+
+
+async def test_ux106_guard_no_key_and_live_lines_stay_with_sarvam(_fresh):
+    dpr_router._voices["narrator"] = _Voice(configured=False)
+    await dpr_router.live_voice("Hello there", voice_name="guide", _auth=ME, settings=None)
+    narrator = _Voice()
+    dpr_router._voices["narrator"] = narrator
+    await dpr_router.live_voice("Saved: 50 bags of cement.", _auth=ME, settings=None)  # Live's voice
+    await dpr_router.live_voice("ഇന്ന് 8 മേസൺ", voice_name="guide", _auth=ME, settings=None)  # not English
+    assert narrator.said == [] and len(_fresh.said) == 3
+
+
+def test_ux106_the_narrator_says_rupees_the_indian_way():
+    from mesiri_ai.adapters.elevenlabs.voice import speakable
+
+    assert speakable("₹82,06,050, retention 5%") == "eighty-two lakh, six thousand and fifty rupees, retention 5 percent"
+    assert speakable("₹1,840 at Sri Hardwares") == "one thousand, eight hundred and forty rupees at Sri Hardwares"

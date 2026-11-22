@@ -675,6 +675,16 @@ def _voice_for(settings: Settings, who: str = "live") -> Any:
     return _voices[who]
 
 
+def _narrator_for(settings: Settings) -> Any | None:
+    """UX-106: the recordings' ElevenLabs voice for a guide line made on the day, when its key is set; else None."""
+    if "narrator" not in _voices:
+        from mesiri_ai.adapters.elevenlabs.voice import ElevenLabsVoice
+
+        _voices["narrator"] = ElevenLabsVoice(getattr(settings, "elevenlabs", None))
+    narrator = _voices["narrator"]
+    return narrator if narrator.configured else None
+
+
 #: SS-64: the narrator voices to choose from (model, speaker), each reading the same line. A fixed list and a fixed
 #: line, so this can't be used to speak anything else. The chosen one is set on the server (guide_tts_model / speaker).
 GUIDE_SAMPLES: dict[str, tuple[str, str]] = {
@@ -739,20 +749,28 @@ async def live_voice(
         raise HTTPException(status_code=422, detail=f"A line is at most {VOICE_MAX_CHARS} characters")
     key = (voice_name, voice_language(words), words)
     audio = _voice_cache.get(key)
-    if audio is None:
-        voice = _voice_for(settings, voice_name)
-        if not voice.configured:
-            raise HTTPException(status_code=503, detail="Mesiri's voice is not set up (no Sarvam key)")
-        try:
-            audio = await voice.speak(words, key[1], codec="mp3" if guide else None)
-        except Exception as exc:  # noqa: BLE001 -- Live stays silent, never breaks
-            logger.warning("live_voice.failed voice=%s lang=%s chars=%s", voice_name, key[1], len(words), exc_info=True)
-            raise HTTPException(status_code=502, detail="Mesiri's voice is not available right now") from exc
+    if audio is not None:
+        _voice_cache.move_to_end(key)
+    else:
+        if guide and key[1] == "en-IN" and (narrator := _narrator_for(settings)) is not None:
+            # UX-106: the same voice as the recorded steps and scenes; Sarvam reads it only if ElevenLabs fails.
+            try:
+                audio = await narrator.speak(words, key[1], codec="mp3")
+            except Exception:  # noqa: BLE001 -- Sarvam reads it instead
+                logger.warning("live_voice.narrator_failed chars=%s", len(words), exc_info=True)
+        if audio is None:
+            voice = _voice_for(settings, voice_name)
+            if not voice.configured:
+                raise HTTPException(status_code=503, detail="Mesiri's voice is not set up (no Sarvam key)")
+            try:
+                audio = await voice.speak(words, key[1], codec="mp3" if guide else None)
+            except Exception as exc:  # noqa: BLE001 -- Live stays silent, never breaks
+                logger.warning("live_voice.failed voice=%s lang=%s chars=%s", voice_name, key[1], len(words),
+                               exc_info=True)
+                raise HTTPException(status_code=502, detail="Mesiri's voice is not available right now") from exc
         _voice_cache[key] = audio
         while len(_voice_cache) > VOICE_CACHE_MAX:
             _voice_cache.popitem(last=False)
-    else:
-        _voice_cache.move_to_end(key)
     return Response(content=audio, media_type="audio/mpeg" if guide else "audio/wav",
                     headers={"Cache-Control": "private, max-age=86400"})
 
