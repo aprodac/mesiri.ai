@@ -450,6 +450,25 @@ async def test_the_setup_question_waits_for_a_light_message(monkeypatch):
     setup.after_reply.assert_awaited_once()
 
 
+
+async def test_no_setup_question_in_a_sample_company(monkeypatch):
+    """UX-102: a learner typing into Tell Mesiri in their sample company gets no setup question (the letterhead
+    offer was asked about a pretend company, in Manglish, under an English reply)."""
+    import uuid
+
+    from mesiri.domains.shared.sandbox_gate import sample_sender_id
+
+    on_normalized, deps, _, setup = _build(monkeypatch, role="ADMIN")
+    deps["interaction_handler"].handle_fast_path.return_value = None
+    sample = _message("hi")
+    sample.sender = SenderInfo(wa_id=sample_sender_id(uuid.uuid4()), profile_name="Owner")
+    await on_normalized(sample, {})
+    setup.after_reply.assert_not_awaited()
+
+    # The guard: a real owner's light message still gets it.
+    await on_normalized(_message("hi"), {})
+    setup.after_reply.assert_awaited_once()
+
 async def test_the_reaction_is_best_effort(monkeypatch):
     on_normalized, deps, _, _ = _build(monkeypatch)
     deps["sender"].send_reaction.side_effect = RuntimeError("meta down")

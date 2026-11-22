@@ -119,6 +119,13 @@ _PROCESSING_ACK_MODALITIES = frozenset({InputModality.IMAGE, InputModality.DOCUM
 _EARLY_ACK_TYPES = frozenset({"audio", "image", "document"})
 
 
+
+def _from_sample_company(wa_id: str | None) -> bool:
+    """UX-102: the sender is a person in a learning sample company (their sender id is never a phone)."""
+    from mesiri.domains.shared.sandbox_gate import sample_sender_user
+
+    return sample_sender_user(wa_id) is not None
+
 def early_ack(raw: Any) -> bool:
     """WA-258: the raw webhook message gets its ✅ the moment it is claimed: a voice note, photo or document that was
     not forwarded (a forwarded batch gets one summary, no acks: WA-02)."""
@@ -350,6 +357,11 @@ def build_message_handlers(
             # question (if any). Here, after every path's reply, rather than
             # in each of the journey's many early returns.
             actor = _resolved_actors.get(message.correlation_id)
+            # UX-102: neither the setup-progress card nor the setup questions in a sample company (a learner's
+            # Tell Mesiri): both set up the person's real company, and a letterhead offer about a pretend one, in
+            # Manglish under an English reply, only confuses the story.
+            if _from_sample_company(message.sender.wa_id):
+                actor = None
             # SS-17: the setup-progress card, after the first saved update and
             # after each step. Before the setup question, which then stays
             # quiet that day. Saved replies count (that is the trigger).
