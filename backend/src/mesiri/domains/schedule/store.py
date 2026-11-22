@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.domains.progress.boq import line_amounts
 from mesiri.domains.schedule import logic
 from mesiri.domains.shared import clock
+from mesiri.domains.shared.sandbox_gate import CAN_REPORT_SQL
 
 STAGES = ("tender", "won", "running", "handover", "defects", "closed")
 
@@ -318,7 +319,7 @@ async def checklist(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID
                          "AND COALESCE(status, 'active') <> 'archived'"),
         "reporters": await n("SELECT count(DISTINCT u.id) FROM users u JOIN project_members m ON m.user_id = u.id "
                              "WHERE m.project_id = :p AND u.organization_id = :org AND u.status = 'active' "
-                             "AND u.whatsapp_number IS NOT NULL"),
+                             f"AND {CAN_REPORT_SQL}"),
         "suppliers": await n("SELECT count(*) FROM vendors WHERE organization_id = :org"),
         "stock_moves": await n("SELECT count(*) FROM material_receipts WHERE project_id = :p AND organization_id = :org"),
         "work_orders": await n("SELECT count(*) FROM work_orders WHERE organization_id = :org AND project_id = :p "

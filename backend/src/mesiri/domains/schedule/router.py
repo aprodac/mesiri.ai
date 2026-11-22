@@ -35,6 +35,9 @@ from mesiri.infrastructure.postgres.dependency import get_db_conn
 
 router = APIRouter(tags=["schedule"], dependencies=[Depends(require_module("dpr"))])
 
+#: UX-103: the stages after the work is done: Project start stops asking for setup steps.
+FINISHED_STAGES = ("handover", "defects", "closed")
+
 STAGE_WORDS = {
     "tender": "Tender", "won": "Won", "running": "Running", "handover": "Handover", "defects": "Defect period",
     "closed": "Closed",
@@ -232,6 +235,9 @@ async def project_start(project_id: uuid.UUID, auth: AuthorizationContext = Depe
     required = [s for s in steps if not s.get("optional")]
     nxt = next((s["key"] for s in required if not s["done"]), None) or next(
         (s["key"] for s in steps if not s["done"]), None)
+    # UX-103: from the handover on, the start is over: nothing is "next" to set up on a handed-over or closed project.
+    if proj.get("stage") in FINISHED_STAGES:
+        nxt = None
     return _iso({"project": _project_out(proj), "steps": steps, "next": nxt,
                  "ready": all(s["done"] for s in required), "done": sum(1 for s in steps if s["done"]),
                  "total": len(steps), "counts": counts, "can_edit": _may_edit(auth),

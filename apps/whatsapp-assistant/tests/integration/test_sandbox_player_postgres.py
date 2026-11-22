@@ -109,6 +109,26 @@ async def test_my_entries_wait_for_me_and_are_ticked_when_i_do_them(world):
     assert any(f.kind == "supplier_bill" and f.day == 7 for f in nxt.for_you)
 
 
+
+async def test_the_guided_project_keeps_only_its_chapters_entries(world):
+    """UX-104: the guided project plays on to a chapter's day keeping only that chapter's entries for the person; the
+    cast plays every other one on the way (the owner's day-2 approvals, Lake View's wage sheet), so For you and the
+    briefing hold only the story's to-do."""
+    app, engine, person = world
+    await sandbox.open_sandbox(engine, app, person)
+    # Chapter 4 lands on day 2 keeping nothing; chapter 6 on day 7 keeps Green Villa's wage sheet only.
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=2, keep=frozenset())
+    assert not moved.failed and moved.for_you == []
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=5,
+                                  keep=frozenset({"d07-wage_approve-green_villa"}))
+    assert not moved.failed
+    assert [f.id for f in moved.for_you] == ["d07-wage_approve-green_villa"]
+    # Only what needs the chapter's own approval waits: Meera pays once the person approves.
+    assert [w["id"] for w in moved.waiting] == ["d07-wage_pay-green_villa"]
+    # The guard: a plain Next day still leaves the person's whole day to them.
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=2)
+    assert {f.id for f in moved.for_you} >= {"d07-wage_approve-green_villa"}
+
 async def test_what_i_did_not_do_holds_up_what_needs_it(world):
     app, engine, person = world
     await sandbox.open_sandbox(engine, app, person, role="SITE_ENGINEER")

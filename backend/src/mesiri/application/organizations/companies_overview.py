@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 import sqlalchemy as sa
 
 from mesiri.domains.organizations import lifecycle
+from mesiri.domains.shared.sandbox_gate import CAN_REPORT_SQL
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -101,7 +102,7 @@ _SELECT = """
            EXISTS (SELECT 1 FROM users u
              JOIN project_members pm ON pm.user_id = u.id
              WHERE u.organization_id = o.id AND lower(u.status) = 'active'
-               AND u.whatsapp_number IS NOT NULL
+               AND {CAN_REPORT_SQL}
                AND upper(u.role) IN ('SITE_ENGINEER', 'PROJECT_MANAGER')) AS has_reporter,
            LEAST(
              (SELECT min(a.created_at) FROM activities a
@@ -140,7 +141,7 @@ _SELECT = """
              WHERE st.organization_id = o.id AND st.key = 'continue_requests'
                AND r ->> 'status' = 'open') AS continue_requested_at
     FROM organizations o
-"""
+""".replace("{CAN_REPORT_SQL}", CAN_REPORT_SQL)
 _DEFAULTS = {"default_cutoff": DEFAULT_CUTOFF_TIME, "default_send": DEFAULT_SEND_TIME}
 DEFAULT_RETENTION_DAYS = 30
 

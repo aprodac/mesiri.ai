@@ -18,7 +18,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mesiri.application.learn import sandbox
 from mesiri.domains.shared.auth import get_current_user
@@ -134,6 +134,10 @@ class NextDayIn(BaseModel):
     days: int = 1
     #: The role the person is playing: theirs is left for them on the day they land on.
     role: str = sandbox.OWNER
+    #: UX-104: the guided project playing on to a chapter's day: the plan entries (ids) that chapter asks the person to
+    #: do on the day they land on. Everything else, theirs too, is played by the cast on the way, so "For you" and the
+    #: morning briefing hold only the story's own to-dos. Left out: a plain Next day (the person's day is theirs).
+    keep: list[str] | None = Field(default=None, max_length=20)
 
 
 class MovedOut(BaseModel):
@@ -175,7 +179,8 @@ async def post_next_day(request: Request, body: NextDayIn | None = None,
     if body.role.upper() not in sandbox.PLAYABLE_ROLES:
         raise HTTPException(status_code=422, detail=f"role must be one of {list(sandbox.PLAYABLE_ROLES)}")
     try:
-        out = await sandbox_player.next_day(_engine(request), request.app, person, role=body.role, days=body.days)
+        out = await sandbox_player.next_day(_engine(request), request.app, person, role=body.role, days=body.days,
+                                            keep=None if body.keep is None else frozenset(body.keep))
     except sandbox.SandboxError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return MovedOut(**{**out.__dict__, "for_you": [ForYouOut(**f.__dict__) for f in out.for_you]})

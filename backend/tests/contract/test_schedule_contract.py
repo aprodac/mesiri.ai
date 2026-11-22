@@ -307,6 +307,14 @@ async def test_project_start_checklist_and_stage(client, ctx):
     mine = next(p for p in r.json() if p["id"] == str(ctx["project"]))
     assert mine["stage"] == "won" and mine["planned_finish"] == "2027-06-30"
 
+    # UX-103: from the handover on nothing is "next" to set up (the closed sample project asked for its schedule).
+    for stage in ("handover", "defects", "closed"):
+        r = await client.patch(f"/projects/{ctx['project']}/start", json={"stage": stage}, headers=_h(ctx["admin"]))
+        assert r.status_code == 200 and r.json()["next"] is None, (stage, r.text)
+    # The guard: back to running, the next step is asked for again.
+    r = await client.patch(f"/projects/{ctx['project']}/start", json={"stage": "running"}, headers=_h(ctx["admin"]))
+    assert r.json()["next"] == "boq"
+
 
 # -- BOQ import ------------------------------------------------------------------------------------------------------
 
@@ -532,3 +540,34 @@ async def test_a_drawings_draft_schedule_is_added_in_order_and_never_overwrites(
     _, engineer = await _user(test_engine, ctx["org"], "site_engineer")
     assert (await client.post(f"{url}/from-drawing", json={"start": "2026-12-01", "activities": [
         {"name": "X", "days": 1}]}, headers=_h(engineer))).status_code == 403
+
+
+async def test_a_sample_companys_site_engineer_counts_as_the_site_team(client, test_engine, ctx):
+    """UX-103: the site team step counted only people with a WhatsApp number; a sample company's people never have
+    one (they talk to Mesiri through a sample sender id), so its project was asked forever to add the site engineer."""
+    sample = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO organizations (id, name, deployment_type, db_route, status, sandbox_of, "
+                             "created_at, updated_at) VALUES (:id, 'Sample', 'local', 'default', 'sandbox', :real, "
+                             "now(), now())", id=sample, real=ctx["org"])
+    project, _site = await _project(test_engine, sample, "Green Villa")
+    engineer = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, "
+                             "created_at, updated_at) VALUES (:id, :org, :email, 'hash', 'Ravi', 'SITE_ENGINEER', "
+                             "'active', now(), now())", id=engineer, org=sample, email=f"{uuid.uuid4().hex[:8]}@x.test")
+    await _exec(test_engine, "INSERT INTO project_members (id, project_id, user_id) VALUES (gen_random_uuid(), :p, :u)", p=project, u=engineer)
+    owner_id = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, "
+                             "access_policy, created_at, updated_at) VALUES (:id, :org, :email, 'hash', 'Owner', 'admin', "
+                             "'active', CAST('{\"mode\": \"all_projects\", \"projects\": []}' AS jsonb), now(), now())",
+                id=owner_id, org=sample, email=f"{uuid.uuid4().hex[:8]}@x.test")
+    owner = create_access_token(data={"sub": str(owner_id), "org": str(sample), "role": "admin"})
+    r = await client.get(f"/projects/{project}/start", headers=_h(owner))
+    assert r.status_code == 200, r.text
+    assert {s["key"]: s for s in r.json()["steps"]}["team"]["done"] is True
+
+    # The guard: in a real company, someone with no WhatsApp number is still not the site team.
+    await _exec(test_engine, "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, "
+                             "created_at, updated_at) VALUES (:id, :org, :email, 'hash', 'Ravi', 'SITE_ENGINEER', "
+                             "'active', now(), now())", id=uuid.uuid4(), org=ctx["org"], email=f"{uuid.uuid4().hex[:8]}@x.test")
+    r = await client.get(f"/projects/{ctx['project']}/start", headers=_h(ctx["admin"]))
+    assert {s["key"]: s for s in r.json()["steps"]}["team"]["done"] is False

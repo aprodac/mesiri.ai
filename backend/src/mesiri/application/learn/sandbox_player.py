@@ -946,8 +946,11 @@ async def go_back(engine: Any, person: RealPerson, *, day: int, role: str = OWNE
     return Moved(day=day, date=date, token=token, expires_at=expires, for_you=for_you)
 
 
-async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWNER, days: int = 1) -> Moved:
-    """Days pass in my sample company: the cast plays the plan (section 18.1)."""
+async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWNER, days: int = 1,
+                   keep: frozenset[str] | None = None) -> Moved:
+    """Days pass in my sample company: the cast plays the plan (section 18.1). ``keep`` (UX-104, the guided project
+    playing on to a chapter): the person keeps only these entries of the day they land on; the cast plays the rest,
+    theirs included, so nothing off the story waits in For you."""
     role = (role or OWNER).upper()
     if not 1 <= days <= MAX_DAYS:
         raise SandboxError(f"days must be 1 to {MAX_DAYS}", 422)
@@ -963,12 +966,12 @@ async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWN
     target = min(start + days, p.last_day)
     # A play runs as its own task with no request state carried in (no tenant, no date), like the seed.
     async with _one_at_a_time(engine, org):
-        return await asyncio.create_task(_next(engine, app, person, org, day0, start, target, role),
+        return await asyncio.create_task(_next(engine, app, person, org, day0, start, target, role, keep),
                                          context=contextvars.Context())
 
 
 async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0: dt.date, start: int, target: int,
-                role: str) -> Moved:
+                role: str, keep: frozenset[str] | None = None) -> Moved:
     p = sp.plan()
     async with engine.connect() as conn:
         first = not await sd.has(conn, org, start)
@@ -997,9 +1000,13 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
             async with engine.connect() as conn:
                 played = await _played(conn, org)
             yours_today = day == target
-            due = [e for e in p.entries if e.day <= day and e.id not in played
-                   and not (e.role == role and (yours_today or e.day < start + 1))
-                   and (e.day, e.role) not in yours]
+            if keep is not None:  # UX-104: guided: the person keeps only the chapter's own entries of the landing day
+                due = [e for e in p.entries if e.day <= day and e.id not in played
+                       and not (yours_today and e.id in keep)]
+            else:
+                due = [e for e in p.entries if e.day <= day and e.id not in played
+                       and not (e.role == role and (yours_today or e.day < start + 1))
+                       and (e.day, e.role) not in yours]
             for e in due:
                 try:
                     record = await _play(w, e)
@@ -1014,7 +1021,7 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 played_now.append(e)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
-            if yours_today:  # the day's entries of this role are the person's from now on (``_yours``), saved with it
+            if yours_today and keep is None:  # the day's entries of this role are the person's from now on (``_yours``)
                 await _record(engine, org, None, "done", entry_id=f"you:{day:03d}:{role}", day=day, role=role)
             # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
             await _save(engine, org, day, day0)

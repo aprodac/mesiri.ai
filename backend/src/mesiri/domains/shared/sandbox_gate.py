@@ -33,6 +33,15 @@ _sandbox_of: ContextVar[str | None] = ContextVar("mesiri_sandbox_of", default=No
 SAMPLE_SENDER_PREFIX = "0000"
 _SAMPLE_SENDER_LEN = 43
 
+#: UX-103: SQL for "this person (``u``, a users row) can send updates from site": a WhatsApp number, or a person in a
+#: sample company, who never has one (above) and talks to Mesiri through a sample sender id. The project start's site
+#: team step and the company's setup ("has a reporter") both count reporters with it, so a sample company is not
+#: asked forever to add a site engineer it already has.
+CAN_REPORT_SQL = (
+    "(u.whatsapp_number IS NOT NULL OR EXISTS (SELECT 1 FROM organizations so "
+    "WHERE so.id = u.organization_id AND so.sandbox_of IS NOT NULL))"
+)
+
 
 def sample_sender_id(user_id: uuid.UUID) -> str:
     return SAMPLE_SENDER_PREFIX + str(user_id.int).zfill(_SAMPLE_SENDER_LEN - len(SAMPLE_SENDER_PREFIX))
