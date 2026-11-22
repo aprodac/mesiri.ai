@@ -65,6 +65,7 @@ import { initialsOf } from '@/lib/initials'
 import { EVERYDAY, MAX_PINS, openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
 import { SUGGEST_DAYS, SUGGEST_SCORE, dismissSuggestion, dismissedSuggestions, usePageUsage } from '@/lib/page-usage'
 import { openAllPages } from '@/lib/all-pages'
+import { inSandbox } from '@/lib/sandbox'
 
 type NavItem = {
   title: string
@@ -328,7 +329,9 @@ export function AppSidebar() {
   // 1. Setting up: the company admin's steps still to do (lib/setup.ts, the same list the card on Home counts).
   const setup = useSetupProgress()
   const guideSteps = useGuideSteps()
-  const steps = setup.data && setup.isCompanyAdmin && !trial.readOnly ? setupNavSteps(setup.data, guideSteps) : []
+  // UX-103: never in a sample company: it is there to learn on, never to set up (its people have no phones, so "Add
+  // your site engineer" stayed up to the end of the guided project).
+  const steps = setup.data && setup.isCompanyAdmin && !trial.readOnly && !inSandbox() ? setupNavSteps(setup.data, guideSteps) : []
   const setupDone = setup.data ? setupCounts(setup.data, guideSteps) : null
   const settingUp = steps.length > 0 && !!setupDone && setupDone.done < setupDone.total
   const toDo = steps.filter((s) => !s.done)

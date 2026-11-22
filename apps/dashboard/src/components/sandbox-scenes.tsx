@@ -400,7 +400,7 @@ export function ArrivalIris({ onDone }: { onDone: () => void }) {
 }
 
 /** The morning: what each person did, then the person's own part of the day. */
-export function Briefing({ day, date, moments, summary, forYou, waiting, onClose }: {
+export function Briefing({ day, date, moments, summary, forYou, waiting, onClose, guided = false }: {
   day: number
   date: string
   moments: Moment[]
@@ -408,6 +408,9 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
   forYou: ForYou[]
   waiting: number
   onClose: () => void
+  /** UX-104: the guided project is under way: its chapter walks the person to their part, so the one button goes on
+   *  with the story instead of opening the first to-do (which took them off the chapter). */
+  guided?: boolean
 }) {
   const open = useOpen(150)
   useSounds([{ id: 'briefing', delay: 450 }], `briefing-${day}`)
@@ -461,10 +464,16 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
             )}
           </div>
           <div className="flex items-center justify-end gap-2">
+            {guided ? (
+              <button type="button" onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+                Go on with the story <ChevronRight className="size-4" aria-hidden />
+              </button>
+            ) : (
             <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-sm text-white/70 hover:bg-white/10 hover:text-white">
               {todo.length ? 'Later' : 'Close'}
             </button>
-            {todo.length > 0 && (
+            )}
+            {!guided && todo.length > 0 && (
               <Link to={todo[0].page} onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
                 Start <ChevronRight className="size-4" aria-hidden />
               </Link>
@@ -590,7 +599,7 @@ export function EpisodeCard({ number, of, title, line, film, onDone }: { number:
       aria-live="assertive"
     >
       <div className="grid max-w-[90vw] justify-items-start gap-4 px-6">
-        <span className="font-mono text-[12px] tracking-[0.14em] text-white/55 uppercase">Chapter {number} of {of}{film ? ` · ${film}` : ''}</span>
+        <span className="font-mono text-[12px] tracking-[0.14em] text-white/55 uppercase">Chapter {number} of {of}{film ? ` · Film: ${film}` : ''}</span>
         <RisingTitle text={title} show={open} delay={250} className="text-[clamp(44px,9vw,120px)]" />
         {line && open && <Ink text={line} writing delay={700} className="text-[clamp(16px,2vw,22px)] text-white/75" />}
         <span className="h-[3px] bg-primary transition-[width] duration-[2200ms] ease-in-out" style={{ width: open ? '100%' : '0%' }} aria-hidden />

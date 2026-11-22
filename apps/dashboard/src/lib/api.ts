@@ -1922,6 +1922,40 @@ export interface SiteDayDetail {
   summary: string | null
 }
 
+/** UX-101: attendance typed on the dashboard (a site's day): the same save as WhatsApp's attendance. */
+export interface AttendanceLineInput {
+  trade: string
+  headcount: number
+  daily_wage?: string | null
+  contractor?: string | null
+}
+
+export async function recordAttendanceApi(
+  payload: { project_id: string; site_id: string; occurred_date: string; lines: AttendanceLineInput[]; notes?: string | null },
+  idempotencyKey: string,
+): Promise<unknown> {
+  const res = await api.post('/labour/attendance', { ...payload, recorded_via: 'dashboard' }, { headers: { 'Idempotency-Key': idempotencyKey } })
+  return res.data
+}
+
+/** UX-101: work done typed on the dashboard (a site's day): the same save as WhatsApp's work report. */
+export async function recordWorkApi(
+  payload: {
+    project_id: string
+    site_id: string
+    activity_date: string
+    work_type: string
+    narrative?: string | null
+    quantities: { quantity: string; unit: string }[]
+    place?: string | null
+    finished?: boolean
+  },
+  idempotencyKey: string,
+): Promise<unknown> {
+  const res = await api.post('/progress/activities', { ...payload, source: 'dashboard' }, { headers: { 'Idempotency-Key': idempotencyKey } })
+  return res.data
+}
+
 export async function fetchSiteDayApi(siteId: string, date: string): Promise<SiteDayDetail> {
   const res = await api.get<SiteDayDetail>(`/dpr/site-days/${siteId}`, { params: { date } })
   return res.data

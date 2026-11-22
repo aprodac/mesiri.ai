@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SiteDayMoney } from '@/components/expenses/site-day-money'
 import { SiteDayMachines } from '@/components/equipment/site-day-machines'
+import { AttendanceDialog, WorkDoneDialog } from '@/components/site-day/record-day-dialogs'
 import {
-  Check, CheckCheck, CircleCheck, CircleDashed, HardHat, History, Info, MessageSquareText, Package, Pencil, TriangleAlert, Users, Radio,
+  Check, CheckCheck, CircleCheck, CircleDashed, Hammer, HardHat, History, Info, MessageSquareText, Package, Pencil, TriangleAlert, Users, Radio,
 } from 'lucide-react'
 import { HardHat as IcHardHat, Hammer as IcHammer, Camera as IcCamera, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import {
@@ -605,6 +606,8 @@ export default function SiteDayPage() {
   const [removing, setRemoving] = React.useState<ReviewItem | null>(null)
   const [editing, setEditing] = React.useState<ReviewItem | null>(null)
   const [approving, setApproving] = React.useState(false)
+  // UX-101: the day typed here, beside what WhatsApp sends.
+  const [adding, setAdding] = React.useState<'attendance' | 'work' | null>(null)
   const [view, setView] = useUrlState<DprView>('view', 'review')
 
   // WEB-27: the day is live -- updates sent from site appear without a reload.
@@ -657,6 +660,7 @@ export default function SiteDayPage() {
   const current = detail.versions.find((v) => v.is_current)
   const bySection = (key: ReviewItem['section']) => detail.items.filter((i) => i.section === key)
   const labour = detail.report.labour
+  const dayScope = { projectId: detail.project_id, siteId, siteName: day?.site_name ?? 'this site', date }
 
   const openPdf = async (version: DprVersion) => {
     if (!reportId) return
@@ -777,6 +781,18 @@ export default function SiteDayPage() {
                 </span>
               ))}
               {!reportId && <span className="basis-full text-xs text-muted-foreground sm:basis-auto sm:pl-1">The report is built at the cutoff; items can be checked now.</span>}
+            </div>
+          )}
+
+          {!readOnly && (
+            <div className="flex flex-wrap items-center gap-2" data-guide="dayform.actions">
+              <span className="mr-1 text-sm text-muted-foreground">Add to the day:</span>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAdding('attendance')} data-guide="dayform.add-attendance">
+                <Users className="size-4" /> Attendance
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAdding('work')} data-guide="dayform.add-work">
+                <Hammer className="size-4" /> Work done
+              </Button>
             </div>
           )}
 
@@ -909,6 +925,12 @@ export default function SiteDayPage() {
       )}
 
       <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />
+      {!readOnly && (
+        <>
+          <AttendanceDialog open={adding === 'attendance'} onOpenChange={(o) => setAdding(o ? 'attendance' : null)} scope={dayScope} onSaved={refresh} />
+          <WorkDoneDialog open={adding === 'work'} onOpenChange={(o) => setAdding(o ? 'work' : null)} scope={dayScope} onSaved={refresh} />
+        </>
+      )}
       <RemoveDialog
         item={removing}
         busy={busy}

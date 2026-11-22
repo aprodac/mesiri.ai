@@ -392,11 +392,12 @@ export function useSandboxClock() {
 
 /** Days pass (1..7): the cast plays them; this tab takes the new token (its date moved) and loads the page again, so
  *  every page shows the new day. What happened is kept to say once ("While you were away"). */
-export async function passDays(days: number, beforeReload?: (d: DaysPassed) => Promise<void>): Promise<void> {
+export async function passDays(days: number, beforeReload?: (d: DaysPassed) => Promise<void>, keep?: string[]): Promise<void> {
   const s = store()
   const session = sandboxSession()
   if (!s || !session) throw new Error('Open your sample company first.')
-  const res = await api.post<DaysPassed>(`${SANDBOX_PATH}/next-day`, { days, role: session.role })
+  // UX-104: `keep` (the guided project): the cast plays everything on the way but the chapter's own entries.
+  const res = await api.post<DaysPassed>(`${SANDBOX_PATH}/next-day`, { days, role: session.role, ...(keep ? { keep } : {}) })
   const d = res.data
   s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
   s.setItem(AWAY_KEY, JSON.stringify({ from: d.day - days, ...d, token: undefined }))
@@ -448,6 +449,8 @@ export async function goBackTo(day: number, beforeReload?: (d: DaysPassed) => Pr
 // -- The guided project plays the story's days (21 Nov 2026: "fill its gaps"): each chapter on its own story day ----
 
 const TARGET_KEY = 'mesiri_sandbox_target'
+/** UX-104: the plan entries the guided project's chapter leaves the person on its day (the cast does the rest). */
+const KEEP_KEY = 'mesiri_sandbox_keep'
 export const PLAY_TO_EVENT = 'mesiri:sandbox-play-to'
 export const SCENE_BUSY_EVENT = 'mesiri:sandbox-scene-busy'
 let sceneBusy = false
@@ -460,12 +463,24 @@ export function sandboxTarget(): number | null {
 
 export function clearSandboxTarget() {
   store()?.removeItem(TARGET_KEY)
+  store()?.removeItem(KEEP_KEY)
+}
+
+/** UX-104: what the guided project leaves the person on the day it plays to (null: a plain Next day). */
+export function sandboxKeep(): string[] | null {
+  try {
+    const v = JSON.parse(store()?.getItem(KEEP_KEY) ?? 'null') as unknown
+    return Array.isArray(v) ? v.map(String) : null
+  } catch {
+    return null
+  }
 }
 
 /** Play the days up to `day` (never back): the clock plays them a week at a time with its own scenes, then the
  *  morning briefing of that day. */
-export function playToDay(day: number) {
+export function playToDay(day: number, keep: string[] = []) {
   store()?.setItem(TARGET_KEY, String(day))
+  store()?.setItem(KEEP_KEY, JSON.stringify(keep))
   window.dispatchEvent(new CustomEvent(PLAY_TO_EVENT, { detail: day }))
 }
 

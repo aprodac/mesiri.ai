@@ -196,7 +196,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
               </span>
             </Callout>
           ) : undated.length === s.activities.length ? (
-            <Callout tone="info" icon={Rocket} action={canEdit && <Button size="sm" onClick={() => setQuick(true)} className="gap-1.5"><ListOrdered className="size-4" /> Quick plan</Button>}>
+            <Callout tone="info" icon={Rocket} action={canEdit && <Button size="sm" onClick={() => setQuick(true)} className="gap-1.5" data-guide="schedule.quick"><ListOrdered className="size-4" /> Quick plan</Button>}>
               <strong className="tabular-nums">{undated.length}</strong> {undated.length === 1 ? 'section' : 'sections'} without dates
               <Hint title="Quick plan" text="Puts the BOQ's sections one after another from the start date, each as long as its share of the work. Move any bar afterwards." />
             </Callout>

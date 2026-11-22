@@ -17,11 +17,11 @@ import { urlWithScope } from '@/lib/scope-url'
 import { PAGE_TOURS, stepFor } from '@/lib/tours'
 import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
-import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
+import { WALKTHROUGH_EVENT, WALK_RUN_KEY, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { SCENE_BUSY_EVENT, inSandbox, peekSandboxStart, playToDay, sandboxSceneBusy, takeSandboxStart, useSandboxClock, whenOpeningDone } from '@/lib/sandbox'
+import { SCENE_BUSY_EVENT, inSandbox, leaveSandbox, peekSandboxStart, playToDay, resetSandbox, sandboxSceneBusy, takeSandboxStart, useSandboxClock, whenOpeningDone } from '@/lib/sandbox'
 import {
-  JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  JOURNEY, JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { waLink } from '@/lib/whatsapp-modal'
@@ -61,6 +61,11 @@ function onPage(url: string, pathname: string, search: string): boolean {
   if (view) return view === want
   const first = ALL_PAGES.find(({ page }) => page.url.split('?')[0] === path)?.page.url
   return first === url
+}
+
+/** UX-101: on the step's page, or on a page the step leads into (`alsoOn`: Today's site row opens its day). */
+function onStepPage(step: WalkStep, pathname: string, search: string): boolean {
+  return [step.page, ...(step.alsoOn ?? [])].some((url) => !!url && onPage(url, pathname, search))
 }
 
 /** The check's route and params with the picked project in place of `{project}` (in the path or a param: the RA
@@ -307,8 +312,58 @@ function Finished({ walk, next, onClose }: { walk: Walkthrough; next?: Walkthrou
   )
 }
 
+/** UX-103: the guided project's ending: what each chapter taught, then what to do with it. Not a corner toast: the
+ *  person has just closed a project. */
+function JourneyFinished({ onClose }: { onClose: () => void }) {
+  const [busy, setBusy] = React.useState(false)
+  const again = async () => {
+    if (!window.confirm('Play it again? Everything you did in the sample company is removed and a fresh one is made (about 10 seconds).')) return
+    setBusy(true)
+    try {
+      await resetSandbox()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-3" data-tour="" role="dialog" aria-modal="true" aria-labelledby="journey-done">
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-2xl border bg-background p-5 shadow-2xl" data-guide="journey.done">
+        <div className="flex items-center gap-3">
+          <Spark mood="happy" size={56} className="shrink-0" />
+          <div>
+            <p id="journey-done" className="m-0 text-lg font-semibold">Green Villa is closed</p>
+            <p className="m-0 text-sm text-muted-foreground">From the contract to the keys, in your own sample company. What you did:</p>
+          </div>
+        </div>
+        <ol className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm">
+          {JOURNEY_CHAPTERS.map((c, i) => (
+            <li key={c.title} className="flex gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+              <span>
+                <span className="font-medium">{i + 1}. {c.title}.</span> <span className="text-muted-foreground">{c.learned}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="m-0 rounded-lg bg-muted/50 px-3 py-2 text-sm">Your own company works the same way: start with your project's contract and your estimate Excel.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {inSandbox() ? (
+            <Button onClick={() => leaveSandbox('/home')}>Use it on my company</Button>
+          ) : (
+            <Button asChild><Link to="/home" onClick={onClose}>Use it on my company</Link></Button>
+          )}
+          {inSandbox() && <Button variant="outline" disabled={busy} onClick={() => void again()}>{busy ? 'Making a fresh one…' : 'Play it again'}</Button>}
+          <Button variant="outline" asChild><Link to="/learn" onClick={onClose}>Learn Mesiri</Link></Button>
+          <button type="button" onClick={onClose} className="text-xs text-muted-foreground underline underline-offset-2">Close</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 /** Where the guided project is (walk id, step), kept in this tab across reloads (21 Nov 2026). */
-const RUN_KEY = 'mesiri_walk_run'
+const RUN_KEY = WALK_RUN_KEY
 
 export function WalkthroughRunner() {
   const { me } = useAuth()
@@ -517,7 +572,7 @@ export function WalkthroughRunner() {
     // own scenes, then that morning's briefing); the page then reloads and the project goes on from here.
     if (inSandbox() && (sceneBusy || (step.day && clockDay === undefined))) return
     if (inSandbox() && step.day && clockDay !== undefined && clockDay < step.day) {
-      playToDay(step.day)
+      playToDay(step.day, step.keep ?? [])
       return
     }
     // A step about every project (21 Nov: "handling multiple projects"): the top bar goes to All projects first.
@@ -537,13 +592,13 @@ export function WalkthroughRunner() {
       }).catch(() => undefined)
     }
     const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
-    if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
+    if (step.page && navigated.current !== here && !onStepPage(step, window.location.pathname, window.location.search)) {
       navigated.current = here
       navigateRef.current(urlWithScope(step.page, scopeFor))
     }
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
-      const arrived = !step.page || onPage(step.page, window.location.pathname, window.location.search)
+      const arrived = !step.page || onStepPage(step, window.location.pathname, window.location.search)
       const drawn = !step.target || !!findTarget(step.target)
       // When is a missing target really missing (no data, the other of an either/or step, a picker already passed)?
       // At once when the page tour's content markers (startWhen) are on screen: the page has loaded. Else shortly
@@ -578,7 +633,7 @@ export function WalkthroughRunner() {
   // Leaving the walkthrough's pages by hand (the sidebar, a link) ends it: the person went their own way.
   React.useEffect(() => {
     if (!run || !step?.page || !shown) return
-    if (!onPage(step.page, pathname, search)) stop()
+    if (!onStepPage(step, pathname, search)) stop()
   }, [pathname, search, run, step, shown, stop])
 
   const tryIt = step?.try
@@ -731,6 +786,7 @@ export function WalkthroughRunner() {
   }, [run, shown, dialogOpen, tryIt, stop])
 
   if (episode) return <EpisodeCard {...episode} onDone={() => setEpisode(null)} />
+  if (finished && !run && finished.walk.id === JOURNEY.id) return <JourneyFinished onClose={() => setFinished(null)} />
   if (finished && !run) return <Finished walk={finished.walk} next={finished.next} onClose={() => setFinished(null)} />
   if (!run || !step) return null
 

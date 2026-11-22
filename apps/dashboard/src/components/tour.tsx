@@ -78,6 +78,18 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
   return document.scrollingElement as HTMLElement | null
 }
 
+/** Bring a thing to the middle of its scrolling box, up and down only. Never `scrollIntoView`: it also scrolls boxes
+ *  that hide their sideways overflow, and Pending deliveries slid over the sidebar (UX-106, 22 Nov play-through). */
+function centreVertically(el: HTMLElement) {
+  const box = scrollParent(el)
+  if (!box) return
+  const r = el.getBoundingClientRect()
+  const isPage = box === document.scrollingElement
+  const view = isPage ? { top: 0, height: window.innerHeight } : { top: box.getBoundingClientRect().top, height: box.clientHeight }
+  const by = r.top - view.top - Math.max(0, (view.height - r.height) / 2)
+  if (Math.abs(by) > 1) box.scrollBy({ top: by, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+}
+
 export function useRect(target: string | undefined, index: number): DOMRect | null {
   const [rect, setRect] = React.useState<DOMRect | null>(null)
   React.useEffect(() => {
@@ -86,7 +98,7 @@ export function useRect(target: string | undefined, index: number): DOMRect | nu
       return
     }
     const el = findTarget(target)
-    el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    if (el) centreVertically(el)
     let frame = 0
     const measure = () => {
       const now = findTarget(target)
@@ -401,6 +413,9 @@ export function TourOverlay({
       else if (roomAbove > roomBelow) bubble = { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, roomAbove)), width: BUBBLE_W, maxHeight: roomAbove }
       else bubble = { left, top: below, width: BUBBLE_W, maxHeight: roomBelow }
     }
+    // UX-106: placed by its top, it is never taller than the room left under it (it grew after it was measured: the
+    // voice player, the chapter list), so Back and Next never go below the screen; it scrolls inside instead.
+    if (typeof bubble.top === 'number' && bubble.maxHeight === undefined) bubble.maxHeight = H - bubble.top - 12
   }
 
   return createPortal(
@@ -443,7 +458,8 @@ export function TourOverlay({
               <Kbd>←</Kbd> <Kbd>→</Kbd> steps{children ? <> · <Kbd>K</Kbd> play · <Kbd>M</Kbd> mute · <Kbd>[</Kbd> <Kbd>]</Kbd> speed</> : null} · <Kbd>Esc</Kbd> stop
             </p>
           )}
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          {/* UX-106: Back / Next stay at the bubble's foot while the rest scrolls inside it (a short screen). */}
+          <div className="sticky -bottom-4 -mb-4 mt-1 flex flex-wrap items-center gap-2 bg-background pt-1 pb-4">
             <span className="text-xs tabular-nums text-muted-foreground">{counter}</span>
             <button type="button" onClick={onSkip} className="text-xs text-muted-foreground underline underline-offset-2">
               {skipLabel}

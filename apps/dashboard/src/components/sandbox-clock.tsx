@@ -7,8 +7,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import {
-  PLAY_TO_EVENT, catchUp, clearSandboxTarget, dayTitle, goBackTo, openingDone, passDays, sandboxTarget, setSandboxSceneBusy, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
+  PLAY_TO_EVENT, catchUp, clearSandboxTarget, dayTitle, goBackTo, openingDone, passDays, sandboxKeep, sandboxTarget, setSandboxSceneBusy, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
 } from '@/lib/sandbox'
+import { guidedProjectUnderWay } from '@/lib/tour-events'
 import { ArrivalIris, Briefing, DayPassScene, EndCredits, OpeningScene, type SceneMode } from '@/components/sandbox-scenes'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { findPage } from '@/lib/module-map'
@@ -108,7 +109,9 @@ export function SandboxClock() {
       playing.current = true
       setSandboxSceneBusy(true)
       const days = Math.min(7, to - day)
-      void passDays(days, playScene(days === 1 ? 'next' : 'skip', day, day + days)).catch((e) => {
+      // UX-104: on the way the cast does everything; on the chapter's own day the person keeps the chapter's entries.
+      const keep = day + days === to ? (sandboxKeep() ?? []) : []
+      void passDays(days, playScene(days === 1 ? 'next' : 'skip', day, day + days), keep).catch((e) => {
         playing.current = false
         clearSandboxTarget()
         setSandboxSceneBusy(false)
@@ -258,6 +261,7 @@ export function SandboxClock() {
           forYou={away.for_you}
           waiting={away.waiting.length}
           onClose={() => setBriefing(false)}
+          guided={guidedProjectUnderWay()}
         />
       )}
     </div>

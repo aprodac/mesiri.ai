@@ -25,6 +25,18 @@ export function walkthroughRunning(): boolean {
   return walking
 }
 
+/** UX-104: the guided project is under way in this tab (its place is kept across the reloads the clock makes). */
+export function guidedProjectUnderWay(): boolean {
+  try {
+    return (JSON.parse(sessionStorage.getItem(WALK_RUN_KEY) ?? 'null') as { id?: string } | null)?.id === 'guided-project'
+  } catch {
+    return false
+  }
+}
+
+/** Where a walkthrough is (walk id, step), kept in this tab across reloads (components/walkthrough.tsx). */
+export const WALK_RUN_KEY = 'mesiri_walk_run'
+
 // UX-22: Help's "On this page" lights one thing up on the page, with what it means (components/tour.tsx draws it).
 export const SPOT_EVENT = 'mesiri:spot'
 
