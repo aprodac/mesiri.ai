@@ -50,6 +50,7 @@ import { useTrial } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { LOOKS, useLook, type Look } from '@/lib/look'
+import { ROUTE_CUE_LOOK, routeCue } from '@/lib/route-cue'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -136,7 +137,8 @@ function roleLabel(role: string | undefined): string {
 // Visual tokens for the sidebar. `aside` also re-points the --sidebar-* variables, so the shadcn sidebar parts' own
 // hover, active and focus styles match without changing ui/sidebar.tsx.
 /** One look's sidebar: colours and shape (both looks have every key; `panel`, `header` and `badge` are typed). */
-type SidebarLook = Omit<Record<keyof (typeof SIDEBAR_THEMES)['blueprint'], string>, 'panel' | 'header' | 'badge'> & {
+type SidebarLook = Omit<Record<keyof (typeof SIDEBAR_THEMES)['blueprint'], string>, 'panel' | 'header' | 'badge' | 'cues'> & {
+  cues: boolean
   panel: 'sidebar' | 'floating'
   header: 'tile' | 'wedge'
   badge: Record<BadgeTone, string>
@@ -152,6 +154,8 @@ const SIDEBAR_THEMES = {
   blueprint: {
     // Shape (WEB-103: each look owns its layout as well as its colours).
     panel: 'floating' as const,
+    // WEB-104: each route's icon on a tile in its kind's colour (lib/route-cue.ts).
+    cues: true,
     panelClass: '[&>[data-sidebar=sidebar]]:overflow-hidden [&>[data-sidebar=sidebar]]:rounded-[22px] [&>[data-sidebar=sidebar]]:border-0 [&>[data-sidebar=sidebar]]:shadow-[0_12px_32px_-18px_rgba(21,35,63,0.55)]',
     header: 'tile' as const,
     navBase: 'group/row flex items-center gap-3 w-full h-9 px-3 rounded-full text-[14px] transition-colors group-data-[collapsible=icon]:h-8',
@@ -200,6 +204,7 @@ const SIDEBAR_THEMES = {
   // WEB-103: Classic, the sidebar before the blueprint system (charcoal, the wedge header), kept as a choice.
   classic: {
     panel: 'sidebar' as const,
+    cues: false,
     panelClass: 'border-r border-[#34302A] dark:border-border',
     header: 'wedge' as const,
     navBase: 'group/row flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors',
@@ -471,7 +476,7 @@ export function AppSidebar() {
     const count = item.count ? item.count.n : item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
     const pinnable = pinMode && canPin(item.url)
     return (
-      <SidebarMenuItem key={item.url} className={cn(justPinned === item.url && 'rounded-lg rounded-full ring-2 ring-[#ffd23f]/70 transition-shadow dark:ring-primary/60')}>
+      <SidebarMenuItem key={item.url} className={cn(justPinned === item.url && 'rounded-full ring-2 ring-[#ffd23f]/70 transition-shadow dark:ring-primary/60')}>
         <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
           <Link
             to={getUrlWithScope(item.url)}
@@ -479,7 +484,7 @@ export function AppSidebar() {
             className={cn(S.navBase, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
           >
             <span className="relative shrink-0">
-              <ItemIcon className={cn('size-4', active ? S.iconActive : S.icon)} />
+              <RouteIcon icon={ItemIcon} url={item.url} active={active} S={S} />
               {count > 0 && (
                 <span aria-hidden className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', S.badge[tone!])} />
               )}
@@ -653,7 +658,7 @@ export function AppSidebar() {
                           aria-label={`Pin ${suggestion.title}: you open it often`}
                           className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm', S.rowIdle, S.ring)}
                         >
-                          <suggestion.icon className={cn('size-4 shrink-0', S.icon)} />
+                          <RouteIcon icon={suggestion.icon} url={suggestion.url} S={S} />
                           <span className="truncate">{suggestion.title}</span>
                           <span className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full text-[#15233f]" style={{ backgroundColor: S.bar }} aria-hidden>
                             <Pin className="size-3 rotate-45" />
@@ -688,11 +693,11 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={openAllPages} tooltip="All pages" data-guide="app.all" className={cn(S.navBase, S.rowIdle, S.ring)}>
-                  <LayoutGrid className={cn('size-4 shrink-0', S.icon)} />
+                  <RouteIcon icon={LayoutGrid} url="/all" S={S} />
                   <span className="truncate">All pages</span>
                   {hiddenPins > 0 && (
-                    <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden" title={`${hiddenPins} pinned pages are here: the screen is too short to show them all`}>
-                      +{hiddenPins} pinned
+                    <span className="ml-auto shrink-0 rounded-full bg-white/10 px-1.5 py-px font-mono text-[10px] whitespace-nowrap tabular-nums group-data-[collapsible=icon]:hidden" title={`${hiddenPins} pinned pages are here: the screen is too short to show them all`}>
+                      +{hiddenPins}
                     </span>
                   )}
                   <ChevronRight className={cn('ml-auto size-3.5 group-data-[collapsible=icon]:hidden', S.chevron)} aria-hidden />
@@ -790,7 +795,7 @@ function LockedRow({ item, why, S }: { item: NavItem; why: string; S: SidebarLoo
         aria-expanded={told}
         className={cn(S.navBase, S.rowIdle, S.ring, 'opacity-55')}
       >
-        <ItemIcon className={cn('size-4 shrink-0', S.icon)} />
+        <RouteIcon icon={ItemIcon} url={item.url} S={S} />
         <span className="truncate">{item.title}</span>
         <Lock className="ml-auto size-3.5 shrink-0 group-data-[collapsible=icon]:hidden" aria-label="not open yet" />
       </SidebarMenuButton>
@@ -875,5 +880,26 @@ function BackLink({ to, S }: { to: string; S: SidebarLook }) {
     >
       <ArrowLeft className="size-4" />
     </Link>
+  )
+}
+
+/**
+ * A route's icon (WEB-104). In the Blueprint look it sits on a small tile in its kind's colour (lib/route-cue.ts):
+ * tinted on the navy, pale on the paper pill of the page you are on. Collapsed to icons, the tile drops away and the
+ * icon keeps the colour. Classic keeps its one muted icon colour.
+ */
+function RouteIcon({ icon: Icon, url, active = false, S }: { icon: React.ComponentType<{ className?: string }>; url: string; active?: boolean; S: SidebarLook }) {
+  if (!S.cues) return <Icon className={cn('size-4 shrink-0', active ? S.iconActive : S.icon)} />
+  const look = ROUTE_CUE_LOOK[routeCue(url)]
+  return (
+    <span
+      className={cn(
+        '-ml-1 flex size-7 shrink-0 items-center justify-center rounded-[9px] transition-colors group-data-[collapsible=icon]:ml-0 group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:bg-transparent',
+        active ? look.onPaper : look.onDark,
+      )}
+      aria-hidden
+    >
+      <Icon className="size-4" />
+    </span>
   )
 }

@@ -39,8 +39,11 @@ plain page headers) stays as a choice in the account menu ("Look"), kept per bro
 form in `TitleBlock`. A new component styles itself from tokens, never from the look name; only shape differences go
 in those three places. Not reverted in Classic: pill tabs, the KPI strip's mono labels, card corners (a little rounder).
 
-Rules: the sidebar's icons are one muted colour (the active one takes the blueprint); colour in the sidebar is only
-a badge (highlighter = waiting on someone, brick = wrong). One highlighter per screen. No page invents a brand
+Rules: in Blueprint each route's icon sits on a tile in its kind's colour, the phone's category tiles (WEB-104,
+`lib/route-cue.ts`): site and its day green, problems brick, materials and buying amber, people and labour
+blueprint, money teal, planning and BOQ violet, equipment grey, approvals highlighter, the app itself (Home, All
+pages, Learn, Settings) neutral. A new page gets its kind with one line in `RULES`. A number on a row is still only a
+badge (highlighter = waiting on someone, brick = wrong). Classic keeps one muted icon colour. One highlighter per screen. No page invents a brand
 colour; old hard-coded `#1a1d21` / `#facc15` were swept to the ink and highlighter. The favicon and PNG icons still
 carry the old charcoal mark (follow-up: regenerate from a navy `favicon.svg`).
 
