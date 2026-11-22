@@ -242,7 +242,7 @@ export function SandboxClock() {
         {c && c.for_you.length === 0 && !done && <span className="text-xs text-muted-foreground">Nothing for you today</span>}
       </div>
       {error && <p className="m-0 text-sm text-destructive">{error}</p>}
-      {away && !briefing && !credits && <Away away={away} onClose={() => setAway(null)} />}
+      {away && !briefing && !credits && <Away away={away} onClose={() => setAway(null)} onRead={() => setBriefing(true)} />}
       {scene && (
         <DayPassScene mode={scene.mode} fromDay={scene.from} toDay={scene.to} origin={scene.origin} result={scene.result} onFinished={() => finishScene.current?.()} />
       )}
@@ -255,8 +255,9 @@ export function SandboxClock() {
           date={away.date}
           moments={(away.highlights ?? []).filter((h) => h.day === away.day)}
           summary={away.summary}
+          story={away.story ?? []}
           forYou={away.for_you}
-          waiting={away.waiting.length}
+          waiting={away.waiting}
           onClose={() => setBriefing(false)}
         />
       )}
@@ -302,7 +303,7 @@ function ForYouMenu({ items, late }: { items: ForYou[]; late: number }) {
   )
 }
 
-function Away({ away, onClose }: { away: NonNullable<ReturnType<typeof takeDaysPassed>>; onClose: () => void }) {
+function Away({ away, onClose, onRead }: { away: NonNullable<ReturnType<typeof takeDaysPassed>>; onClose: () => void; onRead: () => void }) {
   const byWho = new Map<string, string[]>()
   for (const s of away.summary) byWho.set(s.who, [...(byWho.get(s.who) ?? []), `${s.said ?? s.kind.replace(/_/g, ' ')} ${s.count}`])
   const days = away.day - away.from
@@ -312,9 +313,15 @@ function Away({ away, onClose }: { away: NonNullable<ReturnType<typeof takeDaysP
         <p className="m-0 font-medium">
           {days === 1 ? `Day ${away.day} at Green Villa Builders` : `Days ${away.from + 1} to ${away.day} passed`}
         </p>
-        <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Close" onClick={onClose}>
-          <X className="size-4" aria-hidden />
-        </button>
+        <span className="flex items-center gap-2">
+          {/* UX-103: the briefing again, to read what each person did. */}
+          <button type="button" className="text-xs font-medium underline underline-offset-2 hover:text-foreground" onClick={onRead}>
+            Read the day
+          </button>
+          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Close" onClick={onClose}>
+            <X className="size-4" aria-hidden />
+          </button>
+        </span>
       </div>
       {byWho.size === 0 ? (
         <p className="m-0 text-xs text-muted-foreground">A quiet day: nobody works on Sunday.</p>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
-  AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, FastForward, FileText, Flag, Hammer, HandCoins, Package, Rewind, Truck, Volume2,
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, FastForward, FileText, Flag, Hammer, HandCoins, Package, Rewind, Truck, Users, Volume2,
   VolumeX, Wallet, X,
 } from 'lucide-react'
 import { Ink } from '@/components/live/ink'
@@ -57,6 +57,16 @@ const KIND: Record<string, { icon: LucideIcon; tone: string }> = {
   ra_bill: { icon: FileText, tone: 'text-teal-300' },
   work_order: { icon: FileText, tone: 'text-teal-300' },
   stage: { icon: Flag, tone: 'text-yellow-300' },
+  // UX-103: the briefing's story lines (routine kinds never reach the day-pass scene).
+  attendance: { icon: Users, tone: 'text-sky-300' },
+  use: { icon: Package, tone: 'text-sky-300' },
+  expense: { icon: Wallet, tone: 'text-violet-300' },
+  machine: { icon: Truck, tone: 'text-sky-300' },
+  machine_log: { icon: Clock, tone: 'text-sky-300' },
+  boq_count: { icon: ClipboardList, tone: 'text-teal-300' },
+  boq_import: { icon: FileText, tone: 'text-teal-300' },
+  boq_norms: { icon: FileText, tone: 'text-teal-300' },
+  wage_approve: { icon: CheckCircle2, tone: 'text-emerald-300' },
 }
 
 /** The plan writes each entry as a to-do ("Order 100 bags cement…"); a scene tells it as done ("Ordered …"). */
@@ -399,77 +409,225 @@ export function ArrivalIris({ onDone }: { onDone: () => void }) {
   )
 }
 
-/** The morning: what each person did, then the person's own part of the day. */
-export function Briefing({ day, date, moments, summary, forYou, waiting, onClose }: {
+/** UX-103: one thing the cast did on the day (backend sandbox_player.day_story). */
+export type StoryEntry = NonNullable<DaysPassed['story']>[number]
+
+/** UX-103: who each person is, told once at the top of their day. */
+const ROLE_STORY: Record<string, string> = {
+  Ravi: 'Ravi is the site engineer. Each evening he tells Mesiri what happened at every site: who came, what got built, what was used and spent, and what the site needs next.',
+  Anil: 'Anil is the project manager. He turns what the sites need into orders, keeps the BOQ counted, gives out work and closes problems.',
+  Meera: 'Meera keeps the accounts: supplier and subcontract bills in, payments out, wages, and the money the client pays.',
+  Owner: 'You, the owner, sign off what needs you: wage sheets, stock counts, the contract and the bills sent to the client.',
+}
+
+/** UX-103: why a kind of entry matters, said once per person the first time it shows in their day. */
+const WHY: Record<string, string> = {
+  conditions: 'The site day: the weather and the notes, so the daily report tells the full day.',
+  attendance: 'Who came to work: wages are worked out from it.',
+  work: 'What got built: progress and the BOQ move with it.',
+  use: 'Material used: the stock at the site goes down, and the BOQ can check it against the norm.',
+  expense: 'Small spends paid on site: they show in the project cost.',
+  issue: 'A problem raised: it stays open until someone closes it.',
+  request: 'What the site needs: the office orders it.',
+  delivery: 'Material arrived: the stock goes up and the order is ticked off.',
+  order: 'An order to a supplier, from what the site asked for.',
+  transfer: 'Material moved from one site to another: both stocks change.',
+  rfq: 'Prices asked from suppliers before buying.',
+  quote: 'A supplier sent its price.',
+  award: 'The best quote was picked: it becomes the order.',
+  return: 'Material sent back to the supplier.',
+  return_settle: 'A return settled with the supplier.',
+  bill_reverse: 'A wrong bill taken back.',
+  stock_count: 'The stock counted by hand, to check what Mesiri says is there.',
+  count_approve: 'A stock count signed off: the stock is set to what was counted.',
+  machine: 'A machine taken on hire: its hours are billed.',
+  machine_log: 'Machine hours logged: the hire bill is checked against them.',
+  task: 'A job given to someone, with a date.',
+  task_status: 'A job marked done.',
+  hire_bill: 'A machine hire bill booked.',
+  hire_bill_fix: 'A hire bill corrected to the hours logged.',
+  boq_count: 'Work put on its BOQ line: what is done is measured against the estimate.',
+  boq_import: 'The estimate put in as the BOQ: every line, quantity and rate.',
+  boq_norms: 'How much material each unit of work takes: Mesiri warns when a site uses more.',
+  issue_resolve: 'A problem closed.',
+  work_order: 'Work given to a subcontractor at an agreed rate.',
+  measurement: 'Subcontract work measured: the bill is checked against it.',
+  supplier_bill: 'A supplier bill booked: what the company owes.',
+  supplier_payment: 'A supplier paid.',
+  sub_bill: 'A subcontractor bill booked.',
+  sub_payment: 'A subcontractor paid.',
+  sub_bill_reject: 'A subcontract bill turned down.',
+  advance: 'An advance to a worker: it comes off their wages.',
+  wage_pay: 'Wages paid for the week.',
+  client_receipt: 'Money came in from the client.',
+  wage_approve: 'A wage sheet approved: Meera can pay it.',
+  ra_bill: 'A running bill sent to the client for the work done.',
+  stage: 'The project moved to its next stage.',
+  contract: 'The contract with the client: its value, dates and retention.',
+}
+
+/** The plan writes each entry as a to-do; the story tells it as done. */
+function told(e: StoryEntry): string {
+  if (e.kind === 'work') return `Built ${e.what.replace(/^(.)/, (c) => c.toLowerCase())}`
+  if (e.kind === 'attendance') return e.what.replace(/^Attendance: /, '')
+  if (e.kind === 'conditions') return `Weather: ${e.what.toLowerCase()}`
+  if (e.kind === 'expense') return `Spent on ${e.what.replace(/^(.)/, (c) => c.toLowerCase())}`
+  if (e.kind === 'machine_log') return `Logged ${e.what.replace(/^(.)/, (c) => c.toLowerCase())}`
+  const rules: [RegExp, string][] = [
+    [/^Count /, 'Counted '], [/^Approve /, 'Approved '], [/^Put /, 'Put '], [/^Set /, 'Set '], [/^Book /, 'Booked '],
+    [/^Give /, 'Gave '], [/^Move /, 'Moved '], [/^Return /, 'Returned '], [/^Close /, 'Closed '], [/^Mark /, 'Marked '],
+  ]
+  for (const [re, to] of rules) if (re.test(e.what)) return e.what.replace(re, to)
+  return didIt(e.kind, e.what)
+}
+
+/** Where an entry happened, as a heading: "Green Villa · Main block", "Green Villa", or "The company". */
+function placeOf(e: StoryEntry): string {
+  if (e.project && e.site) return `${e.project} · ${e.site}`
+  return e.project ?? e.site ?? 'The company'
+}
+
+/** One line for a person's day: "4 sites · 32 people on site · 4 pieces of work · 4 requests". */
+function headline(entries: StoryEntry[]): string {
+  const n = (k: string) => entries.filter((e) => e.kind === k).length
+  const sites = new Set(entries.filter((e) => e.site).map((e) => e.site)).size
+  const people = entries.filter((e) => e.kind === 'attendance').reduce((t, e) => t + (Number(/(\d+)/.exec(e.what)?.[1]) || 0), 0)
+  const parts: string[] = []
+  if (sites > 1 && entries.some((e) => e.kind === 'attendance')) parts.push(`${sites} sites`)
+  if (people) parts.push(`${people} people on site`)
+  const counted: [string, string, string][] = [
+    ['boq_import', 'BOQ put in', 'BOQs put in'], ['work', 'piece of work', 'pieces of work'], ['request', 'request', 'requests'], ['order', 'order', 'orders'],
+    ['delivery', 'delivery', 'deliveries'], ['issue', 'problem', 'problems'], ['boq_count', 'BOQ count', 'BOQ counts'],
+    ['supplier_payment', 'payment', 'payments'], ['wage_pay', 'wage payment', 'wage payments'], ['wage_approve', 'wage sheet', 'wage sheets'],
+  ]
+  for (const [k, one, many] of counted) if (n(k)) parts.push(`${n(k)} ${n(k) === 1 ? one : many}`)
+  const rest = entries.length - parts.length
+  if (!parts.length) return `${entries.length} ${entries.length === 1 ? 'thing' : 'things'} done`
+  return parts.slice(0, 4).join(' · ') + (rest > 0 && parts.length > 4 ? ' · more' : '')
+}
+
+/** A person's day as lines under each place: material used is said once per place, the rest one line each. */
+function storyLines(entries: StoryEntry[]): { place: string; lines: { kind: string; text: string }[] }[] {
+  const places = new Map<string, StoryEntry[]>()
+  for (const e of entries) places.set(placeOf(e), [...(places.get(placeOf(e)) ?? []), e])
+  return [...places].map(([place, es]) => {
+    const used = es.filter((e) => e.kind === 'use').map((e) => e.what.replace(/^Used /, '').replace(/ for .*$/, ''))
+    const lines: { kind: string; text: string }[] = []
+    const head = es.filter((e) => e.kind === 'attendance' || e.kind === 'conditions').map(told)
+    if (head.length) lines.push({ kind: 'attendance', text: head.join(' · ') })
+    for (const e of es) if (!['use', 'attendance', 'conditions'].includes(e.kind)) lines.push({ kind: e.kind, text: told(e) })
+    if (used.length) lines.push({ kind: 'use', text: `Used ${used.join(', ')}` })
+    return { place, lines }
+  })
+}
+
+/** The morning: what each person did (each can be opened to read their day as a story), then the person's part. */
+export function Briefing({ day, date, moments, summary, story, forYou, waiting, onClose }: {
   day: number
   date: string
   moments: Moment[]
   summary: { who: string; kind: string; count: number; said?: string; short?: string }[]
+  story: StoryEntry[]
   forYou: ForYou[]
-  waiting: number
+  waiting: { who: string; what: string }[]
   onClose: () => void
 }) {
   const open = useOpen(150)
+  const [shown, setShown] = React.useState<string | null>(null)
+  const [showWaiting, setShowWaiting] = React.useState(false)
   useSounds([{ id: 'briefing', delay: 450 }], `briefing-${day}`)
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [onClose])
-  const people = Object.keys(CAST).filter((who) => summary.some((s) => s.who === who))
+  // Everyone who did something: from the day's story, else (an older reply without it) the counts.
+  const people = Object.keys(CAST).filter((who) => story.some((s) => s.who === who) || summary.some((s) => s.who === who))
   const todo = forYou.filter((f) => !f.done)
   return createPortal(
-    <div className="fixed inset-0 z-[85] grid place-items-center bg-black/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Morning of day ${day}`} onClick={onClose}>
+    <div className="fixed inset-0 z-[85] grid place-items-center bg-black/50 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={`Morning of day ${day}`} onClick={onClose}>
       <div
-        className="relative w-full max-w-xl overflow-hidden rounded-2xl bg-[#111316] text-white shadow-2xl ring-1 ring-white/10 transition-[transform,opacity] duration-500 ease-out"
+        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-2xl transition-[transform,opacity] duration-500 ease-out"
         style={{ transform: open ? 'none' : 'translateY(24px) scale(.98)', opacity: open ? 1 : 0 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div aria-hidden className="h-1.5 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
-        <button type="button" onClick={onClose} className="absolute top-4 right-4 rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close">
+        <div aria-hidden className="h-1 shrink-0 bg-primary" />
+        <button type="button" onClick={onClose} className="absolute top-3.5 right-3.5 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Close">
           <X className="size-4" />
         </button>
-        <div className="flex flex-col gap-4 p-5 sm:p-6">
-          <div>
-            <span className="font-mono text-[11px] tracking-[0.12em] text-white/50 uppercase">Good morning · day {day}</span>
-            <RisingTitle text={dayName(date)} show={open} delay={150} className="mt-1 text-[clamp(26px,4vw,34px)]" />
-          </div>
-          {people.length === 0 ? (
-            <p className="m-0 text-sm text-white/60">A quiet day: nobody worked.</p>
-          ) : (
-            <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
+        <div className="flex flex-col gap-1 border-b px-5 pt-5 pb-4 sm:px-6">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Good morning · {dayTitle(day)}</span>
+          <RisingTitle text={dayName(date)} show={open} delay={150} className="text-[clamp(24px,3.6vw,30px)]" />
+          <p className="m-0 mt-1 text-sm text-muted-foreground">
+            {people.length === 0
+              ? 'A quiet day: nobody worked.'
+              : `Here is what the team did. Open anyone to read their day, and why each thing matters.`}
+          </p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4 sm:px-6">
+          {people.length > 0 && (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="What each person did">
               {people.map((who, i) => (
-                <PersonCard key={who} who={who} index={i} moments={moments.filter((m) => m.who === who)} counts={summary.filter((s) => s.who === who)} />
+                <PersonCard
+                  key={who}
+                  who={who}
+                  index={i}
+                  entries={story.filter((s) => s.who === who)}
+                  moments={moments.filter((m) => m.who === who)}
+                  counts={summary.filter((s) => s.who === who)}
+                  open={shown === who}
+                  onToggle={() => setShown((s) => (s === who ? null : who))}
+                />
               ))}
             </ul>
           )}
-          {waiting > 0 && <p className="m-0 text-xs text-amber-300">{waiting} waiting on something not done yet</p>}
-          <div className="rounded-xl bg-white/[0.05] p-3.5 ring-1 ring-white/10">
+          {waiting.length > 0 && (
+            <div className="rounded-xl border border-dashed px-3.5 py-2.5 text-sm">
+              <button type="button" className="flex w-full items-center justify-between gap-2 text-left" onClick={() => setShowWaiting((v) => !v)} aria-expanded={showWaiting}>
+                <span>
+                  <span className="font-medium">{waiting.length} {waiting.length === 1 ? 'thing is' : 'things are'} waiting</span>
+                  <span className="text-muted-foreground"> on an earlier step</span>
+                </span>
+                <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', showWaiting && 'rotate-180')} aria-hidden />
+              </button>
+              {showWaiting && (
+                <>
+                  <p className="m-0 mt-1.5 text-xs text-muted-foreground">Each one needs something done first (a delivery needs its order). It happens once that is done.</p>
+                  <ul className="m-0 mt-1.5 flex list-none flex-col gap-1 p-0 text-xs">
+                    {waiting.map((w, i) => (
+                      <li key={i}><span className="font-medium">{w.who}:</span> {w.what}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          <div className="rounded-xl bg-primary/10 p-3.5 ring-1 ring-primary/30">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold">Your part today</span>
               <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground tabular-nums">{todo.length}</span>
             </div>
             {todo.length === 0 ? (
-              <p className="m-0 mt-1 text-sm text-white/60">Nothing for you today. Look around.</p>
+              <p className="m-0 mt-1 text-sm text-muted-foreground">Nothing for you today. Look around.</p>
             ) : (
-              <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-sm text-white/80">
+              <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-sm">
                 {todo.slice(0, 3).map((f) => (
-                  <li key={f.id} className="truncate">· {f.what}</li>
+                  <li key={f.id} className="flex gap-2"><span aria-hidden className="text-primary">•</span><span>{f.what}</span></li>
                 ))}
-                {todo.length > 3 && <li className="text-xs text-white/50">and {todo.length - 3} more in For you</li>}
+                {todo.length > 3 && <li className="text-xs text-muted-foreground">and {todo.length - 3} more in For you</li>}
               </ul>
             )}
           </div>
-          <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-sm text-white/70 hover:bg-white/10 hover:text-white">
-              {todo.length ? 'Later' : 'Close'}
-            </button>
-            {todo.length > 0 && (
-              <Link to={todo[0].page} onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-                Start <ChevronRight className="size-4" aria-hidden />
-              </Link>
-            )}
-          </div>
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3 sm:px-6">
+          <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+            {todo.length ? 'Later' : 'Close'}
+          </button>
+          {todo.length > 0 && (
+            <Link to={todo[0].page} onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              Start <ChevronRight className="size-4" aria-hidden />
+            </Link>
+          )}
         </div>
       </div>
     </div>,
@@ -478,28 +636,72 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
 }
 
 
-function PersonCard({ who, index, moments, counts }: { who: string; index: number; moments: Moment[]; counts: { kind: string; count: number; short?: string }[] }) {
-  const show = useOpen(400 + index * 220)
+function PersonCard({ who, index, entries, moments, counts, open, onToggle }: {
+  who: string
+  index: number
+  entries: StoryEntry[]
+  moments: Moment[]
+  counts: { kind: string; count: number; short?: string }[]
+  open: boolean
+  onToggle: () => void
+}) {
+  const show = useOpen(400 + index * 180)
   const cast = CAST[who]
+  const name = who === 'Owner' ? 'You' : who
+  const line = entries.length
+    ? headline(entries)
+    : counts.map((c) => `${c.count} ${c.short ?? c.kind.replace(/_/g, ' ')}`).join(' · ')
+  const first = moments[0] ? didIt(moments[0].kind, moments[0].what) : null
+  const said = new Set<string>()
   return (
     <li
-      className="flex gap-3 rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/10 transition-[transform,opacity] duration-500 ease-out"
-      style={{ transform: show ? 'none' : 'translateY(12px)', opacity: show ? 1 : 0 }}
+      className="rounded-xl border bg-background transition-[transform,opacity] duration-500 ease-out"
+      style={{ transform: show ? 'none' : 'translateY(10px)', opacity: show ? 1 : 0 }}
     >
-      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white', cast?.tone)} aria-hidden>
-        {who.slice(0, 1)}
-      </span>
-      <div className="min-w-0">
-        <div className="text-sm font-semibold">
-          {who} <span className="font-normal text-white/50">· {cast?.role}</span>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/50" disabled={!entries.length}>
+        <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white', cast?.tone)} aria-hidden>
+          {who.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">
+            {name} <span className="font-normal text-muted-foreground">· {cast?.role}</span>
+          </span>
+          <span className="block text-sm text-foreground/80">{line}</span>
+          {first && !open && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{first}</span>}
+        </span>
+        {entries.length > 0 && (
+          <span className="mt-0.5 inline-flex shrink-0 items-center gap-0.5 rounded-full border px-2 py-0.5 text-xs font-medium text-foreground/80">
+            <span className="hidden sm:inline">{open ? 'Hide' : `What ${name === 'You' ? 'you' : name} did`}</span>
+            <ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} aria-hidden />
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-3 border-t px-3.5 pt-3 pb-3.5 text-sm">
+          <p className="m-0 text-muted-foreground">{ROLE_STORY[who]}</p>
+          {storyLines(entries).map(({ place, lines }) => (
+            <div key={place}>
+              <div className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{place}</div>
+              <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                {lines.map((l, i) => {
+                  const Icon = KIND[l.kind]?.icon ?? CheckCircle2
+                  const why = !said.has(l.kind) && WHY[l.kind]
+                  said.add(l.kind)
+                  return (
+                    <li key={i} className="flex gap-2">
+                      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                      <span className="min-w-0">
+                        <span className="block">{l.text}</span>
+                        {why && <span className="block text-xs text-muted-foreground">{why}</span>}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </div>
-        {moments.slice(0, 2).map((m, i) => (
-          <p key={i} className="m-0 truncate text-xs text-white/80" title={didIt(m.kind, m.what)}>
-            {didIt(m.kind, m.what)}
-          </p>
-        ))}
-        <p className="m-0 mt-0.5 truncate text-[11px] text-white/45">{counts.map((c) => `${c.count} ${c.short ?? c.kind.replace(/_/g, ' ')}`).join(' · ')}</p>
-      </div>
+      )}
     </li>
   )
 }
