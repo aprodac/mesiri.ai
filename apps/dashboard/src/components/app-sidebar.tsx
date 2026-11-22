@@ -62,7 +62,6 @@ import {
 import { useNavCounts, useTaskCounts, useWaitingCounts } from '@/lib/nav-counts'
 import { MODULE_GROUPS, findPage, pagePath } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
-import { useStartMode } from '@/lib/start-mode'
 import { initialsOf } from '@/lib/initials'
 import { EVERYDAY, MAX_PINS, openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
 import { SUGGEST_DAYS, SUGGEST_SCORE, dismissSuggestion, dismissedSuggestions, usePageUsage } from '@/lib/page-usage'
@@ -459,9 +458,11 @@ export function AppSidebar() {
     .slice(0, Math.min(MAX_PINS, fitPins))
     .map((p) => ({ title: p.title, url: p.url, icon: p.icon, soon: p.page.status === 'planned', count: pageCounts[p.url], exact: p.url.includes('?') }))
 
-  // The foot: Learn (for everyone who gets guidance, SS-41) and Settings.
-  const guide = useStartMode()
-  const learn: NavItem | null = guide.ready && guide.rules.tours !== 'none' ? { title: 'Learn Mesiri', url: '/learn', icon: GraduationCap } : null
+  // The foot: Learn and Settings. WEB-105 (asked 22 Nov 2026: "make sure learn mesiri is available for everyone in
+  // sidebar in beginning also"): Learn is shown to every person from the first load, whatever start mode they picked
+  // (it was hidden for "I'll find my way" and until the start mode loaded, SS-41). The start mode still decides
+  // whether tours open by themselves; Learn is where anyone goes to choose one.
+  const learn: NavItem = { title: 'Learn Mesiri', url: '/learn', icon: GraduationCap }
   const management = ROOT_MANAGEMENT_ITEMS.filter(
     (item) =>
       isModuleEnabled(item.module) &&
@@ -706,16 +707,14 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroup>
 
-          {(learn || management.length > 0) && (
-            <SidebarGroup className="mt-auto px-1 py-0.5">
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {learn && renderLink(learn)}
-                  {management.map((i) => renderLink(i))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
+          <SidebarGroup className="mt-auto px-1 py-0.5">
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {renderLink(learn)}
+                {management.map((i) => renderLink(i))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </SidebarContent>
 
         <SidebarFooter className={S.footer}>

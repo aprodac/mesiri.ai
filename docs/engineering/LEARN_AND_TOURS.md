@@ -18,6 +18,9 @@
 One engine, one overlay, one definition. Never a second tour system, a page-specific popup tour, or a copy of a
 step's words in another place.
 
+**Learn Mesiri is in every person's sidebar** from the first load, whatever their start mode or role (WEB-105).
+The start mode decides only whether tours open by themselves.
+
 ## When you build or change a page
 
 1. **Markers, never positions.** Point a step at `data-guide="<page>.<thing>"` on the element (or `guide="..."` on
