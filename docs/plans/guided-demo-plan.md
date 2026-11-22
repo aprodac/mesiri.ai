@@ -968,3 +968,40 @@ fresh sample company through all 15 chapters on a local copy of the app and data
 | The final bill read as "all the work" at ₹25 L of ₹82 L | The words say the running bills before Mesiri were on paper (UX-105); the real fix stays UX-78 |
 | The count step's bubble covered the card to open; the bubble went below a short screen; a page slid sideways | Count step lights the list until the sheet opens; a bubble placed by its top is never taller than the room under it; targets are scrolled into view up and down only (UX-106) |
 | Chapter cards named films out of order, some not made | Cards say "Film: Episode N", and only for made films (UX-107) |
+
+## 24. Handover (22 Nov 2026, session_01KFJUCH, end of session: continue from here)
+
+**Branch:** `claude/great-bell-7aq8s0` (4 commits on top of main `bc92d67`): UX-102; backend UX-103/104; dashboard
+UX-101/103/104/106/107/109 with re-recorded narration; docs. **Not merged to main yet**: merge after the check below.
+
+**Verified:** backend unit 2,323 passed; assistant unit 5,732 passed; ruff clean; dashboard tsc, oxlint, vite build
+clean; contract `test_schedule_contract.py` 16 passed and `test_sandbox_player_postgres.py` (whole plan, wait-for-me,
+new guided-keep test) passed on a local Postgres. In a browser (v2 play-through): chapters 1 to 3 including the new
+"Your turn: the schedule" (Quick plan) passed, and the sidebar no longer shows Set up in the sample company.
+
+**Not verified, do this first:**
+1. **The v2 play-through stalled after chapter 3**: day 2 was reached (`POST /learn/sandbox/next-day` 200, no page
+   error) but the guide did not reappear for "Monday, day 2"; the page stayed on the BOQ. Suspects, in order: the
+   morning briefing's new single button (`sandbox-scenes.tsx` Briefing `guided`) or `guidedProjectUnderWay()` (reads
+   sessionStorage `mesiri_walk_run`) leaving `sceneBusy` on; the `keep` change in `sandbox-clock.tsx`; or the play
+   script itself (it looks for `Go on with the story|Later|Close`). Reproduce with the script below and a screenshot of
+   that moment; compare with `git stash` of the sandbox-clock/sandbox-scenes changes.
+2. Then play to the end and look at: chapter 4's forms (open the Annex's day from Today, Attendance 2 Carpenter at
+   ₹1,000, Work done Plinth beam 6 rmt; the step must survive the move to `/reports/...` via `alsoOn`), ch. 7 issue
+   form, ch. 8 expense form (category Food, Tea stall), ch. 9 count, the briefings (only the chapter's to-do), the
+   closing card (`JourneyFinished`), Project start after Closed (no Next), the bubble's pinned Back/Next at 1280×860.
+3. A phone width and dark mode for the new site-day forms.
+
+**How to run it locally** (about 15 minutes to set up): Postgres 16 + Redis; `uv venv /home/user/venv --python 3.11`
+and `uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"` at the repo root; env as in
+`docs/learning/film/README.md` (MESIRI_POSTGRES__*, dummy WHATSAPP_*); `alembic -c backend/alembic.ini upgrade head`;
+`uvicorn main:app --port 8000` in `apps/whatsapp-assistant/src`; dashboard: **`pnpm install --frozen-lockfile`** (not npm:
+npm resolves two copies of Radix's dismissable layer and the date picker inside a dialog stops taking clicks, which is
+not a production bug), `npx vite build && npx vite preview --port 5173`. A login token: insert an org and an OWNER user,
+mint with `create_access_token({"sub", "org", "role": "OWNER"})`, save `{"token": ...}` to a file. Then
+`node scripts/learn_kit/e2e/play_all_chapters.cjs <token file> <out dir> guided` (logs each step, whether the bubble is
+on screen, briefings, the finish card; screenshots each step). Its "SIDEWAYS SCROLL" flag also fires on the schedule's
+own Gantt (scrolls sideways by design): only a page-level shift is a bug.
+
+**Left from the review, not started:** SS-75 (events and choices), SS-76b (play other roles), SS-77 (report card),
+UX-78 (work before Mesiri: blocked on a product decision); per-kind wording (UX-22 `for`) for the new steps.
