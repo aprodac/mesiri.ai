@@ -31,6 +31,14 @@ paper, drawing ink, the blueprint blue for Mesiri and information, a highlighter
 | Sidebar | a floating navy panel (rounded 22px): the M on a highlighter tile, the company and Set up as cards, mono group labels, pill rows, the page you are on as a paper pill with a blueprint icon, the account as a card | `app-sidebar.tsx` |
 | Dark mode | the drawing at night: navy paper `#0d1629`, cards `#142039`, pale blueprint lines | `.dark` in `index.css` |
 
+**Two looks (WEB-103, 22 Nov 2026).** Blueprint is the default. **Classic** (the look before it: sand page,
+charcoal sidebar with the wedge header, site yellow `#facc15`, IBM Plex Sans / Geist Mono / Unbounded, hazard tape,
+plain page headers) stays as a choice in the account menu ("Look"), kept per browser (`lib/look.ts`, `data-look` on
+`<html>`). How a look is made: tokens and faces in `index.css` (`:root[data-look='classic']`, fonts through
+`--look-*`), the sidebar's colours *and* shape in `app-sidebar.tsx` `SIDEBAR_THEMES[look]`, the title block's plain
+form in `TitleBlock`. A new component styles itself from tokens, never from the look name; only shape differences go
+in those three places. Not reverted in Classic: pill tabs, the KPI strip's mono labels, card corners (a little rounder).
+
 Rules: the sidebar's icons are one muted colour (the active one takes the blueprint); colour in the sidebar is only
 a badge (highlighter = waiting on someone, brick = wrong). One highlighter per screen. No page invents a brand
 colour; old hard-coded `#1a1d21` / `#facc15` were swept to the ink and highlighter. The favicon and PNG icons still

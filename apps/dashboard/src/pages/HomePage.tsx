@@ -5,6 +5,7 @@ import { useScope } from '@/lib/ScopeContext'
 import { useSetupProgress } from '@/lib/setup'
 import { cn } from '@/lib/utils'
 import { TitleBlock } from '@/components/page/page-kit'
+import { useLook } from '@/lib/look'
 import { appNow } from '@/lib/clock'
 import { localIsoDate, longDate } from '@/lib/site-day'
 import { RoleHome } from '@/components/home/role-home'
@@ -29,6 +30,8 @@ function greeting(now: Date): string {
 
 export default function HomePage() {
   const { me } = useAuth()
+  const [look] = useLook()
+  const classic = look === 'classic'
   const { scope } = useScope()
   const [now] = React.useState(() => appNow())
   const [params] = useSearchParams()
@@ -69,10 +72,12 @@ export default function HomePage() {
           <span
             className={cn(
               'mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
-              status.tone === 'bad' ? 'bg-[#f6dcd4] text-[#9a3320]' : status.tone === 'attention' ? 'bg-primary text-primary-foreground' : 'bg-white/12 text-white',
+              classic
+                ? status.tone === 'bad' ? 'bg-destructive/10 text-destructive' : status.tone === 'attention' ? 'bg-draft-soft text-draft' : 'bg-success-soft text-success'
+                : status.tone === 'bad' ? 'bg-[#f6dcd4] text-[#9a3320]' : status.tone === 'attention' ? 'bg-primary text-primary-foreground' : 'bg-white/12 text-white',
             )}
           >
-            <span aria-hidden className={cn('size-1.5 rounded-full', status.tone === 'bad' ? 'bg-destructive' : status.tone === 'attention' ? 'bg-primary-foreground' : 'bg-[#7fd6ae]')} />
+            <span aria-hidden className={cn('size-1.5 rounded-full', status.tone === 'bad' ? 'bg-destructive' : status.tone === 'attention' ? (classic ? 'bg-draft' : 'bg-primary-foreground') : classic ? 'bg-success' : 'bg-[#7fd6ae]')} />
             {status.text}
           </span>
         )}

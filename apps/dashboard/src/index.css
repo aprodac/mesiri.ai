@@ -10,6 +10,11 @@
    Every shadcn component reads these, so this block IS the theme. */
 :root {
   --radius: 0.875rem;
+  /* The faces (WEB-103: through --look-* so Classic can swap them). */
+  --look-sans: 'Archivo', 'Noto Sans Malayalam', 'Noto Sans Devanagari', 'Noto Sans Tamil', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --look-display: 'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --look-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --look-brand: 'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, sans-serif;
   --background: #f8f7f3;
   --foreground: #15233f;
   --card: #ffffff;
@@ -120,14 +125,140 @@
   --sev-low: #8a2e1f;
 }
 
+/* WEB-103: Classic, the look before the blueprint system, kept as a choice (lib/look.ts, the account menu). The
+   tokens and fonts as they were on 21 Nov 2026. */
+:root[data-look='classic'] {
+  --radius: 0.625rem;
+  --background: #f6f3ed;
+  --foreground: #1a1d21;
+  --card: #ffffff;
+  --card-foreground: #1a1d21;
+  --popover: #ffffff;
+  --popover-foreground: #1a1d21;
+  --primary: #facc15;
+  --primary-foreground: #1a1d21;
+  /* Brand text and links: yellow is unreadable as text on white, so words take a dark gold (WEB-76). */
+  --primary-ink: #854d0e;
+  --secondary: #f2eee6;
+  --secondary-foreground: #1a1d21;
+  --muted: #efe9de;
+  --muted-foreground: #5f5a52;
+  --accent: #f2eee6;
+  --accent-foreground: #1a1d21;
+  --destructive: #b42318;
+  --border: #e7e1d6;
+  --input: #d9d1c3;
+  --ring: #ca8a04;
+  --chart-1: #ca8a04;
+  --chart-2: #1e3a8a;
+  --chart-3: #0f766e;
+  --chart-4: #b45309;
+  --chart-5: #6b7178;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #3d4248;
+  --sidebar-primary: #1a1d21;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f4f6;
+  --sidebar-accent-foreground: #1a1d21;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #ca8a04;
+  /* Status: text colour on its soft background clears 4.5:1 in both themes. */
+  /* UXA-03: a brighter ground than the sand page, for panels that float over it (the voucher sheet). */
+  --background-bright: #fdfcf9;
+  --success: #0f5132;
+  --success-soft: #dcf1e4;
+  --draft: #9a3e0b;
+  --draft-soft: #fdf0e6;
+  --info: #1e3a8a;
+  --info-soft: #e0e8fb;
+  --ai: #4338ca;
+  --ai-soft: #eef0ff;
+  /* Issue severity as an ordinal one-hue ramp for charts (WEB-24), checked
+     with the dataviz validator (--ordinal): monotone, light end >= 2:1. */
+  --sev-critical: #7f1d1d;
+  --sev-high: #b91c1c;
+  --sev-medium: #ef4444;
+  --sev-low: #f39696;
+  --look-sans: 'IBM Plex Sans', 'Noto Sans Malayalam', 'Noto Sans Devanagari', 'Noto Sans Tamil', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --look-display: var(--look-sans);
+  --look-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --look-brand: 'Unbounded', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --blueprint: #1e3a8a;
+  --blueprint-pale: #e0e8fb;
+  --blueprint-soft: #c7d2fe;
+}
+
+:root[data-look='classic'].dark {
+  --background: #141518;
+  --foreground: #ecebe7;
+  --card: #1c1e22;
+  --card-foreground: #ecebe7;
+  --popover: #1c1e22;
+  --popover-foreground: #ecebe7;
+  /* Site yellow keeps dark text in both themes (white on yellow is under 4.5:1). */
+  --primary: #facc15;
+  --primary-foreground: #1a1d21;
+  --primary-ink: #fde047;
+  --secondary: #26282d;
+  --secondary-foreground: #ecebe7;
+  --muted: #26282d;
+  --muted-foreground: #a3a8af;
+  --accent: #2a2c31;
+  --accent-foreground: #ecebe7;
+  --destructive: #f2756a;
+  --border: #2e3136;
+  --input: #3a3d43;
+  --ring: #facc15;
+  --chart-1: #facc15;
+  --chart-2: #8fa9f2;
+  --chart-3: #5cc8bd;
+  --chart-4: #e3a64d;
+  --chart-5: #a3a8af;
+  --sidebar: #18191c;
+  --sidebar-foreground: #c9cbcf;
+  --sidebar-primary: #ecebe7;
+  --sidebar-primary-foreground: #18191c;
+  --sidebar-accent: #26282d;
+  --sidebar-accent-foreground: #ecebe7;
+  --sidebar-border: #2e3136;
+  --sidebar-ring: #facc15;
+  --background-bright: #1a1c20;
+  --success: #7fd6a3;
+  --success-soft: #183424;
+  --draft: #f6ad7a;
+  --draft-soft: #3a2415;
+  --info: #a9bdf5;
+  --info-soft: #1c2742;
+  --ai: #b7b4ff;
+  --ai-soft: #25234a;
+  /* On the dark ground more severe = brighter (validated --mode dark). */
+  --sev-critical: #fca5a5;
+  --sev-high: #f87171;
+  --sev-medium: #dc2626;
+  --sev-low: #b91c1c;
+  --blueprint: #a9bdf5;
+  --blueprint-pale: #1c2742;
+  --blueprint-soft: #2e3a5c;
+}
+
+/* Classic shapes: square-ish buttons, headings in the UI face at their old weight, and the hazard tape on top. */
+:root[data-look='classic'] [data-slot='button'] {
+  border-radius: calc(var(--radius) - 2px);
+}
+:root[data-look='classic'] h1,
+:root[data-look='classic'] h2,
+:root[data-look='classic'] h3 {
+  letter-spacing: -0.01em;
+}
+
 @theme inline {
   /* Archivo is the UI face (body, tables, forms); Archivo Narrow the headings (h1-h3 and font-display); JetBrains
      Mono the figures and small labels (stat values, tables, chart ticks) via font-mono. The same three as the phone. */
-  --font-sans: 'Archivo', 'Noto Sans Malayalam', 'Noto Sans Devanagari', 'Noto Sans Tamil', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--look-sans);
+  --font-display: var(--look-display);
+  --font-mono: var(--look-mono);
   /* The Mesiri wordmark (components/brand/mesiri-logo.tsx) via font-brand: the heading face, bold. */
-  --font-brand: 'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-brand: var(--look-brand);
   --color-blueprint: var(--blueprint);
   --color-blueprint-pale: var(--blueprint-pale);
   --color-blueprint-soft: var(--blueprint-soft);
@@ -273,7 +404,7 @@
   }
   /* Headings in the drawing's narrow face, as on the phone. */
   h1, h2, h3 {
-    font-family: var(--font-display);
+    font-family: var(--look-display);
     letter-spacing: 0.005em;
   }
 }
@@ -290,6 +421,16 @@
 }
 .dark .blueprint-grid {
   background-color: #1c2d50;
+}
+
+/* The rule along the top of the app and the sign-in pages: blueprint with a highlighter start; Classic keeps the
+   hazard tape. */
+.top-rule {
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary) 0 72px, var(--blueprint) 72px);
+}
+:root[data-look='classic'] .top-rule {
+  background: repeating-linear-gradient(135deg, #1a1d21 0 8px, #facc15 8px 16px);
 }
 
 /* Circular View Transition for Theme Toggle */

@@ -35,7 +35,7 @@ export default function Login() {
   // Narrower, only the form: someone signing in has come to work.
   return (
     <div className="min-h-svh bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr]">
-      <div aria-hidden className="h-[3px] bg-[linear-gradient(90deg,#ffd23f_0_72px,var(--blueprint)_72px)] lg:col-span-2" />
+      <div aria-hidden className="top-rule lg:col-span-2" />
       <section aria-label="How Mesiri works" className="hidden px-12 pb-14 lg:block">
         <IntroConversation
           onStart={() => navigate('/signup')}

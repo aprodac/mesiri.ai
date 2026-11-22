@@ -96,7 +96,7 @@ function TopBar() {
   // red badge on Issues and in the bell.
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <div aria-hidden className="h-[3px] bg-[linear-gradient(90deg,#ffd23f_0_72px,var(--blueprint)_72px)]" />
+      <div aria-hidden className="top-rule" />
       <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
         <SidebarTrigger />
         <Separator orientation="vertical" className="mr-1 h-4" />

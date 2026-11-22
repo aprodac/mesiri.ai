@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { findPage } from '@/lib/module-map'
 import { ChevronRight, Lock, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useLook } from '@/lib/look'
 import { KPI_TONE, Kpi, KpiGrid, type KpiProps, type KpiTone } from '@/components/page/kpi'
 
 // The page kit (UX-05, docs/DESIGN.md "Page kit"): the parts every dashboard page is built from, in one
@@ -62,6 +63,7 @@ export function ModuleTitle({
  * The title block (WEB-102, the phone's Today title block): the drawing's corner box on squared blueprint paper, for
  * the one page a person lands on (Home, Today). Never behind a list: the grid is used sparingly. `eyebrow` is the
  * small mono line (date, scope), `aside` the controls or the status on the right, `children` a line under the title.
+ * In the Classic look (WEB-103) it is the plain page header it replaced.
  */
 export function TitleBlock({
   eyebrow,
@@ -76,6 +78,18 @@ export function TitleBlock({
   children?: React.ReactNode
   className?: string
 }) {
+  const [look] = useLook()
+  if (look === 'classic')
+    return (
+      <header className={cn('flex flex-wrap items-end justify-between gap-3', className)}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {eyebrow && <p className="text-sm text-muted-foreground">{eyebrow}</p>}
+          {children}
+        </div>
+        {aside && <div className="flex shrink-0 items-center gap-2">{aside}</div>}
+      </header>
+    )
   return (
     <header className={cn('blueprint-grid relative overflow-hidden rounded-[22px] px-5 py-5 text-white sm:px-7 sm:py-6', className)}>
       <span aria-hidden className="pointer-events-none absolute inset-2.5 rounded-[16px] border border-white/15" />
