@@ -412,7 +412,7 @@ export function TourOverlay({
           aria-hidden
           // The lit edge is an outline: a ring is a box-shadow, which the dimming shadow below replaces (it never showed,
           // and on a dark page nothing marked what was lit).
-          className="pointer-events-none fixed rounded-xl outline-2 outline-[#facc15] transition-all duration-300 ease-out motion-reduce:transition-none"
+          className="pointer-events-none fixed rounded-xl outline-2 outline-[#ffd23f] transition-all duration-300 ease-out motion-reduce:transition-none"
           style={{ ...spot, boxShadow: '0 0 0 9999px rgba(15, 17, 20, 0.58)' }}
         />
       ) : dock ? null : (

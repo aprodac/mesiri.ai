@@ -191,7 +191,7 @@ export function DprHeader({
         >
           <ArrowLeft className="size-[18px]" />
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-[28px] leading-tight font-bold">{title}</h1>
         {chip}
         {sub && <span className="text-sm text-muted-foreground">{sub}</span>}
       </div>
@@ -214,7 +214,7 @@ export function PageHeader({
   return (
     <header className="flex items-start justify-between gap-3 sm:items-end">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-[28px] leading-tight font-bold">{title}</h1>
         {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

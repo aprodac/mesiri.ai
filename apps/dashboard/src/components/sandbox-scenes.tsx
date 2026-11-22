@@ -369,7 +369,7 @@ const STARS: [number, number, number][] = Array.from({ length: 42 }, (_, i) => [
 function Speed() {
   return (
     <div aria-hidden className="absolute inset-0">
-      <div className="absolute inset-x-0 top-0 h-2 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)] [background-size:22px_22px] motion-safe:animate-[stripe_0.6s_linear_infinite]" />
+      <div className="absolute inset-x-0 top-0 h-2 bg-[repeating-linear-gradient(135deg,#15233f_0_8px,#ffd23f_8px_16px)] [background-size:22px_22px] motion-safe:animate-[stripe_0.6s_linear_infinite]" />
       {Array.from({ length: 14 }, (_, i) => (
         <span
           key={i}
@@ -816,7 +816,7 @@ export function EndCredits({ finale, role, onClose }: { finale: NonNullable<Days
   ]
   return createPortal(
     <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="dialog" aria-modal="true" aria-label="Green Villa handed over">
-      <div aria-hidden className="absolute inset-x-0 top-0 h-1.5 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
+      <div aria-hidden className="absolute inset-x-0 top-0 h-1.5 bg-[repeating-linear-gradient(135deg,#15233f_0_8px,#ffd23f_8px_16px)]" />
       <div
         className="absolute inset-x-0 top-0 flex flex-col items-center gap-14 px-6 text-center ease-linear"
         style={{ transform: roll ? 'translateY(-100%)' : 'translateY(100vh)', transition: roll && !prefersReducedMotion() ? 'transform 26s linear' : 'none' }}

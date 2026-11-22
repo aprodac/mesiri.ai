@@ -159,7 +159,7 @@ export function HelpButton() {
                   setOpen(false)
                   showMeAround()
                 }}
-                className="flex items-center gap-3 rounded-xl border border-[#facc15] bg-[#facc15]/15 px-3 py-2.5 text-left hover:bg-[#facc15]/25"
+                className="flex items-center gap-3 rounded-xl border border-[#ffd23f] bg-[#ffd23f]/15 px-3 py-2.5 text-left hover:bg-[#ffd23f]/25"
               >
                 <Spark mood="hello" size={36} quiet />
                 <span className="min-w-0 flex-1">

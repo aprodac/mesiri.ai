@@ -30,7 +30,7 @@ const NEW_ACTIONS: NewAction[] = [
 ]
 
 const YELLOW =
-  'inline-flex h-8 items-center gap-1.5 rounded-full bg-[#FACC15] px-3 text-sm font-semibold text-[#2A2829] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FACC15]'
+  'inline-flex h-8 items-center gap-1.5 rounded-full bg-[#ffd23f] px-3 text-sm font-semibold text-[#2A2829] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffd23f]'
 
 export function NewButton() {
   const { me } = useAuth()

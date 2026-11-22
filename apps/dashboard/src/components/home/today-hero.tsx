@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { ChevronLeft, ChevronRight, Clock, RefreshCw, TriangleAlert } from 'lucide-react'
 import { appNow } from '@/lib/clock'
 import { cn } from '@/lib/utils'
+import { TitleBlock } from '@/components/page/page-kit'
 
 // UX-66 (asked 18 Nov 2026: "the Today page looks so boring"; a dark day card was tried and rejected, then this look
 // was picked from three; UX-68 moved the greeting to Home): the day on the page itself, the day's moves beside it, then five figure
@@ -74,14 +75,15 @@ export function TodayHero({
   const btn = 'flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent'
   return (
     <section aria-label="Your day" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{isToday ? 'Today' : 'A past day'}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+      <TitleBlock
+        eyebrow={
+          <>
             {dateLabel}
             {scopeLabel ? ` · ${scopeLabel}` : ''}
-          </p>
-        </div>
+          </>
+        }
+        title={isToday ? 'Today' : 'A past day'}
+        aside={
         <div className="flex items-center gap-1.5">
           <div className="flex items-center rounded-lg border bg-card" data-guide="today.day">
             <button type="button" className={btn} onClick={() => onDay(-1)} title="Previous day" aria-label="Previous day">
@@ -100,12 +102,13 @@ export function TodayHero({
             <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
           </button>
         </div>
-      </div>
+        }
+      />
 
       {/* UX-75: one strip, not five cards of equal weight: the day's progress leads, the figures follow it. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border shadow-xs sm:grid-cols-[1.4fr_repeat(4,1fr)]">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border bg-border sm:grid-cols-[1.4fr_repeat(4,1fr)]">
         <div className="col-span-2 flex flex-col justify-center bg-card p-3.5 sm:col-span-1">
-          <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
             Sites reported
             {sites > 0 && (
               <span className={cn('rounded-full px-1.5 py-px text-[11px] font-semibold', all ? 'bg-success-soft text-success' : 'bg-draft-soft text-draft')}>
@@ -113,7 +116,7 @@ export function TodayHero({
               </span>
             )}
           </div>
-          <div className="mt-0.5 text-2xl font-semibold tabular-nums">
+          <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums">
             {reported}
             <span className="text-base text-muted-foreground">/{sites}</span>
           </div>
@@ -128,11 +131,11 @@ export function TodayHero({
         </div>
         {figures.map((f, i) => (
           <div key={f.label} className="flex flex-col justify-center bg-card p-3.5">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-1.5 font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
               <f.icon className={cn('size-3.5', FIG_TONE[i % FIG_TONE.length])} aria-hidden />
               <span className="truncate">{f.label}</span>
             </div>
-            <div className={cn('mt-0.5 text-2xl font-semibold tabular-nums', !f.value && 'text-muted-foreground/50', f.bad && f.value > 0 && 'text-destructive')}>{f.value}</div>
+            <div className={cn('mt-0.5 font-mono text-2xl font-semibold tabular-nums', !f.value && 'text-muted-foreground/50', f.bad && f.value > 0 && 'text-destructive')}>{f.value}</div>
           </div>
         ))}
       </div>

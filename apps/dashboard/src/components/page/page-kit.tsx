@@ -44,17 +44,50 @@ export function ModuleTitle({
   const eyebrow = moduleName ?? (hit && hit.group.key !== 'site' ? hit.group.title : undefined)
   return (
     <div className={cn('flex min-w-0 items-center gap-3', className)}>
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary-ink" aria-hidden>
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-blueprint-pale text-blueprint" aria-hidden>
         <Icon className="size-5" />
       </span>
       <div className="min-w-0">
-        {eyebrow && <div className="text-xs text-muted-foreground">{eyebrow}</div>}
-        <h1 className="flex flex-wrap items-center gap-2 text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+        {eyebrow && <div className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">{eyebrow}</div>}
+        <h1 className="flex flex-wrap items-center gap-2 text-2xl leading-tight font-bold sm:text-[28px]">
           <span className="truncate">{title}</span>
           {chip}
         </h1>
       </div>
     </div>
+  )
+}
+
+/**
+ * The title block (WEB-102, the phone's Today title block): the drawing's corner box on squared blueprint paper, for
+ * the one page a person lands on (Home, Today). Never behind a list: the grid is used sparingly. `eyebrow` is the
+ * small mono line (date, scope), `aside` the controls or the status on the right, `children` a line under the title.
+ */
+export function TitleBlock({
+  eyebrow,
+  title,
+  aside,
+  children,
+  className,
+}: {
+  eyebrow?: React.ReactNode
+  title: React.ReactNode
+  aside?: React.ReactNode
+  children?: React.ReactNode
+  className?: string
+}) {
+  return (
+    <header className={cn('blueprint-grid relative overflow-hidden rounded-[22px] px-5 py-5 text-white sm:px-7 sm:py-6', className)}>
+      <span aria-hidden className="pointer-events-none absolute inset-2.5 rounded-[16px] border border-white/15" />
+      <div className="relative flex flex-wrap items-end justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          {eyebrow && <div className="font-mono text-[10px] font-medium tracking-[0.14em] text-[#b9c8e6] uppercase sm:text-[11px]">{eyebrow}</div>}
+          <h1 className="text-[30px] leading-[1.05] font-bold text-white sm:text-[38px]">{title}</h1>
+          {children}
+        </div>
+        {aside && <div className="relative flex shrink-0 items-center gap-2">{aside}</div>}
+      </div>
+    </header>
   )
 }
 
@@ -78,8 +111,8 @@ export function Section({
     <section id={id} className={cn('flex scroll-mt-20 flex-col gap-2 border-t pt-4 first:border-t-0 first:pt-0', className)}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-            <span aria-hidden className="h-4 w-1 shrink-0 self-center rounded-full bg-primary" />
+          <h2 className="flex items-center gap-2 text-[17px] font-semibold">
+            <span aria-hidden className="h-4 w-1 shrink-0 self-center rounded-full bg-blueprint" />
             {title}
           </h2>
           {note && <span className="text-sm text-muted-foreground">{note}</span>}
@@ -114,9 +147,9 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <div className={cn('flex flex-col items-center gap-3 rounded-xl border border-dashed px-5 py-8 text-center', className)}>
+    <div className={cn('flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blueprint-soft bg-card/60 px-5 py-8 text-center', className)}>
       {Icon && (
-        <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-hidden>
+        <span className="flex size-10 items-center justify-center rounded-[14px] bg-blueprint-pale text-blueprint" aria-hidden>
           <Icon className="size-5" />
         </span>
       )}
@@ -235,7 +268,7 @@ export function LinkedStrip({ records, title = 'Linked', className }: { records:
   )
   return (
     <nav aria-label={title} className={cn('flex flex-col gap-1.5', className)}>
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <h3 className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">{title}</h3>
       {before.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-muted-foreground">From</span>

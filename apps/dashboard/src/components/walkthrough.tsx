@@ -209,7 +209,7 @@ function SayThis({ say, number }: { say: string; number: string | null }) {
   // hand; the engine steps aside while the panel is open and still watches for the saved record.
   return (
     <div className="flex flex-col gap-1.5 rounded-xl bg-[#ece9e1] p-2.5 dark:bg-[#101214]">
-      <div className="self-end rounded-xl rounded-tr-sm bg-[#fff3b8] px-3 py-1.5 text-[13px] text-[#1a1d21] dark:bg-[#3a3313] dark:text-[#ecebe6]">
+      <div className="self-end rounded-xl rounded-tr-sm bg-[#fff3b8] px-3 py-1.5 text-[13px] text-[#15233f] dark:bg-[#3a3313] dark:text-[#ecebe6]">
         {say}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">

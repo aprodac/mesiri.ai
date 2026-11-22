@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils'
 
 export type SparkMood = 'idle' | 'alert' | 'listen' | 'think' | 'look' | 'happy' | 'worry' | 'send' | 'hello'
 
-const INK = '#1a1d21'
-const HAT = '#facc15' // a yellow hard hat: the brand colour (WEB-76)
+const INK = '#15233f'
+const HAT = '#ffd23f' // a yellow hard hat: the brand colour (WEB-76)
 const RED = '#b42318'
 
 const MOUTHS: Record<SparkMood, string> = {

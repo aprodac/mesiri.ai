@@ -188,7 +188,7 @@ export function AnswerSheet({
           <button
             type="button"
             onClick={(e) => onOpen(e.currentTarget)}
-            className="flex items-center gap-2 bg-[#1a1d21] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-black"
+            className="flex items-center gap-2 bg-[#15233f] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-black"
           >
             Open {target.name} <ArrowRight className="size-3.5" />
           </button>

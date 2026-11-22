@@ -80,7 +80,7 @@ export function Finale({
       {/* The sheet, folding into its PDF and dropping into WhatsApp */}
       <div
         aria-hidden="true"
-        className="absolute overflow-hidden border border-black/15 bg-white text-[#1a1d21] shadow-[0_30px_60px_-25px_rgba(0,0,0,0.45)]"
+        className="absolute overflow-hidden border border-black/15 bg-white text-[#15233f] shadow-[0_30px_60px_-25px_rgba(0,0,0,0.45)]"
         style={{
           ...paperStyle,
           transformOrigin: '50% 0%',

@@ -175,7 +175,7 @@ export const URGENCY_LOOK: Record<Urgency, { chip: string; dot: string }> = {
 }
 
 /** "Still to buy": black and yellow hazard stripes. */
-export const HAZARD = 'bg-[repeating-linear-gradient(135deg,#1a1d21_0_4px,#facc15_4px_8px)]'
+export const HAZARD = 'bg-[repeating-linear-gradient(135deg,#15233f_0_4px,#ffd23f_4px_8px)]'
 
 const CATEGORY_LOOKS: { match: RegExp; icon: LucideIcon; tile: string }[] = [
   { match: /struct|civil|concrete|steel/i, icon: BrickWall, tile: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },

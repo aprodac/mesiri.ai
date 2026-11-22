@@ -164,7 +164,7 @@ export default function LearnPage() {
       {/* SS-73: the paperwork to bring into it. */}
       <StarterKit />
 
-      <div className="flex items-center gap-3 rounded-xl border bg-[#facc15]/10 px-4 py-3">
+      <div className="flex items-center gap-3 rounded-xl border bg-[#ffd23f]/10 px-4 py-3">
         <Spark mood="hello" size={44} quiet className="shrink-0" />
         <p className="m-0 text-sm">
           Practice is real: what you save is recorded. So each practice either has you tap Cancel on Mesiri's card, or ends by showing you how to take it back.

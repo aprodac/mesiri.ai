@@ -34,7 +34,7 @@ function CardReply({ reply }: { reply: string }) {
 function Exchange({ example }: { example: WhatsAppExample }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-[#ece9e1] p-3 dark:bg-[#101214]" aria-label="Example WhatsApp chat">
-      <div className="max-w-[85%] self-end rounded-xl rounded-tr-sm bg-[#fff3b8] px-3 py-2 text-[13px] text-[#1a1d21] shadow-xs dark:bg-[#3a3313] dark:text-[#ecebe6]">
+      <div className="max-w-[85%] self-end rounded-xl rounded-tr-sm bg-[#fff3b8] px-3 py-2 text-[13px] text-[#15233f] shadow-xs dark:bg-[#3a3313] dark:text-[#ecebe6]">
         {example.say}
       </div>
       {example.kind === 'save' ? (

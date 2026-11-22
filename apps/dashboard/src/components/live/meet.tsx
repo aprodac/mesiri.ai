@@ -178,7 +178,7 @@ function CardScene({ site }: { site: string }) {
         </div>
         <div className="relative">
           <div className="overflow-hidden border-2 border-foreground bg-background" style={at('meet-pop', 4.3, 500)}>
-            <div className="relative h-3 bg-[repeating-linear-gradient(-45deg,#1a1d21_0_10px,#f5b301_10px_20px)]" />
+            <div className="relative h-3 bg-[repeating-linear-gradient(-45deg,#15233f_0_10px,#ffd23f_10px_20px)]" />
             <div className="flex items-center justify-between px-4 pt-3">
               <span className="relative">
                 <span className="bg-foreground px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-background">Draft · not saved</span>

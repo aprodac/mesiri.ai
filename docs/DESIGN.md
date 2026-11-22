@@ -11,25 +11,30 @@
 
 ---
 
-## Brand (UX-01..03, 9 Nov 2026)
+## Brand: the blueprint system (WEB-102, 22 Nov 2026; replaces UX-01..03)
 
-One identity everywhere: sign-in, the app, the favicon and phone icon, PDFs.
+The dashboard and the phone app (MOB-14, `apps/mobile/src/theme.ts`) share one look: a construction drawing. Bright
+paper, drawing ink, the blueprint blue for Mesiri and information, a highlighter for the one thing to do.
 
 | Part | Value | Where |
 |---|---|---|
-| Brand colour | site yellow `#facc15` (hazard tape), dark ink on it | `--primary`; the one primary button per page; the active-row bar; the top-bar stripe |
-| Brand ink | `#1a1d21` near-black; dark gold `#854d0e` for brand words on white | `--foreground`, `--primary-ink` |
-| Sidebar | charcoal `#3E3C3D` (light option per user) | `app-sidebar.tsx` `SIDEBAR_THEMES` |
-| Wordmark | "Mesiri" in Unbounded 700 | `components/brand/mesiri-logo.tsx` |
-| Mark | yellow M on a charcoal tile with a hazard stripe | `public/favicon.svg`, `icon-*.png`, `apple-touch-icon.png`, `site.webmanifest`, `og-image.png` |
-| UI type | IBM Plex Sans; Geist Mono for figures | `index.css` |
-| Greys | one family (`neutral`); `slate`, `stone`, `zinc`, `gray` are aliased to it | `index.css` "One grey, one green, one red" |
-| Meaning colours | success green (emerald; `green` aliased), draft orange/amber, danger red (`rose` aliased), info blue, AI indigo | tokens in §3 |
-| Category colours | teal, sky, violet, fuchsia, cyan stay distinct, only for categories (cost centres, supplier kinds, request states) | `lib/cost.ts`, `lib/vendors.ts`, `lib/requests.ts` |
+| Paper | `#f8f7f3` page, `#ffffff` cards, `#f0eee8` muted | `--background`, `--card`, `--muted` |
+| Drawing ink | `#15233f` deep navy: words, the sidebar, secondary buttons | `--foreground`, `--sidebar` |
+| Blueprint | `#1e3a6e`, pale `#dfe6f3`: Mesiri's own colour, info, focus rings, page-title icon tiles, section ticks | `--blueprint`, `--blueprint-pale`, `--info`, `--ring` |
+| Highlighter | `#ffd23f` with navy text: the one primary action per page, the logo tile, "waiting" badges | `--primary`; brand words on white take `#7a5a00` (`--primary-ink`) |
+| Brick | `#c4472f`: wrong, overdue, problems | `--destructive` |
+| Status | done `#1f6b52` on `#d9ede3`; waiting/draft `#7a5a00` on `#f8ecc4`; AI `#4a3f88` on `#e6e2f2` | `--success`, `--draft`, `--ai` |
+| Type | Archivo (UI), Archivo Narrow (h1-h3, `font-display`, the wordmark), JetBrains Mono (figures, small uppercase labels) | `index.html`, `index.css` `@theme` |
+| Shape | soft: radius 14px base, cards 18px, buttons and nav rows pills, title blocks 22px | `--radius`, `ui/button.tsx`, `ui/card.tsx` |
+| Drawing grid | squared blueprint paper, **only** on the landing title block (Home, Today): `TitleBlock` in `page/page-kit.tsx`, `.blueprint-grid` | never behind a list |
+| Top bar | a thin blueprint rule with a highlighter start (the hazard tape is gone) | `app-layout.tsx` |
+| Sidebar | a floating navy panel (rounded 22px): the M on a highlighter tile, the company and Set up as cards, mono group labels, pill rows, the page you are on as a paper pill with a blueprint icon, the account as a card | `app-sidebar.tsx` |
+| Dark mode | the drawing at night: navy paper `#0d1629`, cards `#142039`, pale blueprint lines | `.dark` in `index.css` |
 
-Rules: the sidebar's icons are one muted colour (the active one takes the ink); colour in the sidebar is only a
-badge (orange waiting, red wrong). No page invents a brand colour. Regenerate the PNG icons from `favicon.svg` when
-the mark changes.
+Rules: the sidebar's icons are one muted colour (the active one takes the blueprint); colour in the sidebar is only
+a badge (highlighter = waiting on someone, brick = wrong). One highlighter per screen. No page invents a brand
+colour; old hard-coded `#1a1d21` / `#facc15` were swept to the ink and highlighter. The favicon and PNG icons still
+carry the old charcoal mark (follow-up: regenerate from a navy `favicon.svg`).
 
 ## Navigation (UX-04, 9 Nov 2026)
 

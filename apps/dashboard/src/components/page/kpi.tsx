@@ -24,7 +24,7 @@ export type KpiToneIn = KpiTone | 'warn'
 const tone = (t?: KpiToneIn): KpiTone => (t === 'warn' ? 'attention' : t ?? 'default')
 
 export const KPI_TONE: Record<KpiTone, { value: string; icon: string; bar: string; ground: string; fill: string; dot: string }> = {
-  default: { value: '', icon: 'bg-muted text-muted-foreground', bar: '', ground: '', fill: 'bg-foreground/45', dot: 'bg-muted-foreground/40' },
+  default: { value: '', icon: 'bg-blueprint-pale text-blueprint', bar: '', ground: '', fill: 'bg-foreground/45', dot: 'bg-muted-foreground/40' },
   good: { value: 'text-success', icon: 'bg-success-soft text-success', bar: 'before:bg-success', ground: '', fill: 'bg-success', dot: 'bg-success' },
   info: { value: 'text-info', icon: 'bg-info-soft text-info', bar: 'before:bg-info', ground: '', fill: 'bg-info', dot: 'bg-info' },
   attention: { value: 'text-draft', icon: 'bg-draft-soft text-draft', bar: 'before:bg-draft', ground: '', fill: 'bg-draft', dot: 'bg-draft' },
@@ -107,9 +107,9 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
   const showMeter = !k.loading && (k.share !== undefined || (k.of !== undefined && n !== undefined))
   const body = (
     <>
-      <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground sm:gap-2 sm:text-xs">
+      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase sm:gap-2 sm:text-[11px]">
         {Icon && (
-          <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-md sm:size-6', k.iconClass ?? look.icon)} aria-hidden>
+          <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-lg sm:size-6', k.iconClass ?? look.icon)} aria-hidden>
             <Icon className="size-3 sm:size-3.5" />
           </span>
         )}
@@ -122,7 +122,7 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
         <span className="h-6 w-16 animate-pulse rounded bg-muted sm:h-7" aria-label="Loading" />
       ) : (
         k.value !== undefined && (
-          <span className={cn('flex min-w-0 items-baseline gap-1 text-lg leading-tight font-semibold tabular-nums sm:text-xl', look.value)}>
+          <span className={cn('flex min-w-0 items-baseline gap-1 font-mono text-lg leading-tight font-semibold tabular-nums sm:text-[22px]', look.value)}>
             <span className="truncate">{k.value}</span>
             {(k.ofLabel !== undefined || k.of !== undefined) && (
               <span className="shrink-0 text-xs font-normal text-muted-foreground">of {k.ofLabel ?? k.of?.toLocaleString('en-IN')}</span>
@@ -137,7 +137,7 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
   )
   const cls = cn(
     'group relative flex min-w-0 flex-col gap-1 text-left',
-    card ? 'overflow-hidden rounded-xl border bg-card px-3.5 py-3 sm:px-4' : 'flex-1 bg-card px-2.5 py-2 sm:px-4 sm:py-2.5',
+    card ? 'overflow-hidden rounded-2xl border bg-card px-3.5 py-3 sm:px-4' : 'flex-1 bg-card px-2.5 py-2 sm:px-4 sm:py-2.5',
     t !== 'default' && "before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:content-['']",
     look.bar,
     look.ground,
@@ -188,7 +188,7 @@ export function KpiStrip({
     <div
       data-guide={guide}
       className={cn(
-        'grid gap-px overflow-hidden rounded-xl border bg-border sm:flex',
+        'grid gap-px overflow-hidden rounded-2xl border bg-border sm:flex',
         stats.length <= 2 || phoneCols === 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-2 min-[420px]:grid-cols-4' : 'grid-cols-3',
         className,
       )}

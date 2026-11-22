@@ -404,7 +404,7 @@ function Row({
       }
     >
       {onOpen && opensIn && (
-        <span className="pointer-events-none absolute -bottom-2.5 right-0 z-10 bg-[#1a1d21] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+        <span className="pointer-events-none absolute -bottom-2.5 right-0 z-10 bg-[#15233f] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
           Open in {opensIn} →
         </span>
       )}
@@ -1796,7 +1796,7 @@ function SiteLive({ onClose }: { onClose: () => void }) {
                   className="grid transition-transform ease-[cubic-bezier(.7,0,.2,1)] motion-reduce:transition-none"
                   style={{ transformStyle: 'preserve-3d', transform: answer ? 'rotateY(180deg)' : 'none', transitionDuration: `${FLIP_MS}ms` }}
                 >
-              <div className="relative [grid-area:1/1] [backface-visibility:hidden] border border-black/15 bg-white px-6 pt-6 pb-5 text-[#1a1d21] shadow-[0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:px-9 sm:pt-8" aria-hidden={answer ? true : undefined} inert={!!answer}>
+              <div className="relative [grid-area:1/1] [backface-visibility:hidden] border border-black/15 bg-white px-6 pt-6 pb-5 text-[#15233f] shadow-[0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:px-9 sm:pt-8" aria-hidden={answer ? true : undefined} inert={!!answer}>
                 {stamped && (
                   // The report was asked for: it goes out as a PDF.
                   <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-white/40" aria-live="polite">
@@ -1813,7 +1813,7 @@ function SiteLive({ onClose }: { onClose: () => void }) {
                     {branding.data?.logo_url ? (
                       <img src={branding.data.logo_url} alt="" className="h-10 w-auto max-w-[140px] object-contain" />
                     ) : (
-                      <span className="grid size-10 place-items-center bg-[#1a1d21] font-brand text-[12px] text-white">
+                      <span className="grid size-10 place-items-center bg-[#15233f] font-brand text-[12px] text-white">
                         {company
                           .split(/\s+/)
                           .slice(0, 2)
@@ -1979,7 +1979,7 @@ function SiteLive({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div
-                className="[grid-area:1/1] [backface-visibility:hidden] [transform:rotateY(180deg)] border border-black/15 bg-white px-6 pt-6 pb-5 text-[#1a1d21] shadow-[0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:px-9 sm:pt-8"
+                className="[grid-area:1/1] [backface-visibility:hidden] [transform:rotateY(180deg)] border border-black/15 bg-white px-6 pt-6 pb-5 text-[#15233f] shadow-[0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:px-9 sm:pt-8"
                 aria-hidden={answer ? undefined : true}
                 inert={!answer}
               >

@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { useSetupProgress } from '@/lib/setup'
 import { cn } from '@/lib/utils'
+import { TitleBlock } from '@/components/page/page-kit'
 import { appNow } from '@/lib/clock'
 import { localIsoDate, longDate } from '@/lib/site-day'
 import { RoleHome } from '@/components/home/role-home'
@@ -50,29 +51,32 @@ export default function HomePage() {
       {/* UX-75 (asked 20 Nov 2026: "the home page is the one with the worst design"): what needs you first (exceptions
           first, the figures beside it, not a row of equal cards on top); the page's own Tell Mesiri and Today
           buttons went: the top bar's New and the sidebar's Today are one tap away on every page. */}
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {greeting(now)}
-          {first ? `, ${first}` : ''}
-        </h1>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-          <span>
+      <TitleBlock
+        eyebrow={
+          <>
             {longDate(localIsoDate(now))}
             {scopeLabel ? ` · ${scopeLabel}` : ''}
+          </>
+        }
+        title={
+          <>
+            {greeting(now)}
+            {first ? `, ${first}` : ''}
+          </>
+        }
+      >
+        {status && (
+          <span
+            className={cn(
+              'mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
+              status.tone === 'bad' ? 'bg-[#f6dcd4] text-[#9a3320]' : status.tone === 'attention' ? 'bg-primary text-primary-foreground' : 'bg-white/12 text-white',
+            )}
+          >
+            <span aria-hidden className={cn('size-1.5 rounded-full', status.tone === 'bad' ? 'bg-destructive' : status.tone === 'attention' ? 'bg-primary-foreground' : 'bg-[#7fd6ae]')} />
+            {status.text}
           </span>
-          {status && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                status.tone === 'bad' ? 'bg-destructive/10 text-destructive' : status.tone === 'attention' ? 'bg-draft-soft text-draft' : 'bg-success-soft text-success',
-              )}
-            >
-              <span aria-hidden className={cn('size-1.5 rounded-full', status.tone === 'bad' ? 'bg-destructive' : status.tone === 'attention' ? 'bg-draft' : 'bg-success')} />
-              {status.text}
-            </span>
-          )}
-        </p>
-      </header>
+        )}
+      </TitleBlock>
 
       {showChecklist && <GettingStartedCard />}
 

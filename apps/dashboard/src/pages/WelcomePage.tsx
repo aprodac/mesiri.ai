@@ -369,7 +369,7 @@ export default function WelcomePage() {
 
   return (
     <div className="min-h-svh bg-background">
-      <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
+      <div aria-hidden className="h-[3px] bg-[linear-gradient(90deg,#ffd23f_0_72px,var(--blueprint)_72px)]" />
       <div className="px-4 pb-16 sm:px-8 lg:px-12">
       <div className="mx-auto max-w-[1120px] @container">
         <header className="flex flex-wrap items-baseline justify-between gap-4 pt-7 pb-4">

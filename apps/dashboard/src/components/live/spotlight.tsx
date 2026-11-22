@@ -67,7 +67,7 @@ export function Spotlight({ fact, from, to }: { fact: SpotlightFact; from: DOMRe
           ref={card}
           aria-hidden="true"
           className={cn(
-            'grid w-[min(760px,92vw)] gap-4 border bg-white p-8 text-[#1a1d21] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.5)] sm:p-10',
+            'grid w-[min(760px,92vw)] gap-4 border bg-white p-8 text-[#15233f] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.5)] sm:p-10',
             fact.warn ? 'border-red-700/60' : 'border-black/15',
           )}
           style={{

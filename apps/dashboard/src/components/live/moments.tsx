@@ -300,7 +300,7 @@ export function EntryCard({
               : { animation: 'meet-pop 400ms ease-out both' }
         }
       >
-        <div className={cn('h-2.5', as === 'saved' ? 'bg-[var(--success)]' : 'bg-[repeating-linear-gradient(-45deg,#1a1d21_0_10px,#f5b301_10px_20px)]')} />
+        <div className={cn('h-2.5', as === 'saved' ? 'bg-[var(--success)]' : 'bg-[repeating-linear-gradient(-45deg,#15233f_0_10px,#ffd23f_10px_20px)]')} />
         <div className="flex items-center justify-between px-4 pt-2.5">
           <span
             className={cn(
