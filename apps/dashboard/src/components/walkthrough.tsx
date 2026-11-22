@@ -63,10 +63,18 @@ function onPage(url: string, pathname: string, search: string): boolean {
   return first === url
 }
 
-/** The check's route with the picked project in place of `{project}`; null when one is needed and none is picked. */
-function checkPath(check: WalkCheck, project: string | null): string | null {
-  if (!check.path.includes('{project}')) return check.path
-  return project ? check.path.replaceAll('{project}', project) : null
+/** The check's route and params with the picked project in place of `{project}` (in the path or a param: the RA
+ *  bills and wages checks put it in `params`, 21 Nov play-through); null when one is needed and none is picked. */
+function checkRequest(check: WalkCheck, project: string | null): { path: string; params?: Record<string, unknown> } | null {
+  const params = check.params as Record<string, unknown> | undefined
+  const needs = check.path.includes('{project}') || Object.values(params ?? {}).some((v) => typeof v === 'string' && v.includes('{project}'))
+  if (!needs) return { path: check.path, params }
+  if (!project) return null
+  const fill = (v: unknown) => (typeof v === 'string' ? v.replaceAll('{project}', project) : v)
+  return {
+    path: check.path.replaceAll('{project}', project),
+    params: params && Object.fromEntries(Object.entries(params).map(([k, v]) => [k, fill(v)])),
+  }
 }
 
 /** SS-72: a dotted path into an answer. In a list, a part names a row by its `key` or `id`, or by place (`first`,
@@ -100,9 +108,9 @@ function meets(data: unknown, has: NonNullable<WalkCheck['has']>): boolean {
 
 /** What a check reads: the ids in its rows (a list, `{ items }`, or `rows`), and whether `has` is met. */
 async function readState(check: WalkCheck, project: string | null): Promise<{ ids: Set<string>; met: boolean } | null> {
-  const path = checkPath(check, project)
-  if (!path) return null
-  const data = (await api.get(path, { params: check.params })).data as unknown
+  const req = checkRequest(check, project)
+  if (!req) return null
+  const data = (await api.get(req.path, { params: req.params })).data as unknown
   const list = Array.isArray(data) ? data : ((data as Record<string, unknown[]>)?.[check.rows ?? 'items'] ?? [])
   const ids = new Set((Array.isArray(list) ? list : []).map((r) => String((r as { id?: unknown })?.id ?? '')).filter(Boolean))
   return { ids, met: check.has ? meets(data, check.has) : false }
@@ -461,6 +469,8 @@ export function WalkthroughRunner() {
   // page and wait for its target. A target that never shows (no data yet, a button this role doesn't have) is never
   // pointed at: a page-tour step is skipped, a workflow step is told in the middle of the screen.
   const navigated = React.useRef<string | null>(null)
+  /** The step whose named project is being opened (once per step). */
+  const picking = React.useRef<string | null>(null)
   const goRef = React.useRef(go)
   goRef.current = go
   // useNavigate changes with the address; the step must not start over when it does.
@@ -469,10 +479,12 @@ export function WalkthroughRunner() {
   // The project picked (on a picker step or in the top bar) goes with every page the walkthrough opens, or each
   // project page would ask for it again (SS-52). The top bar knows the project on a project's own pages too
   // (/projects/<id>/boq, lib/ScopeContext.tsx). A ref: picking one must not start the step over.
-  const { scope, setPortfolioScope } = useScope()
+  const { scope, setPortfolioScope, setProjectScope } = useScope()
   scopeNow.current = scope
   const portfolioRef = React.useRef(setPortfolioScope)
   portfolioRef.current = setPortfolioScope
+  const projectRef = React.useRef(setProjectScope)
+  projectRef.current = setProjectScope
   const scopeRef = React.useRef(scope)
   if (scope.mode !== 'portfolio') scopeRef.current = scope
   /** The page that last lit up a step's element, and since when: its later steps don't wait the full WAIT_MS. */
@@ -509,9 +521,20 @@ export function WalkthroughRunner() {
       return
     }
     // A step about every project (21 Nov: "handling multiple projects"): the top bar goes to All projects first.
-    if (step.allProjects && scopeNow.current.mode !== 'portfolio') {
-      scopeRef.current = { mode: 'portfolio' }
-      portfolioRef.current()
+    // Only for that page: the project picked before stays the walkthrough's, for the chapters after (21 Nov).
+    if (step.allProjects && scopeNow.current.mode !== 'portfolio') portfolioRef.current()
+    // Inside the sample company a story chapter's step (one with a day) that names its project opens on it by itself
+    // (after an all-projects chapter, or a chapter jumped to from the list). Chapter 2's "open Green Villa" stays the
+    // person's own pick: it is part of the lesson.
+    if (step.pick && step.day && inSandbox() && !step.allProjects && scopeNow.current.mode === 'portfolio' && picking.current !== here) {
+      picking.current = here
+      void api.get<{ id: string; name: string }[]>('/projects').then((res) => {
+        const found = (Array.isArray(res.data) ? res.data : []).find((p) => p.name === step.pick)
+        if (!found) return
+        scopeRef.current = { mode: 'project', projectId: found.id } as typeof scopeRef.current
+        projectRef.current(found as Parameters<typeof setProjectScope>[0])
+        if (step.page) navigateRef.current(urlWithScope(step.page, scopeRef.current))
+      }).catch(() => undefined)
     }
     const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
     if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
@@ -563,8 +586,9 @@ export function WalkthroughRunner() {
   // A practice here this person could not take back, or one written look-only, opens the form and is cancelled.
   const cardOnly =
     (tryIt?.kind === 'whatsapp' || tryIt?.kind === 'here') && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
-  // SS-72: `{project}` in a check is the project picked now (the top bar, or the page the walkthrough opened).
-  const pickedProject = scope.mode !== 'portfolio' ? scope.projectId : null
+  // SS-72: `{project}` in a check is the project picked now: the top bar, or the page's own `?project=` (RA bills,
+  // setup and wages pick it on the page while the top bar stays on All projects: 21 Nov play-through).
+  const pickedProject = (scope.mode !== 'portfolio' ? scope.projectId : null) ?? new URLSearchParams(search).get('project')
   const check = useCheck(cardOnly ? undefined : tryIt?.check, shown,
     tryIt?.kind === 'whatsapp' || (tryIt?.kind === 'here' && !!tryIt.poll), setNewRecord, pickedProject)
   // SS-72: a your-turn that opens no dialog (a form on the page, a button that saves at once) moves on by itself.

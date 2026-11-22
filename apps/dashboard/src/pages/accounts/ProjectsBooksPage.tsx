@@ -149,7 +149,7 @@ export default function ProjectsBooksPage() {
   const [heads, setHeads] = React.useState(false)
   const q = useQuery({ queryKey: ['accounts', 'projects', period], queryFn: () => fetchProjectsBooks(period), enabled: allowed })
   // Billed to date for the real margin, and Cost control's full cost and forecast (when this role may read them).
-  const toDate = useQuery({ queryKey: ['accounts', 'projects', 'to-date'], queryFn: () => fetchProjectsBooks({ date_from: '2000-01-01', date_to: period.date_to }), enabled: allowed })
+  const toDate = useQuery({ queryKey: ['accounts', 'projects', 'to-date', period.date_to], queryFn: () => fetchProjectsBooks({ since_start: true, date_to: period.date_to }), enabled: allowed })
   const port = useQuery({ queryKey: ['cost', 'portfolio'], queryFn: fetchPortfolio, enabled: allowed && maySeeBoq(me?.role), retry: false })
   // UX-60: work measured but on no bill yet, and how old the unpaid bills are (the billing people's figures).
   const billing = allowed && mayBill(me?.role)

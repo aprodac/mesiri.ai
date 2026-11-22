@@ -183,61 +183,65 @@ class Kind:
 
     role: str
     routes: tuple[tuple[str, str], ...]
+    #: What a day of these says in "Days 1 to 2 passed" ("Ravi: work recorded 16"), and in the morning briefing's
+    #: short line ("16 work entries"). Required, so a new kind can never reach the person as its code name.
+    said: str = field(kw_only=True)
+    short: str = field(kw_only=True)
     #: Everyday site records, said in one line per site in the readable plan.
     routine: bool = False
 
 
 KINDS: dict[str, Kind] = {
-    "conditions": Kind(ENGINEER, (("PATCH", "/dpr/site-days/{site_id}/conditions"),), routine=True),
-    "attendance": Kind(ENGINEER, (("POST", "/labour/attendance"),), routine=True),
-    "work": Kind(ENGINEER, (("POST", "/progress/activities"),), routine=True),
-    "use": Kind(ENGINEER, (("POST", "/materials/outflows"),), routine=True),
-    "expense": Kind(ENGINEER, (("POST", "/expenses"),), routine=True),
-    "issue": Kind(ENGINEER, (("POST", "/progress/issues"),)),
-    "request": Kind(ENGINEER, (("POST", "/procurement/requests"),)),
-    "delivery": Kind(ENGINEER, (("POST", "/materials/inflows"),)),
-    "order": Kind(PM, (("POST", "/procurement/orders"),)),
+    "conditions": Kind(ENGINEER, (("PATCH", "/dpr/site-days/{site_id}/conditions"),), routine=True, said="site days written up", short="site notes"),
+    "attendance": Kind(ENGINEER, (("POST", "/labour/attendance"),), routine=True, said="attendance", short="attendance"),
+    "work": Kind(ENGINEER, (("POST", "/progress/activities"),), routine=True, said="work recorded", short="work entries"),
+    "use": Kind(ENGINEER, (("POST", "/materials/outflows"),), routine=True, said="material used", short="material used"),
+    "expense": Kind(ENGINEER, (("POST", "/expenses"),), routine=True, said="expenses", short="expenses"),
+    "issue": Kind(ENGINEER, (("POST", "/progress/issues"),), said="problems reported", short="problems"),
+    "request": Kind(ENGINEER, (("POST", "/procurement/requests"),), said="material asked for", short="requests"),
+    "delivery": Kind(ENGINEER, (("POST", "/materials/inflows"),), said="deliveries received", short="deliveries"),
+    "order": Kind(PM, (("POST", "/procurement/orders"),), said="orders placed", short="orders"),
     # LRN-F18 (episode 4): the Main block's cement as the kit's paperwork has it.
-    "transfer": Kind(PM, (("POST", "/materials/transfers"),)),
-    "rfq": Kind(PM, (("POST", "/procurement/rfqs"),)),
-    "quote": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/quotes"),)),
-    "award": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/award"),)),
-    "return": Kind(PM, (("POST", "/procurement/returns"),)),
-    "return_settle": Kind(PM, (("POST", "/procurement/returns/{return_id}/settle"),)),
-    "bill_reverse": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/reverse"),)),
+    "transfer": Kind(PM, (("POST", "/materials/transfers"),), said="material moved between sites", short="moves"),
+    "rfq": Kind(PM, (("POST", "/procurement/rfqs"),), said="quotes asked for", short="quote requests"),
+    "quote": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/quotes"),), said="quotes received", short="quotes"),
+    "award": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/award"),), said="quotes chosen", short="quotes chosen"),
+    "return": Kind(PM, (("POST", "/procurement/returns"),), said="material sent back", short="returns"),
+    "return_settle": Kind(PM, (("POST", "/procurement/returns/{return_id}/settle"),), said="returns settled", short="returns settled"),
+    "bill_reverse": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/reverse"),), said="bills taken back", short="bills taken back"),
     # LRN-F23: the month-end count at the Main block, and the owner's approval of its difference.
-    "stock_count": Kind(ENGINEER, (("POST", "/materials/stock-counts"), ("PUT", "/materials/stock-counts/{count_id}/lines"))),
-    "count_approve": Kind(OWNER, (("POST", "/materials/stock-counts/{count_id}/approve"),)),
+    "stock_count": Kind(ENGINEER, (("POST", "/materials/stock-counts"), ("PUT", "/materials/stock-counts/{count_id}/lines")), said="stock counted", short="stock counts"),
+    "count_approve": Kind(OWNER, (("POST", "/materials/stock-counts/{count_id}/approve"),), said="stock counts approved", short="counts approved"),
     # LRN-F25 (episode 6): the Annex mixer on hire, its day logs (a breakdown raises the problem), the task that fixes
     # it, and the hire company's bill checked against the logs.
-    "machine": Kind(PM, (("POST", "/equipment"),)),
-    "machine_log": Kind(ENGINEER, (("POST", "/equipment/logs"),), routine=True),
-    "task": Kind(PM, (("POST", "/tasks"),)),
-    "task_status": Kind(PM, (("POST", "/tasks/{task_id}/status"),)),
-    "hire_bill": Kind(ACCOUNTS, (("POST", "/equipment/hire-bills"),)),
-    "hire_bill_fix": Kind(PM, (("PATCH", "/equipment/hire-bills/{bill_id}"),)),
-    "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
-    "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
-    "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
-    "measurement": Kind(PM, (("POST", "/subcontracts/work-orders/{wo_id}/measurements"),)),
-    "supplier_bill": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/bills"),)),
-    "supplier_payment": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/payments"),)),
-    "sub_bill": Kind(ACCOUNTS, (("POST", "/subcontracts/work-orders/{wo_id}/bills"),)),
-    "sub_payment": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/payments"),)),
+    "machine": Kind(PM, (("POST", "/equipment"),), said="machines brought in", short="machines"),
+    "machine_log": Kind(ENGINEER, (("POST", "/equipment/logs"),), routine=True, said="machine hours logged", short="machine logs"),
+    "task": Kind(PM, (("POST", "/tasks"),), said="tasks given", short="tasks"),
+    "task_status": Kind(PM, (("POST", "/tasks/{task_id}/status"),), said="tasks done", short="tasks done"),
+    "hire_bill": Kind(ACCOUNTS, (("POST", "/equipment/hire-bills"),), said="hire bills booked", short="hire bills"),
+    "hire_bill_fix": Kind(PM, (("PATCH", "/equipment/hire-bills/{bill_id}"),), said="hire bills corrected", short="hire bills fixed"),
+    "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),), said="work put on the BOQ", short="BOQ counts"),
+    "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),), said="problems closed", short="fixed"),
+    "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),), said="work orders", short="work orders"),
+    "measurement": Kind(PM, (("POST", "/subcontracts/work-orders/{wo_id}/measurements"),), said="measurements", short="measurements"),
+    "supplier_bill": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/bills"),), said="supplier bills booked", short="bills booked"),
+    "supplier_payment": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/payments"),), said="suppliers paid", short="payments"),
+    "sub_bill": Kind(ACCOUNTS, (("POST", "/subcontracts/work-orders/{wo_id}/bills"),), said="subcontract bills", short="subcontract bills"),
+    "sub_payment": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/payments"),), said="subcontractor paid", short="subcontract paid"),
     # LRN-F28 (episode 7): a subcontractor's bill above the measurement, turned down by the office.
-    "sub_bill_reject": Kind(PM, (("POST", "/subcontracts/bills/{bill_id}/reject"),)),
-    "advance": Kind(ACCOUNTS, (("POST", "/labour/advances"),)),
-    "wage_pay": Kind(ACCOUNTS, (("POST", "/labour/wage-sheets/{sheet_id}/pay"),)),
-    "client_receipt": Kind(ACCOUNTS, (("POST", "/billing/receipts"),)),
-    "wage_approve": Kind(OWNER, (("GET", "/labour/wage-sheets/open"), ("POST", "/labour/wage-sheets/{sheet_id}/approve"))),
-    "ra_bill": Kind(OWNER, (("POST", "/projects/{project_id}/ra-bills"), ("POST", "/billing/ra-bills/{bill_id}/submit"))),
-    "stage": Kind(OWNER, (("PATCH", "/projects/{project_id}/start"),)),
+    "sub_bill_reject": Kind(PM, (("POST", "/subcontracts/bills/{bill_id}/reject"),), said="subcontract bills turned down", short="bills turned down"),
+    "advance": Kind(ACCOUNTS, (("POST", "/labour/advances"),), said="advances given", short="advances"),
+    "wage_pay": Kind(ACCOUNTS, (("POST", "/labour/wage-sheets/{sheet_id}/pay"),), said="wages paid", short="wages paid"),
+    "client_receipt": Kind(ACCOUNTS, (("POST", "/billing/receipts"),), said="client payments in", short="client payments"),
+    "wage_approve": Kind(OWNER, (("GET", "/labour/wage-sheets/open"), ("POST", "/labour/wage-sheets/{sheet_id}/approve")), said="wage sheets approved", short="wages approved"),
+    "ra_bill": Kind(OWNER, (("POST", "/projects/{project_id}/ra-bills"), ("POST", "/billing/ra-bills/{bill_id}/submit")), said="running bills sent", short="running bills"),
+    "stage": Kind(OWNER, (("PATCH", "/projects/{project_id}/start"),), said="project stage moved", short="stage moved"),
     # D2: Green Villa's contract and its estimate as the BOQ (the guided project's chapters 2 and 3 do the same; when the
     # person did them, these find them done).
-    "contract": Kind(OWNER, (("GET", "/projects/{project_id}/contract"), ("PUT", "/projects/{project_id}/contract"))),
-    "boq_norms": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("PUT", "/projects/{project_id}/boq/lines/{line_id}/norms"))),
+    "contract": Kind(OWNER, (("GET", "/projects/{project_id}/contract"), ("PUT", "/projects/{project_id}/contract")), said="contract set", short="contract"),
+    "boq_norms": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("PUT", "/projects/{project_id}/boq/lines/{line_id}/norms")), said="material norms set on the BOQ", short="BOQ norms"),
     "boq_import": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("POST", "/projects/{project_id}/boq/sections"),
-                            ("POST", "/projects/{project_id}/boq/sections/{section_id}/lines"))),
+                            ("POST", "/projects/{project_id}/boq/sections/{section_id}/lines")), said="estimate brought in as the BOQ", short="BOQ imported"),
 }
 #: Where each route lives, for the test that every route is real (each is mounted as it is, no extra prefix).
 ROUTER_MODULES = (

@@ -5,6 +5,9 @@
 > in, what each step is, what is made, and what to do next. The detail of each episode lives in
 > [film/SERIES_PLAN.md](film/SERIES_PLAN.md); the simulation's chapters in `apps/dashboard/src/lib/walkthroughs.ts`
 > (`JOURNEY_CHAPTERS`). Update the status columns here as things are made.
+>
+> **21 Nov 2026:** the guided project now has 15 chapters, each on its own story day, played end to end to the project
+> closed (tracker UX-100). The table below is the series' order; the simulation's chapters follow the story's days.
 
 ## 1. How to learn: watch, then play
 
