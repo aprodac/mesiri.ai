@@ -102,6 +102,26 @@ More life, without noise:
 - **Line icons per part of the day** (people, a trowel, a truck, a drum, a camera), one weight, in ink.
 - **Tinted panels** for grouping: Needs you on a blue wash, Close the day on a yellow wash, so sections read at a glance.
 
+## 4b. Revised 22 Nov: blue alone is not enough life
+
+Feedback on §4: *"it lacks life, it's the web dashboard one."* Paper, ink and one yellow plus a blue is still the
+dashboard's look. Looked at what works now (sources at the end) and drew three directions on the canvas, page **V3**:
+
+| | Direction | Look | From |
+|---|---|---|---|
+| **A** | **Site board** (recommended) | Warm paper; a dark hero card for the day's report with a yellow ring; a **bento grid** of big rounded tiles, each part of the day in its own colour family (people yellow, work blue, materials peach, problems coral), big figures, the day's photo as a tall tile; a floating dark pill nav with the yellow mic | Bento grids with sizes that mean something; Material 3 Expressive (brighter colour, rounder shapes, springy motion) |
+| **B** | **Night shift** | Dark-first: layered charcoal surfaces with hairline borders, yellow for "do now", teal for answers and information, coral for urgent; high-contrast tags ("DUE TODAY", "OPEN 2 DAYS") readable in 3 seconds | Field-app redesigns (dark mode for site use, vivid accents, urgency tags); dark-first apps (Linear, Arc) |
+| **C** | **Blueprint** | Editorial: a large serif headline ("Saturday, the 29th"), the report on a blueprint-blue panel with a drawing grid, ledger-style figures, highlighter marks on what matters, hard edges | "Structural UI" (bold serif headlines, ledger numbers, hard edges) |
+
+Recommendation: **A by day, B as its dusk/night mode** (the same tiles and colour families, on dark). A has the most
+life and is the easiest to scan (each part is a colour and a place); its colours sit under dark ink so they read in
+sun. C is the most distinctive but reads as a report, not a tool.
+
+Sources: [Projektfabrik app redesign](https://contra.com/p/EqoOPelo-projektfabrik-app-redesign),
+[Muzli: mobile UI patterns 2026](https://muz.li/blog/whats-changing-in-mobile-app-design-ui-patterns-that-matter-in-2026/),
+[Wavespace: UI design trends](https://www.wavespace.agency/blog/ui-design-trends),
+[Apple Design Awards 2025](https://developer.apple.com/design/awards/2025/).
+
 ## 5. Build order (proposed, each a tracker item)
 
 | ID | What | Backend? |
@@ -120,6 +140,6 @@ MOB-12 (Idempotency-Key on the other routes) runs alongside: MOB-20 and MOB-21 n
 
 ## 6. Choices needed
 
-1. **The third colour**: blueprint blue (recommended), sage or terracotta. All three are on the canvas.
+1. **The direction** (§4b, canvas page V3): A site board (recommended, with B as night mode), B night shift, or C blueprint. Supersedes the third-colour choice of §4.
 2. **Build order**: as §5 (look first, then Today and capture), or capture first (camera and attendance before
    the look).
