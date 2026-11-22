@@ -7,6 +7,8 @@ import {
   VolumeX, Wallet, X,
 } from 'lucide-react'
 import { Ink } from '@/components/live/ink'
+import { useGuideVoice, VoicePlayer } from '@/components/guide-voice'
+import type { Voice } from '@/lib/voice'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { dayTitle, dayTitleSize, type DaysPassed, type ForYou } from '@/lib/sandbox'
 import { typingIn } from '@/lib/keys'
@@ -521,6 +523,89 @@ function storyLines(entries: StoryEntry[]): { place: string; lines: { kind: stri
   })
 }
 
+/** UX-105: how the voice names each person at the start of their day. */
+const SPOKEN_WHO: Record<string, string> = {
+  Ravi: 'Ravi, your site engineer.', Anil: 'Anil, your project manager.', Meera: 'Meera, who keeps your accounts.', Owner: 'Your own part.',
+}
+/** UX-105: why that person's day matters, said last. */
+const SPOKEN_WHY: Record<string, string> = {
+  Ravi: "That is what fills today's page and the evening report, and nobody typed a register.",
+  Anil: 'That keeps the sites supplied and the B O Q true to what is built.',
+  Meera: 'That keeps what the company owes, and what it is owed, up to date.',
+  Owner: 'Those wait for you, so the others can carry on.',
+}
+/** A kind said as a count when a place has more than two of it. */
+const SPOKEN_MANY: Record<string, string> = {
+  boq_count: 'pieces of work counted on the B O Q', use: 'materials used', request: 'requests for material', order: 'orders',
+  delivery: 'deliveries', supplier_payment: 'supplier payments', wage_pay: 'wage payments', work: 'pieces of work', issue: 'problems',
+}
+const UNITS_SAID: [RegExp, string][] = [
+  [/\bnos\b/g, 'numbers'], [/\brmt\b/g, 'running metres'], [/\bsqm\b/g, 'square metres'], [/\bcum\b/g, 'cubic metres'],
+  [/\bhrs\b/g, 'hours'], [/\bkg\b/g, 'kilos'], [/\bm sand\b/g, 'M sand'],
+]
+
+/** Words for the ear: rupees, units and letters said as they are spoken. */
+function aloud(text: string): string {
+  let t = text
+    .replace(/\b[A-Z]{2,}\/[\w/]+,?\s*/g, '') // a contract or bill number is never read out
+    .replace(/₹\s?(\d[\d,]*\d|\d)(\.\d+)?/g, '$1$2 rupees')
+    .replace(/(\d)%/g, '$1 percent')
+    .replace(/:\s+/g, ', ')
+    .replace(/\s*&\s*/g, ' and ')
+  for (const [re, to] of UNITS_SAID) t = t.replace(re, to)
+  return t.replace(/\b(BOQ|DPR|GRN|RA|PO|GST|TDS)\b/g, (w) => w.split('').join(' '))
+}
+
+/** "a, b and c" */
+function listed(parts: string[]): string {
+  return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+const lower = (t: string) => t.replace(/^(.)/, (c) => c.toLowerCase())
+
+/** "Plinth beam: 24 rmt" said as "24 rmt of plinth beam". */
+function builtAloud(what: string): string {
+  const m = /^(.+?):\s*(\d[\d.,]*\s*\S+)$/.exec(what)
+  return m ? `${m[2]} of ${lower(m[1])}` : lower(what)
+}
+
+/**
+ * UX-105 (Ilan, 22 Nov: the explanation "through voice"): a person's day as the guide voice says it: who they are, one
+ * sentence per place (who came, what was built, the rest, the money spent), and why it matters. Kept under the voice's
+ * 700 characters: places that do not fit are left to the screen, and the voice says so.
+ */
+export function spokenDay(who: string, entries: StoryEntry[], limit = 690): string {
+  const name = who === 'Owner' ? 'You' : who
+  const places = new Map<string, StoryEntry[]>()
+  for (const e of entries) places.set(placeOf(e), [...(places.get(placeOf(e)) ?? []), e])
+  const sentences: string[] = []
+  for (const [place, es] of places) {
+    const parts: string[] = []
+    const came = es.filter((e) => e.kind === 'attendance').reduce((t, e) => t + (Number(/(\d+)/.exec(e.what)?.[1]) || 0), 0)
+    if (came) parts.push(`${came} people came`)
+    const kinds = [...new Set(es.map((e) => e.kind))].filter((k) => !['attendance', 'conditions', 'use', 'expense'].includes(k))
+    for (const k of kinds) {
+      const of = es.filter((e) => e.kind === k)
+      if (of.length > 2) parts.push(`${of.length} ${SPOKEN_MANY[k] ?? 'more like that'}`)
+      else for (const e of of) parts.push(k === 'work' ? `they built ${builtAloud(e.what)}` : lower(told(e)).replace(/ for (Main block|Annex|Tower [AB])$/, ''))
+    }
+    const spent = es.filter((e) => e.kind === 'expense').reduce((t, e) => t + (Number(/₹\s?([\d,]+)/.exec(e.what)?.[1].replace(/,/g, '')) || 0), 0)
+    if (spent) parts.push(`${spent.toLocaleString('en-IN')} rupees went on small things`)
+    if (!parts.length && es.some((e) => e.kind === 'use')) parts.push('material was used')
+    if (parts.length) sentences.push(`${place === 'The company' ? 'For the company' : `At ${place.split(' · ').pop()}`}, ${listed(parts)}.`)
+  }
+  let said = SPOKEN_WHO[who] ?? `${name}.`
+  const end = SPOKEN_WHY[who] ?? ''
+  let left = 0
+  for (const s of sentences) {
+    if (aloud(`${said} ${s} ${end}`).length > limit - 30) left++
+    else said = `${said} ${s}`
+  }
+  if (left) said += ' The rest is on the screen.'
+  if (aloud(`${said} ${end}`).length <= limit) said += ` ${end}`
+  return aloud(said)
+}
+
 /** The morning: what each person did (each can be opened to read their day as a story), then the person's part. */
 export function Briefing({ day, date, moments, summary, story, forYou, waiting, onClose }: {
   day: number
@@ -535,6 +620,8 @@ export function Briefing({ day, date, moments, summary, story, forYou, waiting, 
   const open = useOpen(150)
   const [shown, setShown] = React.useState<string | null>(null)
   const [showWaiting, setShowWaiting] = React.useState(false)
+  // UX-105: the guide's voice tells the day of the person opened (the briefing's own line goes first: UX-101).
+  const voice = useGuideVoice()
   useSounds([{ id: 'briefing', delay: 450 }], `briefing-${day}`)
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -576,7 +663,13 @@ export function Briefing({ day, date, moments, summary, story, forYou, waiting, 
                   moments={moments.filter((m) => m.who === who)}
                   counts={summary.filter((s) => s.who === who)}
                   open={shown === who}
-                  onToggle={() => setShown((s) => (s === who ? null : who))}
+                  voice={voice}
+                  onToggle={() => {
+                    const opening = shown !== who
+                    setShown(opening ? who : null)
+                    if (opening) voice.say(spokenDay(who, story.filter((s) => s.who === who)))
+                    else voice.hush()
+                  }}
                 />
               ))}
             </ul>
@@ -636,8 +729,9 @@ export function Briefing({ day, date, moments, summary, story, forYou, waiting, 
 }
 
 
-function PersonCard({ who, index, entries, moments, counts, open, onToggle }: {
+function PersonCard({ who, index, entries, moments, counts, open, voice, onToggle }: {
   who: string
+  voice: Voice
   index: number
   entries: StoryEntry[]
   moments: Moment[]
@@ -678,6 +772,7 @@ function PersonCard({ who, index, entries, moments, counts, open, onToggle }: {
       </button>
       {open && (
         <div className="flex flex-col gap-3 border-t px-3.5 pt-3 pb-3.5 text-sm">
+          <VoicePlayer voice={voice} words={spokenDay(who, entries)} />
           <p className="m-0 text-muted-foreground">{ROLE_STORY[who]}</p>
           {storyLines(entries).map(({ place, lines }) => (
             <div key={place}>

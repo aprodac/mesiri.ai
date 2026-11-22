@@ -145,6 +145,8 @@ step's words in another place.
   (`scripts/scene_audio/make_scene_audio.py` → `public/learn/scenes`, played by `lib/scene-sound.ts`), on or off with
   the guide voice. A new or renamed chapter in `JOURNEY_CHAPTERS`, or a changed line, means running that script again;
   until then its card is simply silent.
+- **The morning briefing speaks each person's day** (UX-105): opening a person in it says their day in the guide's voice
+  (`spokenDay`, the server's voice: the words change every day).
 - **One narrator at a time** (UX-101, `lib/narration.ts`): a scene's lines have the floor; a guide line waits for them,
   one playing pauses and goes on after, and a new line from any voice (tour, walkthrough, hint, Live) stops the others.
   Never play sound around these two systems.
