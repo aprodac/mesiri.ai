@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { CloudOff, MessageSquareReply, TriangleAlert } from 'lucide-react-native'
+import { ArrowRight, CloudOff, TriangleAlert } from 'lucide-react-native'
 import { useOutbox, useSignal, type OutboxItem } from '../lib/outbox'
 import { useWords } from '../lib/i18n'
-import { colors, font, radius, space, TOUCH } from '../theme'
+import { colors, family, font, radius, space, TOUCH } from '../theme'
 
 // MOB-07 on Today: what waits on the phone for signal, the answers that came for notes sent later, and anything
 // the API refused (with its reason, to try again or discard). Nothing here goes away without the person seeing it.
@@ -26,41 +26,45 @@ export function OutboxPanel() {
     <View style={{ gap: space.sm }}>
       {pending ? (
         <View style={[styles.card, styles.waiting]} accessibilityLiveRegion="polite">
-          <CloudOff size={22} color={colors.brand} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t.waitingToSend(pending)}</Text>
-            <Text style={{ color: '#d6d3cd', fontSize: 12 }}>{online ? t.sendingNow : t.waitingNote}</Text>
+          <CloudOff size={20} color={colors.brand} strokeWidth={2} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.titleLight}>{t.waitingToSend(pending)}</Text>
+            <Text style={[font.tiny, { color: colors.nightMuted }]}>{online ? t.sendingNow : t.waitingNote}</Text>
           </View>
         </View>
       ) : null}
       {answered.map((x) => (
-        <View key={x.id} style={[styles.card, styles.answered]}>
-          <MessageSquareReply size={22} color={colors.brandInk} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={font.strong}>{t.answered}</Text>
+        <Pressable
+          key={x.id}
+          accessibilityRole="button"
+          onPress={() => router.push({ pathname: '/speak', params: { from: x.id } })}
+          style={({ pressed }) => [styles.card, styles.answered, pressed && { opacity: 0.7 }]}
+        >
+          <View style={styles.yellowMark} />
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={styles.title}>{t.answered}</Text>
             <Text style={font.tiny} numberOfLines={1}>
               {[name(x), when(x), x.place].filter(Boolean).join(' · ')}
             </Text>
           </View>
-          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/speak', params: { from: x.id } })} style={styles.action}>
-            <Text style={styles.actionText}>{t.check}</Text>
-          </Pressable>
-        </View>
+          <Text style={styles.link}>{t.check}</Text>
+          <ArrowRight size={16} color={colors.ink} strokeWidth={2.2} />
+        </Pressable>
       ))}
       {failed.map((x) => (
         <View key={x.id} style={[styles.card, styles.failed]}>
-          <TriangleAlert size={22} color={colors.warn} />
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <Text style={font.strong}>
+          <TriangleAlert size={20} color={colors.warn} strokeWidth={2} />
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text style={styles.title}>
               {t.notSent} · {name(x)}
             </Text>
             <Text style={[font.tiny, { color: colors.warn }]}>{x.error}</Text>
-            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 6 }}>
-              <Pressable accessibilityRole="button" onPress={() => retry(x.id)} style={styles.action}>
-                <Text style={styles.actionText}>{t.sendAgain}</Text>
+            <View style={{ flexDirection: 'row', gap: space.lg, marginTop: 4 }}>
+              <Pressable accessibilityRole="button" onPress={() => retry(x.id)} style={styles.textButton}>
+                <Text style={styles.link}>{t.sendAgain}</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => dismiss(x.id)} style={[styles.action, styles.quiet]}>
-                <Text style={styles.actionText}>{t.discard}</Text>
+              <Pressable accessibilityRole="button" onPress={() => dismiss(x.id)} style={styles.textButton}>
+                <Text style={[styles.link, { color: colors.muted }]}>{t.discard}</Text>
               </Pressable>
             </View>
           </View>
@@ -71,11 +75,13 @@ export function OutboxPanel() {
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: 14, borderRadius: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: 14, borderRadius: radius.md },
   waiting: { backgroundColor: colors.charcoal },
-  answered: { backgroundColor: colors.brandSoft, borderWidth: 1, borderColor: colors.brand },
+  answered: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, minHeight: TOUCH + 12 },
   failed: { backgroundColor: colors.warnSoft, alignItems: 'flex-start' },
-  action: { minHeight: TOUCH - 4, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.field, justifyContent: 'center' },
-  quiet: { backgroundColor: 'transparent' },
-  actionText: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  yellowMark: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.brand },
+  title: { fontFamily: family.displaySemi, fontSize: 15, color: colors.ink },
+  titleLight: { fontFamily: family.displaySemi, fontSize: 15, color: '#fff' },
+  link: { fontFamily: family.displaySemi, fontSize: 15, color: colors.ink },
+  textButton: { minHeight: TOUCH - 8, justifyContent: 'center' },
 })

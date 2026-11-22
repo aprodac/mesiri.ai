@@ -11,6 +11,7 @@ const en = {
   appName: 'Mesiri',
   // sign in
   signInTitle: 'Sign in',
+  siteApp: 'Site app',
   signInLead: 'Use the WhatsApp number your company added for you.',
   phone: 'WhatsApp number',
   phonePlaceholder: '98470 12345',
@@ -32,6 +33,7 @@ const en = {
   // today
   todayOnSite: 'Today on site',
   todaysReport: "Today's report",
+  theDay: 'The day, part by part',
   doneOf: (done: number, all: number) => `${done} of ${all} done`,
   reportGoes: 'Goes to the office in the evening, or send it now',
   sendNow: 'Send now',
@@ -52,6 +54,7 @@ const en = {
   draftMark: 'Office to check',
   // site
   stock: 'Stock',
+  stockCount: (n: number, low: number) => `${n} materials${low ? ` · ${low} low` : ''}`,
   coming: 'Coming',
   runningLow: (n: number) => `${n} running low.`,
   daysLeft: (n: number) => `${n} ${n === 1 ? 'day' : 'days'} left`,
@@ -142,6 +145,7 @@ export type Words = typeof en
 const ml: Words = {
   ...en,
   signInTitle: 'സൈൻ ഇൻ',
+  siteApp: 'സൈറ്റ് ആപ്പ്',
   signInLead: 'കമ്പനി ചേർത്ത നിങ്ങളുടെ വാട്സ്ആപ്പ് നമ്പർ ഉപയോഗിക്കുക.',
   phone: 'വാട്സ്ആപ്പ് നമ്പർ',
   sendCode: 'വാട്സ്ആപ്പിൽ കോഡ് അയയ്ക്കുക',
@@ -160,6 +164,7 @@ const ml: Words = {
   speakToMesiri: 'മെസിരിയോട് പറയുക',
   todayOnSite: 'ഇന്ന് സൈറ്റിൽ',
   todaysReport: 'ഇന്നത്തെ റിപ്പോർട്ട്',
+  theDay: 'ഇന്നത്തെ ഓരോ ഭാഗവും',
   doneOf: (done, all) => `${all}-ൽ ${done} കഴിഞ്ഞു`,
   reportGoes: 'വൈകുന്നേരം ഓഫീസിലേക്ക് പോകും, അല്ലെങ്കിൽ ഇപ്പോൾ അയയ്ക്കാം',
   sendNow: 'ഇപ്പോൾ അയയ്ക്കുക',
@@ -179,6 +184,7 @@ const ml: Words = {
   toCheck: (n) => `${n} എണ്ണം ഓഫീസ് പരിശോധിക്കാനുണ്ട്`,
   draftMark: 'ഓഫീസ് നോക്കണം',
   stock: 'സ്റ്റോക്ക്',
+  stockCount: (n, low) => `${n} സാധനങ്ങൾ${low ? ` · ${low} കുറവ്` : ''}`,
   coming: 'വരാനുള്ളത്',
   runningLow: (n) => `${n} എണ്ണം തീരാറായി.`,
   daysLeft: (n) => `${n} ദിവസം കൂടി`,

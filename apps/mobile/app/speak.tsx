@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAudioRecorder, useAudioRecorderState } from 'expo-audio'
-import { Building2, Keyboard, Mic, Send, X } from 'lucide-react-native'
+import { Keyboard, Mic, Send, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useWords } from '../src/lib/i18n'
 import { fileBody, ApiError } from '../src/lib/api'
@@ -11,8 +11,8 @@ import { useOutbox, type Sent } from '../src/lib/outbox'
 import { sendTap, type AssistantReply, type AssistantResponse } from '../src/lib/mesiri'
 import { contentTypeOf, doneRecording, level, MAX_SECONDS, readyToRecord, VOICE_NOTE } from '../src/lib/recorder'
 import { useSite } from '../src/lib/session'
-import { Screen } from '../src/components/ui'
-import { colors, font, MAIN_ACTION, radius, space, TOUCH } from '../src/theme'
+import { Label, Screen } from '../src/components/ui'
+import { colors, family, font, MAIN_ACTION, radius, space, TOUCH } from '../src/theme'
 
 // Speak to Mesiri: the same assistant as WhatsApp, through the dashboard's Tell Mesiri door. A voice note or
 // a typed line prepares entries; nothing is saved until the person taps the assistant's own Save button.
@@ -194,13 +194,13 @@ export default function Speak() {
   return (
     <Screen dark>
       <View style={styles.top}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t.close} onPress={close} style={styles.round}>
-          <X size={22} color="#fff" />
+        <Pressable accessibilityRole="button" accessibilityLabel={t.close} onPress={close} style={styles.close}>
+          <X size={20} color="#fff" strokeWidth={2} />
         </Pressable>
-        <View style={styles.sitePill}>
-          <Building2 size={16} color={colors.brand} />
-          <Text style={{ color: colors.nightText, fontSize: 13 }} numberOfLines={1}>
-            {current ? `${current.project.name} · ${current.site.name}` : ''}
+        <View style={{ flexShrink: 1, alignItems: 'flex-end', gap: 2 }}>
+          <Label tone="light">{current?.project.name ?? ''}</Label>
+          <Text style={styles.siteName} numberOfLines={1}>
+            {current?.site.name ?? ''}
           </Text>
         </View>
       </View>
@@ -208,27 +208,28 @@ export default function Speak() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           {turns.length === 0 ? (
-            <View style={{ gap: space.md }}>
-              <Text style={[styles.status, { textAlign: 'center' }]}>
-                {listening ? `${t.listening} · 0:${String(seconds).padStart(2, '0')}` : t.speakNow}
-              </Text>
-              <View style={{ gap: space.sm }}>
-                <Text style={{ color: colors.nightMuted, fontSize: 13 }}>{t.sayInOneGo}</Text>
-                <View style={styles.hints}>
-                  {t.hints.map((h) => (
-                    <View key={h} style={styles.hint}>
-                      <Text style={{ color: colors.nightText, fontSize: 13 }}>{h}</Text>
-                    </View>
-                  ))}
-                </View>
+            <View style={{ gap: space.xl, paddingTop: space.lg }}>
+              <View style={{ gap: 6 }}>
+                <Label style={{ color: listening ? colors.brand : colors.nightMuted }}>
+                  {listening ? `● ${t.listening} · 0:${String(seconds).padStart(2, '0')}` : t.speakNow}
+                </Label>
+                <Text style={styles.prompt}>{t.sayInOneGo}</Text>
+              </View>
+              <View style={styles.hints}>
+                {t.hints.map((h, i) => (
+                  <View key={h} style={styles.hint}>
+                    <Label tone="light" style={{ width: 22 }}>{String(i + 1).padStart(2, '0')}</Label>
+                    <Text style={styles.hintText}>{h}</Text>
+                  </View>
+                ))}
               </View>
             </View>
           ) : null}
 
           {turns.map((turn) => (
-            <View key={turn.id} style={{ gap: space.sm }}>
-              <View style={styles.saidBubble}>
-                <Text style={styles.saidLabel}>{turn.kind === 'tap' ? '✓' : t.youSaid}</Text>
+            <View key={turn.id} style={{ gap: space.md }}>
+              <View style={styles.said}>
+                <Label tone="light">{turn.kind === 'tap' ? '✓' : t.youSaid}</Label>
                 <Text style={styles.saidText}>{turn.said ?? (turn.pending ? t.hearing : turn.queued ? t.voiceNote : '—')}</Text>
               </View>
               {turn.pending ? <Text style={styles.thinking}>{t.thinking}</Text> : null}
@@ -245,9 +246,8 @@ export default function Speak() {
               {turn.replies.map((reply, i) => (
                 <View key={i} style={styles.reply}>
                   <View style={styles.replyHead}>
-                    <View style={styles.badge}>
-                      <Text style={{ fontWeight: '800', color: colors.ink }}>M</Text>
-                    </View>
+                    <View style={styles.badge} />
+                    <Label tone="ink">Mesiri</Label>
                   </View>
                   <Text style={styles.replyText}>{reply.text}</Text>
                   {[...reply.buttons, ...reply.list_rows].length ? (
@@ -268,7 +268,7 @@ export default function Speak() {
                               (pressed || (turn.chose && !chosen)) && { opacity: 0.55 },
                             ]}
                           >
-                            <Text style={{ fontSize: main ? 17 : 15, fontWeight: '700', color: colors.ink }}>{option.title}</Text>
+                            <Text style={[font.button, { color: colors.ink, fontSize: main ? 17 : 15 }]}>{option.title}</Text>
                             {option.description ? <Text style={font.tiny}>{option.description}</Text> : null}
                           </Pressable>
                         )
@@ -279,7 +279,7 @@ export default function Speak() {
               ))}
             </View>
           ))}
-          {notice ? <Text style={{ color: colors.brand, fontSize: 14 }}>{notice}</Text> : null}
+          {notice ? <Text style={[font.small, { color: colors.brand }]}>{notice}</Text> : null}
         </ScrollView>
 
         {phase === 'recording' ? (
@@ -313,9 +313,9 @@ export default function Speak() {
               accessibilityLabel={t.typeInstead}
               onPress={() => setTyping((v) => !v)}
               disabled={phase === 'recording'}
-              style={[styles.round, { width: TOUCH + 8, height: TOUCH + 8, borderRadius: 28 }, phase === 'recording' && { opacity: 0.3 }]}
+              style={[styles.close, { width: TOUCH + 8, height: TOUCH + 8 }, phase === 'recording' && { opacity: 0.3 }]}
             >
-              <Keyboard size={22} color="#fff" />
+              <Keyboard size={22} color="#fff" strokeWidth={1.8} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -337,33 +337,33 @@ export default function Speak() {
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.md },
-  round: { width: TOUCH, height: TOUCH, borderRadius: TOUCH / 2, backgroundColor: colors.nightRaised, alignItems: 'center', justifyContent: 'center' },
-  sitePill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.nightRaised, flexShrink: 1 },
-  body: { padding: space.lg, gap: space.lg, flexGrow: 1 },
-  status: { color: colors.nightMuted, fontSize: 13, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
-  hints: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  hint: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.charcoal },
-  saidBubble: { alignSelf: 'flex-end', maxWidth: '88%', backgroundColor: colors.nightCard, borderRadius: 18, borderTopRightRadius: 4, padding: 14, gap: 4 },
-  saidLabel: { color: colors.nightMuted, fontSize: 12, fontWeight: '600' },
-  saidText: { color: '#fff', fontSize: 18, lineHeight: 27, fontWeight: '600' },
-  thinking: { color: colors.brand, fontSize: 14, fontWeight: '600' },
-  reply: { backgroundColor: colors.card, borderRadius: 18, borderTopLeftRadius: 4, padding: 14, gap: 10, borderWidth: 1, borderColor: colors.card, maxWidth: '96%' },
-  replyHead: { flexDirection: 'row' },
-  badge: { width: 28, height: 28, borderRadius: 9, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  replyText: { fontSize: 16, lineHeight: 24, color: colors.ink },
+  close: { width: TOUCH, height: TOUCH, borderRadius: radius.md, borderWidth: 1, borderColor: colors.nightRaised, alignItems: 'center', justifyContent: 'center' },
+  siteName: { fontFamily: family.displaySemi, fontSize: 16, color: '#fff', letterSpacing: -0.2 },
+  body: { padding: space.lg, gap: space.xl, flexGrow: 1 },
+  prompt: { fontFamily: family.display, fontSize: 26, lineHeight: 31, letterSpacing: -0.6, color: '#fff' },
+  hints: { borderTopWidth: 1, borderTopColor: colors.nightRaised },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.nightRaised },
+  hintText: { fontFamily: family.body, fontSize: 16, color: colors.nightText },
+  said: { gap: 6 },
+  saidText: { fontFamily: family.displaySemi, color: '#fff', fontSize: 22, lineHeight: 29, letterSpacing: -0.3 },
+  thinking: { fontFamily: family.monoMedium, color: colors.brand, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
+  reply: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.lg, gap: space.md, borderWidth: 1, borderColor: colors.card },
+  replyHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  badge: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.brand },
+  replyText: { fontFamily: family.body, fontSize: 16, lineHeight: 24, color: colors.ink },
   options: { gap: 8 },
   option: { minHeight: TOUCH, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8 },
   optionMain: { minHeight: MAIN_ACTION, backgroundColor: colors.brand, borderColor: colors.brand, alignItems: 'center' },
   optionChosen: { borderWidth: 2, borderColor: colors.ink },
-  bars: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, height: 96 },
-  bar: { width: 5, borderRadius: 3, backgroundColor: colors.brand },
-  bottom: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md },
+  bars: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, height: 96 },
+  bar: { width: 4, borderRadius: 1, backgroundColor: colors.brand },
+  bottom: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md, borderTopWidth: 1, borderTopColor: colors.nightRaised },
   typeRow: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-end' },
-  input: { flex: 1, minHeight: 52, maxHeight: 140, borderRadius: radius.md, backgroundColor: colors.nightCard, color: '#fff', fontSize: 17, paddingHorizontal: 14, paddingVertical: 14 },
+  input: { flex: 1, minHeight: 52, maxHeight: 140, borderRadius: radius.md, backgroundColor: colors.nightCard, borderWidth: 1, borderColor: colors.nightRaised, color: '#fff', fontFamily: family.body, fontSize: 17, paddingHorizontal: 14, paddingVertical: 14 },
   sendButton: { width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.xl },
-  bigMic: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  bigMicOn: { borderWidth: 10, borderColor: 'rgba(250,204,21,0.25)' },
-  stopSquare: { width: 30, height: 30, borderRadius: 7, backgroundColor: colors.ink },
-  footnote: { color: colors.nightText, fontSize: 14, textAlign: 'center' },
+  bigMic: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  bigMicOn: { borderWidth: 8, borderColor: 'rgba(242,194,48,0.25)' },
+  stopSquare: { width: 26, height: 26, borderRadius: 4, backgroundColor: colors.ink },
+  footnote: { fontFamily: family.monoMedium, color: colors.nightMuted, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center' },
 })

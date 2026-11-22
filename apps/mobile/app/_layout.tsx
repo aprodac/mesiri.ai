@@ -6,6 +6,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nProvider } from '../src/lib/i18n'
 import { SessionProvider, SiteProvider, useSession } from '../src/lib/session'
 import { OutboxProvider } from '../src/lib/outbox'
+import { useFonts } from 'expo-font'
+import { InterTight_600SemiBold } from '@expo-google-fonts/inter-tight/600SemiBold'
+import { InterTight_700Bold } from '@expo-google-fonts/inter-tight/700Bold'
+import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular'
+import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
+import { IBMPlexMono_400Regular } from '@expo-google-fonts/ibm-plex-mono/400Regular'
+import { IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono/500Medium'
 import { colors } from '../src/theme'
 
 const queryClient = new QueryClient({
@@ -36,6 +44,18 @@ function Gate() {
 }
 
 export default function RootLayout() {
+  // Only the weights the app uses (src/theme.ts family); Malayalam falls back to the phone's Noto Sans.
+  const [fontsReady, fontError] = useFonts({
+    InterTight_600SemiBold,
+    InterTight_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    IBMPlexMono_400Regular,
+    IBMPlexMono_500Medium,
+  })
+  // A font that fails to load never blocks the app: it opens in the phone's own font.
+  if (!fontsReady && !fontError) return null
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>

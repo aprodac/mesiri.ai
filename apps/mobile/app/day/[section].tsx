@@ -9,8 +9,8 @@ import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { amount, reportOf, sectionTitle, SECTIONS, words, type Section } from '../../src/lib/day'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { BackHeader, Button, Card, Chip, Loading, Notice, Screen } from '../../src/components/ui'
-import { colors, font, space } from '../../src/theme'
+import { BackHeader, Button, Card, Chip, Loading, Notice, Screen, Label } from '../../src/components/ui'
+import { colors, family, font, space } from '../../src/theme'
 
 // One row of Today opened: what was told for it today, and the way to tell more (speak or type).
 // Weather is a direct tap, saved through the site day's own route (PATCH conditions).
@@ -103,10 +103,10 @@ export default function DaySection() {
               {lines.map((line, i) => (
                 <View key={i} style={[styles.row, i > 0 && styles.line]}>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={font.strong}>{line.title}</Text>
+                    <Text style={styles.title}>{line.title}</Text>
                     {line.detail ? <Text style={font.tiny}>{line.detail}</Text> : null}
                   </View>
-                  {line.draft ? <Text style={[font.tiny, { color: colors.todo, fontWeight: '700' }]}>{t.draftMark}</Text> : null}
+                  {line.draft ? <Label style={{ color: colors.todo }}>{t.draftMark}</Label> : null}
                 </View>
               ))}
             </Card>
@@ -118,14 +118,14 @@ export default function DaySection() {
         {FORMS[section] ? (
           <Button
             label={t.fillForm}
-            icon={<ClipboardPen size={22} color={colors.ink} />}
+            icon={<ClipboardPen size={20} color={colors.brand} strokeWidth={2} />}
             onPress={() => router.push({ pathname: '/form/[kind]', params: { kind: FORMS[section] as string } })}
           />
         ) : null}
         <Button
           kind={FORMS[section] ? 'secondary' : 'primary'}
           label={t.speakToMesiri}
-          icon={<Mic size={22} color={colors.ink} />}
+          icon={<Mic size={20} color={FORMS[section] ? colors.ink : colors.brand} strokeWidth={2} />}
           onPress={() => router.push('/speak')}
         />
         <Button kind="secondary" label={t.typeInstead} icon={<Keyboard size={20} color={colors.ink} />} onPress={() => router.push({ pathname: '/speak', params: { typing: '1' } })} />
@@ -135,8 +135,9 @@ export default function DaySection() {
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 40, gap: space.md },
+  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.md },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56, paddingHorizontal: 14, paddingVertical: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 60, paddingHorizontal: space.lg, paddingVertical: 10 },
+  title: { fontFamily: family.displaySemi, fontSize: 16, lineHeight: 21, letterSpacing: -0.2, color: colors.ink },
   line: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
 })

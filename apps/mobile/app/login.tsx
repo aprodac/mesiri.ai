@@ -4,8 +4,8 @@ import { ApiError } from '../src/lib/api'
 import { useWords, LANGS } from '../src/lib/i18n'
 import { loginWithCode, loginWithEmail, requestCode } from '../src/lib/mesiri'
 import { useSession } from '../src/lib/session'
-import { Button, Chip, HazardStripe, Screen } from '../src/components/ui'
-import { colors, font, radius, space } from '../src/theme'
+import { Button, Chip, HazardStripe, Label, Screen } from '../src/components/ui'
+import { colors, family, font, radius, space } from '../src/theme'
 
 // Sign in with the WhatsApp number on their account and a code sent on WhatsApp (the dashboard's own
 // /auth/code routes), or with email and password.
@@ -59,11 +59,17 @@ export default function Login() {
               <Chip key={l.id} label={l.name} selected={lang === l.id} onPress={() => setLang(l.id)} />
             ))}
           </View>
-          <View style={styles.logo}>
-            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.ink }}>M</Text>
+          <View style={styles.mark}>
+            <View style={styles.wordRow}>
+              <Text style={styles.word}>Mesiri</Text>
+              <View style={styles.dot} />
+            </View>
+            <Label>{t.siteApp}</Label>
           </View>
-          <Text style={[font.title, { fontSize: 28 }]}>{t.signInTitle}</Text>
-          <Text style={[font.body, { color: colors.muted }]}>{t.signInLead}</Text>
+          <View style={{ gap: 8 }}>
+            <Text style={font.display}>{t.signInTitle}</Text>
+            <Text style={[font.body, { color: colors.muted }]}>{t.signInLead}</Text>
+          </View>
 
           {step === 'email' ? (
             <>
@@ -87,7 +93,7 @@ export default function Login() {
             </>
           )}
           {error ? (
-            <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 15 }}>
+            <Text accessibilityRole="alert" style={[font.body, { color: colors.danger }]}>
               {error}
             </Text>
           ) : null}
@@ -118,7 +124,7 @@ function Field({
 }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={[font.small, { fontWeight: '600', color: colors.inkSoft }]}>{label}</Text>
+      <Label tone="ink">{label}</Label>
       <TextInput
         accessibilityLabel={label}
         value={value}
@@ -138,15 +144,18 @@ function Field({
 function Link({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 48, justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ color: colors.brandInk, fontSize: 15, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ fontFamily: family.semi, color: colors.ink, fontSize: 15, textDecorationLine: 'underline' }}>{label}</Text>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  body: { padding: space.xl, gap: space.lg, paddingTop: space.lg },
+  body: { padding: space.xl, gap: space.xl, paddingTop: space.lg },
   langs: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
-  logo: { width: 64, height: 64, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginTop: space.lg },
+  mark: { gap: 6, paddingTop: space.xl, paddingBottom: space.md },
+  wordRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+  word: { fontFamily: family.display, fontSize: 30, lineHeight: 32, letterSpacing: -1, color: colors.ink },
+  dot: { width: 9, height: 9, borderRadius: 1, backgroundColor: colors.brand, marginBottom: 6 },
   input: {
     height: 56,
     borderRadius: radius.md,
@@ -154,8 +163,8 @@ const styles = StyleSheet.create({
     borderColor: colors.field,
     backgroundColor: colors.card,
     paddingHorizontal: space.lg,
+    fontFamily: family.semi,
     fontSize: 18,
-    fontWeight: '600',
     color: colors.ink,
   },
 })

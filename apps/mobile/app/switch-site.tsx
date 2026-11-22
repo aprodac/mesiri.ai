@@ -2,12 +2,12 @@ import * as React from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Check } from 'lucide-react-native'
 import { useWords } from '../src/lib/i18n'
 import { useSite } from '../src/lib/session'
-import { colors, font, radius, space } from '../src/theme'
+import { Label, StatusMark } from '../src/components/ui'
+import { colors, family, font, space } from '../src/theme'
 
-// The sheet to change the working site: every site of every project this person is on.
+// The sheet to change the working site: every site of every project this person is on, grouped by project.
 
 export default function SwitchSite() {
   const { t } = useWords()
@@ -15,34 +15,39 @@ export default function SwitchSite() {
   const insets = useSafeAreaInsets()
   const { places, current, choose } = useSite()
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'))
+  const projects = [...new Map(places.map((p) => [p.project.id, p.project])).values()]
   return (
     <View style={styles.shade}>
       <Pressable accessibilityRole="button" accessibilityLabel={t.close} style={{ flex: 1 }} onPress={close} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
         <View style={styles.handle} />
-        <Text style={[font.heading, { fontSize: 20 }]}>{t.switchSite}</Text>
-        <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: space.sm }}>
-          {places.map((p) => {
-            const on = p.site.id === current?.site.id
-            return (
-              <Pressable
-                key={p.site.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                onPress={() => {
-                  choose(p.site.id)
-                  close()
-                }}
-                style={({ pressed }) => [styles.place, on && styles.placeOn, pressed && { opacity: 0.7 }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={font.strong}>{p.site.name}</Text>
-                  <Text style={font.tiny}>{p.project.name}</Text>
-                </View>
-                {on ? <Check size={22} color={colors.ink} strokeWidth={2.6} /> : null}
-              </Pressable>
-            )
-          })}
+        <Text style={font.title}>{t.switchSite}</Text>
+        <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ gap: space.lg }}>
+          {projects.map((project) => (
+            <View key={project.id} style={{ gap: 4 }}>
+              <Label>{project.name}</Label>
+              {places
+                .filter((p) => p.project.id === project.id)
+                .map((p) => {
+                  const on = p.site.id === current?.site.id
+                  return (
+                    <Pressable
+                      key={p.site.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => {
+                        choose(p.site.id)
+                        close()
+                      }}
+                      style={({ pressed }) => [styles.place, pressed && { backgroundColor: colors.sand }]}
+                    >
+                      <Text style={[styles.name, on && { color: colors.ink }]}>{p.site.name}</Text>
+                      {on ? <StatusMark tone="done" /> : null}
+                    </Pressable>
+                  )
+                })}
+            </View>
+          ))}
           {places.length === 0 ? <Text style={font.body}>{t.noSites}</Text> : null}
         </ScrollView>
       </View>
@@ -51,9 +56,9 @@ export default function SwitchSite() {
 }
 
 const styles = StyleSheet.create({
-  shade: { flex: 1, backgroundColor: 'rgba(26,29,33,0.55)' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: space.lg, gap: space.md },
-  handle: { width: 44, height: 5, borderRadius: 3, backgroundColor: colors.field, alignSelf: 'center' },
-  place: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 60, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line },
-  placeOn: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.brandSoft },
+  shade: { flex: 1, backgroundColor: 'rgba(20,21,24,0.45)' },
+  sheet: { backgroundColor: colors.ground, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: space.lg, gap: space.lg },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.field, alignSelf: 'center' },
+  place: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, borderBottomWidth: 1, borderBottomColor: colors.line },
+  name: { fontFamily: family.displaySemi, fontSize: 18, letterSpacing: -0.2, color: colors.inkSoft },
 })

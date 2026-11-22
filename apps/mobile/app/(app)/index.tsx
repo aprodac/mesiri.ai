@@ -9,9 +9,10 @@ import { personName, todayFor, useSession, useSite } from '../../src/lib/session
 import { dayLines } from '../../src/lib/day'
 import { useSignal } from '../../src/lib/outbox'
 import { ApiError } from '../../src/lib/api'
-import { Card, DayRow, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
+import { ArrowUpRight } from 'lucide-react-native'
+import { Card, DayRow, Label, Loading, Notice, Screen, SectionHead, Status, Tape, TopBar } from '../../src/components/ui'
 import { OutboxPanel } from '../../src/components/OutboxPanel'
-import { colors, font, space } from '../../src/theme'
+import { colors, family, font, space } from '../../src/theme'
 
 export default function Today() {
   const { t, lang } = useWords()
@@ -49,31 +50,22 @@ export default function Today() {
   const done = lines.filter((l) => l.tone !== 'todo').length
   const drafts = day.data?.drafts ?? 0
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(lang === 'ml' ? 'ml-IN' : 'en-IN', {
-    weekday: 'long',
+    weekday: 'short',
     day: 'numeric',
-    month: 'long',
+    month: 'short',
   })
 
   return (
     <Screen>
-      <TopBar
-        right={
-          <View style={styles.online}>
-            <View style={[styles.dot, { backgroundColor: online ? '#16a34a' : colors.warn }]} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: online ? colors.done : colors.warn }}>
-              {online ? t.online : t.offline}
-            </Text>
-          </View>
-        }
-      />
+      <TopBar right={<Status ok={online} label={online ? t.online : t.offline} />} />
       <ScrollView
         contentContainerStyle={styles.body}
         refreshControl={<RefreshControl refreshing={day.isRefetching} onRefresh={() => (siteId ? day.refetch() : reload())} />}
       >
-        <View>
-          <Text style={font.small}>{dateLabel}</Text>
-          <Text style={font.title}>{t.todayOnSite}</Text>
-          {me ? <Text style={font.tiny}>{personName(me)}</Text> : null}
+        <View style={styles.hero}>
+          <Label>{dateLabel}</Label>
+          <Text style={font.display}>{t.today}</Text>
+          {me ? <Text style={font.small}>{personName(me)}</Text> : null}
         </View>
 
         <OutboxPanel />
@@ -84,41 +76,45 @@ export default function Today() {
         {siteId ? (
           <>
             <View style={styles.report}>
-              <View style={styles.reportTop}>
-                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{t.todaysReport}</Text>
-                <Text style={{ color: colors.brand, fontSize: 13, fontWeight: '700' }}>{lines.length ? t.doneOf(done, lines.length) : ''}</Text>
-              </View>
-              <View style={styles.track}>
-                <View style={[styles.fill, { width: `${lines.length ? (done / lines.length) * 100 : 0}%` }]} />
-              </View>
-              <View style={styles.reportTop}>
-                <Text style={{ color: '#d6d3cd', fontSize: 12, flex: 1 }}>{drafts ? t.toCheck(drafts) : t.reportGoes}</Text>
+              <SectionHead label={t.todaysReport} />
+              <View style={styles.reportRow}>
+                <View style={styles.count} accessibilityLabel={lines.length ? t.doneOf(done, lines.length) : ''}>
+                  <Text style={font.bigFigure}>{lines.length ? done : '–'}</Text>
+                  <Text style={[font.figure, { color: colors.faint }]}>/ {lines.length || '–'}</Text>
+                </View>
                 <Pressable
                   accessibilityRole="button"
                   onPress={confirmSend}
                   disabled={send.isPending || send.isSuccess}
-                  style={({ pressed }) => [styles.sendNow, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.sendNow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{send.isSuccess ? t.sent : t.sendNow}</Text>
+                  <Text style={styles.sendNowText}>{send.isSuccess ? t.sent : t.sendNow}</Text>
+                  {send.isSuccess ? null : <ArrowUpRight size={16} color={colors.ink} strokeWidth={2.2} />}
                 </Pressable>
               </View>
+              <Tape done={done} total={lines.length || 7} />
+              <Text style={font.small}>{drafts ? t.toCheck(drafts) : t.reportGoes}</Text>
             </View>
 
             {day.isLoading ? <Loading label={t.loading} /> : null}
             {day.isError ? <Notice text={day.error instanceof ApiError ? day.error.message : t.couldNotLoad} /> : null}
             {lines.length ? (
-              <Card>
-                {lines.map((line, i) => (
-                  <DayRow
-                    key={line.section}
-                    first={i === 0}
-                    title={line.title}
-                    detail={line.detail}
-                    tone={line.tone}
-                    onPress={() => router.push({ pathname: '/day/[section]', params: { section: line.section } })}
-                  />
-                ))}
-              </Card>
+              <View style={{ gap: space.md }}>
+                <SectionHead label={t.theDay} />
+                <Card>
+                  {lines.map((line, i) => (
+                    <DayRow
+                      key={line.section}
+                      index={i + 1}
+                      first={i === 0}
+                      title={line.title}
+                      detail={line.detail}
+                      tone={line.tone}
+                      onPress={() => router.push({ pathname: '/day/[section]', params: { section: line.section } })}
+                    />
+                  ))}
+                </Card>
+              </View>
             ) : null}
           </>
         ) : null}
@@ -128,12 +124,11 @@ export default function Today() {
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 40, gap: space.md },
-  online: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  report: { backgroundColor: colors.night, borderRadius: 18, padding: space.lg, gap: 10 },
-  reportTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
-  track: { height: 8, borderRadius: 4, backgroundColor: colors.charcoal, overflow: 'hidden' },
-  fill: { height: 8, backgroundColor: colors.brand },
-  sendNow: { minHeight: 40, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: '#5c5a5b', justifyContent: 'center' },
+  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.xl },
+  hero: { gap: 4, paddingTop: space.sm },
+  report: { gap: space.md },
+  reportRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  count: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  sendNow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.ink },
+  sendNowText: { fontFamily: family.displaySemi, fontSize: 15, color: colors.ink },
 })

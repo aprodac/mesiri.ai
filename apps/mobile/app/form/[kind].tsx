@@ -17,8 +17,8 @@ import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { useVoiceNote } from '../../src/lib/useVoiceNote'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { BackHeader, Button, Chip, Screen } from '../../src/components/ui'
-import { colors, font, radius, space, TOUCH } from '../../src/theme'
+import { BackHeader, Button, Chip, Label, Screen } from '../../src/components/ui'
+import { colors, family, font, radius, space, TOUCH } from '../../src/theme'
 
 // MOB-05: a form for one kind of entry, posting to the route the dashboard's own form uses. "Speak to fill" sends
 // a voice note to the same Mesiri as WhatsApp; the entry it prepares (the list waiting for Save, as data) fills the
@@ -229,7 +229,13 @@ export default function EntryForm() {
   }, [search, materials.data])
 
   const title = kind === 'received' ? t.materialsIn : kind === 'used' ? t.materialsUsed : t.problems
-  const tag = (field: string) => (heard.has(field) ? <Text style={styles.tag}>{t.fromVoice}</Text> : null)
+  const tag = (field: string) =>
+    heard.has(field) ? (
+      <View style={styles.tag}>
+        <View style={styles.tagMark} />
+        <Label style={{ color: colors.brandInk }}>{t.fromVoice}</Label>
+      </View>
+    ) : null
   const unitList = units.data?.items ?? []
   const shownUnits = unitList.filter((u) => u.id === unitId || u.id === material?.default_unit_id).concat(unitList.filter((u) => u.id !== unitId && u.id !== material?.default_unit_id))
 
@@ -249,16 +255,16 @@ export default function EntryForm() {
               {voice.phase === 'recording' ? <View style={styles.stop} /> : <Mic size={18} color={colors.ink} />}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+              <Text style={[font.button, { color: '#fff' }]}>
                 {voice.phase === 'recording' ? `${t.listening} · 0:${String(voice.seconds).padStart(2, '0')}` : voice.phase === 'sending' ? t.thinking : t.speakToFill}
               </Text>
-              <Text style={{ color: '#d6d3cd', fontSize: 12 }}>{voice.phase === 'recording' ? t.tapToStop : t.speakToFillHint}</Text>
+              <Text style={[font.tiny, { color: colors.nightMuted }]}>{voice.phase === 'recording' ? t.tapToStop : t.speakToFillHint}</Text>
             </View>
           </Pressable>
 
           {said ? (
             <View style={styles.heard}>
-              <Text style={font.tiny}>{t.youSaid}</Text>
+              <Label>{t.youSaid}</Label>
               <Text style={font.body}>{said}</Text>
             </View>
           ) : null}
@@ -367,9 +373,9 @@ export default function EntryForm() {
 
 function Field({ label, tag, children }: { label: string; tag?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={[font.small, { fontWeight: '600', color: colors.inkSoft }]}>{label}</Text>
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Label tone="ink">{label}</Label>
         {tag}
       </View>
       {children}
@@ -378,21 +384,22 @@ function Field({ label, tag, children }: { label: string; tag?: React.ReactNode;
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 24, gap: space.md },
-  speak: { minHeight: 56, borderRadius: 16, backgroundColor: colors.night, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: 14, paddingVertical: 8 },
-  speakOn: { borderWidth: 3, borderColor: colors.brand },
+  body: { paddingHorizontal: space.lg, paddingBottom: 32, gap: space.xl },
+  speak: { minHeight: 60, borderRadius: radius.md, backgroundColor: colors.ink, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: 14, paddingVertical: 10 },
+  speakOn: { borderWidth: 2, borderColor: colors.brand },
   speakIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   stop: { width: 12, height: 12, borderRadius: 2, backgroundColor: colors.ink },
-  heard: { backgroundColor: colors.sand, borderRadius: radius.md, padding: space.md, gap: 2 },
+  heard: { borderLeftWidth: 0, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: space.md, gap: 4 },
   mesiri: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.md, borderWidth: 1, borderColor: colors.line },
-  input: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, paddingHorizontal: 14, fontSize: 17, fontWeight: '600', color: colors.ink },
-  inputText: { fontSize: 17, fontWeight: '600', color: colors.ink, flex: 1 },
+  input: { minHeight: 54, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, paddingHorizontal: 14, fontFamily: family.semi, fontSize: 17, color: colors.ink },
+  inputText: { fontFamily: family.semi, fontSize: 17, color: colors.ink, flex: 1 },
   picked: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  big: { fontSize: 22 },
-  multi: { minHeight: 84, paddingTop: 14, textAlignVertical: 'top' },
+  big: { fontFamily: family.display, fontSize: 26, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  multi: { minHeight: 88, paddingTop: 14, textAlignVertical: 'top', fontFamily: family.body },
   fromVoice: { backgroundColor: colors.brandWash, borderColor: colors.brand },
-  tag: { color: colors.brandInk, fontSize: 12, fontWeight: '700' },
-  match: { minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tagMark: { width: 8, height: 8, borderRadius: 1, backgroundColor: colors.brand },
+  match: { minHeight: TOUCH + 4, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.lineSoft, backgroundColor: colors.card },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  footer: { padding: space.lg, paddingBottom: 24, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.line },
+  footer: { padding: space.lg, paddingBottom: 24, backgroundColor: colors.ground, borderTopWidth: 1, borderTopColor: colors.line },
 })

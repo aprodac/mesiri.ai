@@ -8,18 +8,19 @@ import { fetchRequests, type MaterialRequest } from '../../src/lib/mesiri'
 import { useSite } from '../../src/lib/session'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { Button, Card, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
-import { colors, font, space } from '../../src/theme'
+import { Button, Card, Label, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
+import { colors, family, font, space } from '../../src/theme'
 
 // What this site asked for, and the office's answer. Asking is by voice (Mesiri's ask_for_material).
 
-const TONE: Record<string, { bg: string; fg: string }> = {
-  waiting: { bg: colors.todoSoft, fg: colors.todo },
-  ordered: { bg: colors.brandSoft, fg: colors.brandInk },
-  sent: { bg: colors.brandSoft, fg: colors.brandInk },
-  done: { bg: colors.doneSoft, fg: colors.done },
-  rejected: { bg: colors.warnSoft, fg: colors.warn },
-  cancelled: { bg: colors.sand, fg: colors.muted },
+/** A request's state as a small square and a word: yellow while it waits, ink when it is on its way, green when it came. */
+const TONE: Record<string, { mark: string; fg: string }> = {
+  waiting: { mark: colors.brand, fg: colors.brandInk },
+  ordered: { mark: colors.ink, fg: colors.ink },
+  sent: { mark: colors.ink, fg: colors.ink },
+  done: { mark: colors.done, fg: colors.done },
+  rejected: { mark: colors.warn, fg: colors.warn },
+  cancelled: { mark: colors.faint, fg: colors.muted },
 }
 
 const qty = (v: string) => {
@@ -47,7 +48,10 @@ export default function Requests() {
     <Screen>
       <TopBar />
       <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={list.isRefetching} onRefresh={() => list.refetch()} />}>
-        <Text style={font.title}>{t.requests}</Text>
+        <View style={styles.hero}>
+          <Label>{items.length ? String(items.length) : t.site}</Label>
+          <Text style={font.display}>{t.requests}</Text>
+        </View>
         {list.isLoading ? <Loading label={t.loading} /> : null}
         {list.isError ? <Notice text={list.error instanceof ApiError ? list.error.message : t.couldNotLoad} /> : null}
         {list.isSuccess && items.length === 0 ? <Notice tone="info" text={t.noRequests} /> : null}
@@ -57,31 +61,36 @@ export default function Requests() {
               const tone = TONE[r.status] ?? TONE.waiting
               return (
                 <View key={r.id} style={[styles.row, i > 0 && styles.line]}>
-                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                    <Text style={font.tiny}>
+                  <View style={styles.rowTop}>
+                    <Label>
                       {r.ref} · {date(r.created_at)}
                       {r.requested_by_name ? ` · ${r.requested_by_name}` : ''}
-                    </Text>
-                    <Text style={font.strong}>{r.lines.map((l) => `${qty(l.quantity)} ${l.unit_name || l.unit} ${l.material}`).join(', ')}</Text>
-                    {detail(r) ? <Text style={font.tiny}>{detail(r)}</Text> : null}
+                    </Label>
+                    <View style={styles.status}>
+                      <View style={[styles.statusMark, { backgroundColor: tone.mark }]} />
+                      <Label style={{ color: tone.fg }}>{t.status[r.status] ?? r.status}</Label>
+                    </View>
                   </View>
-                  <View style={[styles.status, { backgroundColor: tone.bg }]}>
-                    <Text style={{ color: tone.fg, fontSize: 12, fontWeight: '700' }}>{t.status[r.status] ?? r.status}</Text>
-                  </View>
+                  <Text style={styles.what}>{r.lines.map((l) => `${qty(l.quantity)} ${l.unit_name || l.unit} ${l.material}`).join(', ')}</Text>
+                  {detail(r) ? <Text style={font.small}>{detail(r)}</Text> : null}
                 </View>
               )
             })}
           </Card>
         ) : null}
-        <Button kind="dark" label={t.askForMaterial} icon={<Plus size={20} color={colors.brand} />} onPress={() => router.push('/speak')} />
+        <Button label={t.askForMaterial} icon={<Plus size={20} color={colors.brand} strokeWidth={2.4} />} onPress={() => router.push('/speak')} />
       </ScrollView>
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 40, gap: space.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 64, paddingHorizontal: 14, paddingVertical: 10 },
+  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.lg },
+  hero: { gap: 4, paddingTop: space.sm },
+  row: { gap: 6, paddingHorizontal: space.lg, paddingVertical: 14 },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
   line: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
-  status: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  what: { fontFamily: family.displaySemi, fontSize: 16, lineHeight: 21, letterSpacing: -0.2, color: colors.ink },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusMark: { width: 8, height: 8, borderRadius: 1 },
 })
