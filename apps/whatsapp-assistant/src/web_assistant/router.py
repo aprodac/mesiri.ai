@@ -15,6 +15,7 @@ that names them and can never be a phone (UX-26).
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -44,6 +45,7 @@ from runtime.reply_capture import (
 )
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+_log = logging.getLogger(__name__)
 
 #: Marks the message as from the dashboard in its log row (normalized
 #: message metadata and raw payload), so the inbox can tell the doors apart.
@@ -152,6 +154,31 @@ async def sender_number(user: dict) -> tuple[uuid.UUID, str]:
     return user_id, number
 
 
+def checked_voice(audio: bytes) -> bytes:
+    """The recording, or the refusal a person can act on: nothing recorded, too long, or not a kind the speech step
+    reads. One check for every door that takes a recording (a message, a dictated field)."""
+    if not audio:
+        raise HTTPException(status_code=400, detail="Nothing was recorded. Try again.")
+    if len(audio) > MAX_VOICE_BYTES:
+        raise HTTPException(status_code=413, detail="That recording is too long. Keep it under a minute.")
+    if voice_kind(audio) is None:
+        raise HTTPException(status_code=415, detail="The recording didn't come through. Record it again.")
+    seconds = voice_seconds(audio)
+    if seconds is not None and seconds > MAX_VOICE_SECONDS:
+        raise HTTPException(status_code=413, detail="That recording is too long. Keep it under a minute.")
+    return audio
+
+
+async def store_voice(container: object, message_id: str, voice: bytes) -> MediaReference:
+    """Kept where WhatsApp's voice notes go, and pointed at."""
+    mime, extension = voice_kind(voice) or (VOICE_MIME, "ogg")
+    key = f"media/{message_id}/web-voice.{extension}"
+    await container.object_storage.put_object(key, voice, content_type=mime)  # type: ignore[attr-defined]
+    return MediaReference(
+        object_key=key, mime_type=mime, size_bytes=len(voice), duration_seconds=voice_seconds(voice)
+    )
+
+
 def voice_kind(audio: bytes) -> tuple[str, str] | None:
     """The recording's (mime type, file extension) when it is one the speech step reads, else None."""
     if audio.startswith(b"OggS"):
@@ -239,15 +266,7 @@ async def handle(
     media = None
     modality = InputModality.INTERACTIVE if tap else InputModality.TEXT
     if voice is not None:
-        mime, extension = voice_kind(voice) or (VOICE_MIME, "ogg")
-        key = f"media/{message_id}/web-voice.{extension}"
-        await container.object_storage.put_object(key, voice, content_type=mime)  # type: ignore[attr-defined]
-        media = MediaReference(
-            object_key=key,
-            mime_type=mime,
-            size_bytes=len(voice),
-            duration_seconds=voice_seconds(voice),
-        )
+        media = await store_voice(container, message_id, voice)
         modality = InputModality.VOICE
     message = NormalizedMessage(
         message_id=message_id,
@@ -423,22 +442,7 @@ async def send_voice(
 ) -> WebMessageResponse:
     """A voice note: the body is the recording itself, Ogg/Opus (what WhatsApp and
     the browser send) or AAC in MP4 (.m4a, what the mobile app's phones record, MOB-03)."""
-    audio = await request.body()
-    if not audio:
-        raise HTTPException(status_code=400, detail="Nothing was recorded. Try again.")
-    if len(audio) > MAX_VOICE_BYTES:
-        raise HTTPException(
-            status_code=413, detail="That recording is too long. Keep it under a minute."
-        )
-    if voice_kind(audio) is None:
-        raise HTTPException(
-            status_code=415, detail="The recording didn't come through. Record it again."
-        )
-    seconds = voice_seconds(audio)
-    if seconds is not None and seconds > MAX_VOICE_SECONDS:
-        raise HTTPException(
-            status_code=413, detail="That recording is too long. Keep it under a minute."
-        )
+    audio = checked_voice(await request.body())
     container, wa_id = await _ready_sender(request, user)
     return await once(
         container,
@@ -446,3 +450,51 @@ async def send_voice(
         message_id_of(request),
         lambda: handle(container, wa_id, voice=audio, source=client_source(request), who=_who(user)),
     )
+
+
+class Dictated(BaseModel):
+    """MOB-06: a field's words, heard."""
+
+    #: What goes in the field: the words in English (saved fields are English, assistant basic 1).
+    text: str
+    #: The words as heard, when the speech step gives them apart from the English.
+    heard: str | None = None
+    #: The language heard ("ml-IN"), when known.
+    language: str | None = None
+
+
+@router.post("/dictate", response_model=Dictated)
+async def dictate(request: Request, user: dict = Depends(get_current_user)) -> Dictated:
+    """MOB-06: one field spoken into (a note, what happened, the supplier, the material to find): the words, in
+    English, and nothing else. The assistant's own speech step (the same call as a voice note's), with no turn: nothing
+    is prepared, saved or replied, so a note like "2 bags were torn" stays a note. Same recording checks, the same
+    person checks and rate limit as a message."""
+    audio = checked_voice(await request.body())
+    container, wa_id = await _ready_sender(request, user)
+    message_id = new_id("dictate")
+    message = NormalizedMessage(
+        message_id=message_id,
+        sender=SenderInfo(wa_id=wa_id, phone_number=wa_id),
+        timestamp=datetime.now(UTC),
+        modality=InputModality.VOICE,
+        text="",
+        media=await store_voice(container, message_id, audio),
+        metadata={"source": client_source(request), "dictate": True},
+    )
+    try:
+        transcript, translated, language = await asyncio.wait_for(
+            container.pipeline.transcribe_voice(message),  # type: ignore[attr-defined]
+            timeout=REPLY_TIMEOUT_S,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="That took too long to hear. Say it again.") from None
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001 -- the person gets a next step, the log gets the detail
+        _log.warning("web_assistant.dictate_failed", exc_info=True)
+        raise HTTPException(status_code=502, detail="Couldn't hear that. Say it again, or type it.") from None
+    text = (translated or transcript or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Couldn't hear any words. Say it again, or type it.")
+    heard = (transcript or "").strip()
+    return Dictated(text=text, heard=heard if heard and heard != text else None, language=language)

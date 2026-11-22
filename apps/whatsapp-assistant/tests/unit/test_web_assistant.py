@@ -621,3 +621,73 @@ async def test_a_message_that_failed_can_be_sent_again(monkeypatch) -> None:
     assert broke.replies[0].text.startswith(web.BROKE_PREFIX)  # how run_captured shows a broken run
     assert _Breaks.calls == 2 and [r.text for r in answer.replies] == ["Got it."]
     assert [r.text for r in replay.replies] == ["Got it."]  # the good answer is the one kept
+
+
+# --- One field, spoken into (MOB-06) ------------------------------------------------
+
+
+class _Pipeline:
+    def __init__(self, answer: Any = ("രണ്ട് ചാക്ക് പൊട്ടിയിരുന്നു", "2 bags were torn", "ml-IN")) -> None:
+        self.answer = answer
+        self.messages: list[Any] = []
+
+    async def transcribe_voice(self, message: Any, *, hint: str | None = None) -> Any:
+        self.messages.append(message)
+        if isinstance(self.answer, BaseException):
+            raise self.answer
+        return self.answer
+
+
+def _dictate_container(pipeline: _Pipeline, handler: _Handler | None = None) -> Any:
+    return SimpleNamespace(simulate_handler=handler or _Handler(), redis_client=None, object_storage=_Storage(),
+                           pipeline=pipeline)
+
+
+async def test_a_dictated_field_gets_the_words_in_english_and_nothing_runs(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    pipeline, handler = _Pipeline(), _Handler()
+    container = _dictate_container(pipeline, handler)
+
+    got = await web.dictate(_voice_request(container, _m4a(seconds=3), {"X-Mesiri-Client": "app"}), _token())
+
+    assert got.text == "2 bags were torn" and got.heard == "രണ്ട് ചാക്ക് പൊട്ടിയിരുന്നു" and got.language == "ml-IN"
+    assert handler.messages == []  # no turn: nothing prepared, saved or replied
+    [message] = pipeline.messages
+    assert message.modality is InputModality.VOICE and message.media.mime_type == "audio/mp4"
+    assert message.sender.wa_id == NUMBER and message.metadata["dictate"] is True
+
+
+async def test_english_heard_as_english_has_no_separate_heard_words(monkeypatch) -> None:
+    _numbers(monkeypatch)
+    container = _dictate_container(_Pipeline(("Malabar Traders", "Malabar Traders", "en-IN")))
+
+    got = await web.dictate(_voice_request(container, _m4a(seconds=2)), _token())
+
+    assert got.text == "Malabar Traders" and got.heard is None
+
+
+@pytest.mark.parametrize(
+    ("answer", "status"),
+    [(("", "", None), 422), (RuntimeError("sarvam down"), 502)],
+)
+async def test_nothing_heard_or_the_speech_step_failing_is_said_plainly(monkeypatch, answer, status) -> None:
+    _numbers(monkeypatch)
+    container = _dictate_container(_Pipeline(answer))
+
+    with pytest.raises(HTTPException) as refused:
+        await web.dictate(_voice_request(container, _m4a(seconds=2)), _token())
+
+    assert refused.value.status_code == status and "type it" in refused.value.detail
+
+
+async def test_a_dictated_recording_is_checked_like_a_voice_note(monkeypatch) -> None:
+    """The guard: one check for both doors (too long, not a recording)."""
+    _numbers(monkeypatch)
+    pipeline = _Pipeline()
+    container = _dictate_container(pipeline)
+
+    for audio, status in ((_m4a(seconds=75), 413), (b"RIFF....WAVEfmt ", 415), (b"", 400)):
+        with pytest.raises(HTTPException) as refused:
+            await web.dictate(_voice_request(container, audio), _token())
+        assert refused.value.status_code == status
+    assert pipeline.messages == []
