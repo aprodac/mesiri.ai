@@ -14,6 +14,7 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { FirstReportMoment } from '@/components/first-report-moment'
+import { RecordDayButton } from '@/components/site-day-form'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -373,6 +374,15 @@ export default function TodayPage() {
         )
       ) : (
           <div className="flex min-w-0 flex-col gap-5" data-guide="today.sites">
+            {/* UX-104: the site's day on a form, beside WhatsApp and Tell Mesiri. */}
+            {!readOnly && !isFinance && (
+              <div className="flex justify-end">
+                <RecordDayButton
+                  date={date}
+                  sites={sites.map((s) => ({ site_id: s.site_id, site_name: s.site_name, project_id: s.project_id, project_name: projects.find((p) => p.project_id === s.project_id)?.project_name }))}
+                />
+              </div>
+            )}
             {projects.map((project) => {
               const projectSites = sites.filter((s) => s.project_id === project.project_id)
               const confirmed = projectSites.filter((s) => FROZEN.includes(s.status)).length
