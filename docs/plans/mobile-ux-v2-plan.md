@@ -142,6 +142,27 @@ the colour combination and the blueprint vibe."* Drawn as a template (Today, Spe
   paper, the yellow mic in the middle); **soft shapes** (cards 16–22 px, pill buttons and chips, 14 px steppers);
   the **drawing grid only on Today's title block**: Speak and the other screens use plain blueprint or paper.
 
+## 4d. The cue system (22 Nov, canvas V4 board "0 · The cue system")
+
+Asked: *"add better visual cues for each component … a stronger design system so that we use visual cues properly and
+strongly."* Four kinds of cue, each with one job, the same on every screen:
+
+| Cue | Answers | Rule |
+|---|---|---|
+| **Category tile** | What kind of thing | An icon in a tinted rounded tile, one per kind: people (blue `#dfe6f3`/`#1e3a6e`), work (green `#d9ede3`/`#1f6b52`), materials (amber `#f8ecc4`/`#7a5a00`), machines (violet `#e6e2f2`/`#4a3f88`), problems (brick `#f6dcd4`/`#b2412b`), photos (graphite `#e8e4dc`/`#3a3d41`), weather and site (sky `#dcecf3`/`#23617a`). Same tile on Today, Needs you, the TO SAVE sheet, Quick add, and the scale bar's colours |
+| **State mark** | What state | A round mark that differs in shape as well as colour: done (filled ink ✓), to tell (dashed ring), needs attention (brick !), waiting (ring ◔), not saved yet (dashed yellow), from your voice (yellow ◉). Never colour alone |
+| **Time chip** | How urgent | Small mono pills: solid = act now (OVERDUE brick, TODAY yellow, ANSWERED blueprint), outlined = know it (TOMORROW, OPEN 2 DAYS) |
+| **Action and voice** | What to do, who is talking | One yellow button per screen (the thing to do now); navy for an action on a card; outline for the other way; "See →" text to look. Mesiri always speaks from a pale-blueprint panel with its M mark; the person's own words sit on paper (or a light panel on Speak) with the voice mark |
+
+Colours keep one job each: paper (ground), drawing ink (words, structure, the bar), blueprint (the one hero per screen;
+its grid only on Today), highlighter yellow (do now), brick (something is wrong). Figures and references are mono.
+
+Applied on Today (the scale bar's segments take each part's category colour when told, dashed when not, brick when it
+needs attention, with the category icon under each; Needs you cards with tile + time chip + reference + action; the
+day's rows with tile, figure, state mark, and "+ Tell" on the parts not told) and Speak (the voice mark and waveform on
+what you said; the TO SAVE sheet with a NOT SAVED YET badge, tiles and pending marks per line, the line Mesiri asks
+about marked "?" and tinted; Mesiri's question in its panel; Save all as the one yellow button).
+
 ## 5. Build order (proposed, each a tracker item)
 
 | ID | What | Backend? |
