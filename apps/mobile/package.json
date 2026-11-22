@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@babel/runtime": "^8.0.0",
-    "@expo-google-fonts/ibm-plex-mono": "0.4.2",
-    "@expo-google-fonts/inter": "0.4.2",
-    "@expo-google-fonts/inter-tight": "0.4.2",
+    "@expo-google-fonts/archivo": "0.4.2",
+    "@expo-google-fonts/archivo-narrow": "0.4.2",
+    "@expo-google-fonts/jetbrains-mono": "0.4.1",
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",

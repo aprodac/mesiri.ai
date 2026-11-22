@@ -292,7 +292,7 @@ export default function EntryForm() {
 
   return (
     <Screen>
-      <BackHeader title={title} subtitle={place ? `${place.project.name} · ${place.site.name}` : undefined} />
+      <BackHeader cat={kind === 'problem' ? 'problem' : 'material'} title={title} subtitle={place ? `${place.project.name} · ${place.site.name}` : undefined} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Pressable
@@ -428,6 +428,7 @@ export default function EntryForm() {
         </ScrollView>
         <View style={styles.footer}>
           <Button
+            kind="accent"
             label={save.isSuccess ? `✓ ${t.saved}` : t.save}
             busy={save.isPending}
             disabled={save.isSuccess}

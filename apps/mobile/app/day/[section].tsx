@@ -6,7 +6,7 @@ import { ClipboardPen, Keyboard, Mic } from 'lucide-react-native'
 import { useWords } from '../../src/lib/i18n'
 import { fetchSiteDay, setConditions, type Weather } from '../../src/lib/mesiri'
 import { todayFor, useSession, useSite } from '../../src/lib/session'
-import { amount, reportOf, sectionTitle, SECTIONS, words, type Section } from '../../src/lib/day'
+import { amount, reportOf, SECTION_CATEGORY, sectionTitle, SECTIONS, words, type Section } from '../../src/lib/day'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
 import { BackHeader, Button, Card, Chip, Loading, Notice, Screen, Label } from '../../src/components/ui'
@@ -75,7 +75,7 @@ export default function DaySection() {
 
   return (
     <Screen>
-      <BackHeader title={sectionTitle(section, t)} subtitle={current ? `${current.project.name} · ${current.site.name}` : undefined} />
+      <BackHeader cat={SECTION_CATEGORY[section]} title={sectionTitle(section, t)} subtitle={current ? `${current.project.name} · ${current.site.name}` : undefined} />
       <ScrollView contentContainerStyle={styles.body}>
         {day.isLoading ? <Loading label={t.loading} /> : null}
         {day.isError ? <Notice text={day.error instanceof ApiError ? day.error.message : t.couldNotLoad} /> : null}
@@ -117,15 +117,16 @@ export default function DaySection() {
 
         {FORMS[section] ? (
           <Button
+            kind="accent"
             label={t.fillForm}
-            icon={<ClipboardPen size={20} color={colors.brand} strokeWidth={2} />}
+            icon={<ClipboardPen size={20} color={colors.ink} strokeWidth={2} />}
             onPress={() => router.push({ pathname: '/form/[kind]', params: { kind: FORMS[section] as string } })}
           />
         ) : null}
         <Button
-          kind={FORMS[section] ? 'secondary' : 'primary'}
+          kind={FORMS[section] ? 'secondary' : 'accent'}
           label={t.speakToMesiri}
-          icon={<Mic size={20} color={FORMS[section] ? colors.ink : colors.brand} strokeWidth={2} />}
+          icon={<Mic size={20} color={colors.ink} strokeWidth={2} />}
           onPress={() => router.push('/speak')}
         />
         <Button kind="secondary" label={t.typeInstead} icon={<Keyboard size={20} color={colors.ink} />} onPress={() => router.push({ pathname: '/speak', params: { typing: '1' } })} />

@@ -22,21 +22,25 @@ To look at the screens in a browser (Chromium at 390 px): `npx expo export --cle
 `dist/`. The browser build is for looking only: Chrome records WebM, which the voice route refuses; phones
 record m4a, which it takes.
 
-## The look (MOB-13, 22 Nov 2026)
+## The look: the blueprint system (MOB-14, 22 Nov 2026)
 
-Swiss minimal, built for a site, easy on the eye. Tokens and type in `src/theme.ts`, parts in
-`src/components/ui.tsx`; new screens use those, never their own colours or sizes.
+Design: canvas page V4 and [mobile-ux-v2-plan.md](../../docs/plans/mobile-ux-v2-plan.md) §4c–4d. Tokens in
+`src/theme.ts`, parts in `src/components/ui.tsx`; new screens use those, never their own colours or sizes.
 
-- **Paper and ink:** warm off-white ground (`#f2f0eb`), cards a shade lighter, near-black ink (`#17191c`). No pure
-  white, no pure black, no shadows; hairlines (`line`) separate things.
-- **One accent, used sparingly:** safety yellow (`#f2c230`) only as a fill: the mic, the progress tape, the active
-  tab's bar, "from your voice", the main choice on the dark Speak screen. Never as text on paper.
-- **Main buttons are ink** with a yellow icon; secondary is a hairline outline.
-- **Type:** Inter Tight for headings and figures (tabular), Inter for reading, IBM Plex Mono capitals for labels and
-  references ("01", "GREEN VILLA", "REQ-0012"), like a drawing. Malayalam falls back to the phone's Noto Sans.
-- **Construction, quietly:** a 3 px hazard stripe on the main screens, numbered rows, the day as a segmented tape,
-  stock as gauges (days left against two weeks), square status marks (tick outline / dashed plus / brick !).
-- **Site sizes:** 48 px targets, 54 px main actions, 64 px mic (88 px on Speak).
+- **Colours, one job each:** paper `#f8f7f3` (ground), white cards, drawing ink `#15233f` (words, structure, the
+  bottom bar, navy actions), blueprint `#1e3a6e` (the one hero per screen; its drawing grid only on Today's title
+  block), highlighter yellow `#ffd23f` (do this now), brick `#c4472f` (something is wrong).
+- **Four cues, the same everywhere:**
+  - `CategoryTile`: what kind of thing (people, work, materials, machines, problems, photos, weather), one tinted tile
+    and icon each (`category` in the theme).
+  - `StateMark`: what state, by shape and colour: done ✓, to tell (dashed), needs attention !, waiting, not saved yet
+    (dashed yellow), from your voice.
+  - `TimeChip`: how urgent: solid = act now (OVERDUE, TODAY, ANSWERED), outlined = know it (TOMORROW, OPEN).
+  - Actions: **one `accent` (yellow) button per screen**, `primary` navy on a card, `secondary` outline, `text` to look;
+    `MesiriPanel` whenever Mesiri talks.
+- **Soft shapes:** cards 18–22 px, pill buttons and chips. The bottom bar is a floating ink pill with the yellow mic.
+- **Type:** Archivo Narrow headings (swap in `family`), Archivo text, JetBrains Mono for figures and references.
+  Malayalam falls back to the phone's Noto Sans.
 
 ## Where things are
 

@@ -7,13 +7,13 @@ import { I18nProvider } from '../src/lib/i18n'
 import { SessionProvider, SiteProvider, useSession } from '../src/lib/session'
 import { OutboxProvider } from '../src/lib/outbox'
 import { useFonts } from 'expo-font'
-import { InterTight_600SemiBold } from '@expo-google-fonts/inter-tight/600SemiBold'
-import { InterTight_700Bold } from '@expo-google-fonts/inter-tight/700Bold'
-import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular'
-import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
-import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
-import { IBMPlexMono_400Regular } from '@expo-google-fonts/ibm-plex-mono/400Regular'
-import { IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono/500Medium'
+import { ArchivoNarrow_600SemiBold } from '@expo-google-fonts/archivo-narrow/600SemiBold'
+import { ArchivoNarrow_700Bold } from '@expo-google-fonts/archivo-narrow/700Bold'
+import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular'
+import { Archivo_500Medium } from '@expo-google-fonts/archivo/500Medium'
+import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold'
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular'
+import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium'
 import { colors } from '../src/theme'
 
 const queryClient = new QueryClient({
@@ -46,13 +46,13 @@ function Gate() {
 export default function RootLayout() {
   // Only the weights the app uses (src/theme.ts family); Malayalam falls back to the phone's Noto Sans.
   const [fontsReady, fontError] = useFonts({
-    InterTight_600SemiBold,
-    InterTight_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    IBMPlexMono_400Regular,
-    IBMPlexMono_500Medium,
+    ArchivoNarrow_600SemiBold,
+    ArchivoNarrow_700Bold,
+    Archivo_400Regular,
+    Archivo_500Medium,
+    Archivo_600SemiBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
   })
   // A font that fails to load never blocks the app: it opens in the phone's own font.
   if (!fontsReady && !fontError) return null

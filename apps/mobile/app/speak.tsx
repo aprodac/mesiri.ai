@@ -8,11 +8,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useWords } from '../src/lib/i18n'
 import { fileBody, ApiError } from '../src/lib/api'
 import { useOutbox, type Sent } from '../src/lib/outbox'
-import { sendTap, type AssistantReply, type AssistantResponse } from '../src/lib/mesiri'
+import { sendTap, type AssistantReply, type AssistantResponse, type ReadyEntry } from '../src/lib/mesiri'
 import { contentTypeOf, doneRecording, level, MAX_SECONDS, readyToRecord, VOICE_NOTE } from '../src/lib/recorder'
 import { useSite } from '../src/lib/session'
-import { Label, Screen } from '../src/components/ui'
-import { colors, family, font, MAIN_ACTION, radius, space, TOUCH } from '../src/theme'
+import { CategoryTile, Label, MesiriPanel, Screen, StateMark } from '../src/components/ui'
+import { colors, family, font, MAIN_ACTION, radius, space, TOUCH, type Category } from '../src/theme'
 
 // Speak to Mesiri: the same assistant as WhatsApp, through the dashboard's Tell Mesiri door. A voice note or
 // a typed line prepares entries; nothing is saved until the person taps the assistant's own Save button.
@@ -30,6 +30,36 @@ interface Turn {
   chose?: string
   /** MOB-07: kept on the phone (no signal); its answer comes on Today. */
   queued?: boolean
+  /** The list waiting for Save after this message (the TO SAVE sheet), as data. */
+  ready?: ReadyEntry[] | null
+}
+
+/** Each kind of entry's tile (the cue system): the tool the assistant prepared it with. */
+const TOOL_CATEGORY: Record<string, Category> = {
+  record_attendance: 'people',
+  record_work: 'work',
+  correct_work: 'work',
+  record_receipt: 'material',
+  record_usage: 'material',
+  ask_for_material: 'material',
+  count_stock: 'material',
+  report_issue: 'problem',
+  log_machines: 'machine',
+  add_machine: 'machine',
+  record_expense: 'photo',
+  add_bill_photo: 'photo',
+  set_site_conditions: 'weather',
+}
+const KIND_LABEL: Record<string, string> = {
+  record_attendance: 'ATTENDANCE',
+  record_work: 'WORK DONE',
+  record_receipt: 'MATERIAL IN',
+  record_usage: 'MATERIAL USED',
+  ask_for_material: 'REQUEST',
+  report_issue: 'PROBLEM',
+  log_machines: 'MACHINES',
+  record_expense: 'EXPENSE',
+  set_site_conditions: 'WEATHER AND SITE',
 }
 
 const BARS = 28
@@ -75,7 +105,7 @@ export default function Speak() {
         const res = 'status' in got ? got.answer : got
         if (!res) return
         setTurns((old) =>
-          old.map((x) => (x.id === id ? { ...x, pending: false, replies: res.replies, said: res.transcript ?? x.said } : x)),
+          old.map((x) => (x.id === id ? { ...x, pending: false, replies: res.replies, said: res.transcript ?? x.said, ready: res.ready } : x)),
         )
         // Whatever was saved shows on Today and Site at once.
         void client.invalidateQueries({ queryKey: ['site-day'] })
@@ -145,6 +175,7 @@ export default function Speak() {
             said: item.answer.transcript ?? item.text ?? null,
             kind: item.kind === 'text' ? 'text' : 'voice',
             replies: item.answer.replies,
+            ready: item.answer.ready,
             pending: false,
           },
         ])
@@ -191,16 +222,21 @@ export default function Speak() {
   const busy = turns.some((x) => x.pending)
   const listening = phase === 'recording' || phase === 'starting'
 
+  // The latest TO SAVE list (the sheet is the assistant's own list; it shows once, under the last answer that has one).
+  const lastWithList = [...turns].reverse().find((x) => x.ready && x.ready.length)
+
   return (
     <Screen dark>
       <View style={styles.top}>
         <Pressable accessibilityRole="button" accessibilityLabel={t.close} onPress={close} style={styles.close}>
-          <X size={20} color="#fff" strokeWidth={2} />
+          <X size={18} color="#fff" strokeWidth={2} />
         </Pressable>
-        <View style={{ flexShrink: 1, alignItems: 'flex-end', gap: 2 }}>
-          <Label tone="light">{current?.project.name ?? ''}</Label>
-          <Text style={styles.siteName} numberOfLines={1}>
-            {current?.site.name ?? ''}
+        <View style={styles.sitePill}>
+          <View style={styles.siteDot}>
+            <Text style={styles.siteDotText}>{(current?.project.name ?? '?').slice(0, 2).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.siteText} numberOfLines={1}>
+            {current?.site.name ?? ''} · {t.today.toLowerCase()}
           </Text>
         </View>
       </View>
@@ -208,17 +244,18 @@ export default function Speak() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           {turns.length === 0 ? (
-            <View style={{ gap: space.xl, paddingTop: space.lg }}>
-              <View style={{ gap: 6 }}>
-                <Label style={{ color: listening ? colors.brand : colors.nightMuted }}>
-                  {listening ? `● ${t.listening} · 0:${String(seconds).padStart(2, '0')}` : t.speakNow}
-                </Label>
+            <View style={{ gap: space.lg, paddingTop: space.md }}>
+              <View style={styles.youSaid}>
+                <View style={styles.voiceRow}>
+                  <StateMark state="voice" size={18} />
+                  <Label tone="yellow">{listening ? `${t.listening} · 0:${String(seconds).padStart(2, '0')}` : t.speakNow}</Label>
+                </View>
                 <Text style={styles.prompt}>{t.sayInOneGo}</Text>
               </View>
               <View style={styles.hints}>
                 {t.hints.map((h, i) => (
-                  <View key={h} style={styles.hint}>
-                    <Label tone="light" style={{ width: 22 }}>{String(i + 1).padStart(2, '0')}</Label>
+                  <View key={h} style={[styles.hint, i === t.hints.length - 1 && { borderBottomWidth: 0 }]}>
+                    <CategoryTile cat={(['people', 'material', 'work', 'problem', 'material'] as Category[])[i] ?? 'work'} size={28} />
                     <Text style={styles.hintText}>{h}</Text>
                   </View>
                 ))}
@@ -228,55 +265,88 @@ export default function Speak() {
 
           {turns.map((turn) => (
             <View key={turn.id} style={{ gap: space.md }}>
-              <View style={styles.said}>
-                <Label tone="light">{turn.kind === 'tap' ? '✓' : t.youSaid}</Label>
+              <View style={styles.youSaid}>
+                <View style={styles.voiceRow}>
+                  {turn.kind === 'voice' ? <StateMark state="voice" size={18} /> : null}
+                  <Label tone="yellow">{turn.kind === 'tap' ? '✓' : t.youSaid}</Label>
+                </View>
                 <Text style={styles.saidText}>{turn.said ?? (turn.pending ? t.hearing : turn.queued ? t.voiceNote : '—')}</Text>
               </View>
-              {turn.pending ? <Text style={styles.thinking}>{t.thinking}</Text> : null}
+              {turn.pending ? <Label tone="yellow">{t.thinking}</Label> : null}
               {turn.queued ? (
-                <View style={[styles.reply, { backgroundColor: colors.nightCard, borderColor: colors.charcoal }]}>
-                  <Text style={[font.body, { color: colors.nightText }]}>{t.keptOnPhone}</Text>
+                <View style={styles.kept}>
+                  <StateMark state="waiting" size={20} />
+                  <Text style={[font.body, { color: colors.nightText, flex: 1 }]}>{t.keptOnPhone}</Text>
                 </View>
               ) : null}
               {turn.error ? (
-                <View style={[styles.reply, { borderColor: colors.danger }]}>
-                  <Text style={[font.body, { color: colors.danger }]}>{turn.error}</Text>
+                <View style={[styles.kept, { backgroundColor: colors.warnSoft }]}>
+                  <StateMark state="warn" size={20} />
+                  <Text style={[font.body, { color: colors.warn, flex: 1 }]}>{turn.error}</Text>
                 </View>
               ) : null}
-              {turn.replies.map((reply, i) => (
-                <View key={i} style={styles.reply}>
-                  <View style={styles.replyHead}>
-                    <View style={styles.badge} />
-                    <Label tone="ink">Mesiri</Label>
-                  </View>
-                  <Text style={styles.replyText}>{reply.text}</Text>
-                  {[...reply.buttons, ...reply.list_rows].length ? (
-                    <View style={styles.options}>
-                      {[...reply.buttons, ...reply.list_rows].map((option, k) => {
-                        const main = k === 0 && reply.type === 'buttons'
-                        const chosen = turn.chose === option.title
-                        return (
-                          <Pressable
-                            key={option.id}
-                            accessibilityRole="button"
-                            disabled={!!turn.chose || busy}
-                            onPress={() => tap(turn.id, option.id, option.title)}
-                            style={({ pressed }) => [
-                              styles.option,
-                              main && styles.optionMain,
-                              chosen && styles.optionChosen,
-                              (pressed || (turn.chose && !chosen)) && { opacity: 0.55 },
-                            ]}
-                          >
-                            <Text style={[font.button, { color: colors.ink, fontSize: main ? 17 : 15 }]}>{option.title}</Text>
-                            {option.description ? <Text style={font.tiny}>{option.description}</Text> : null}
-                          </Pressable>
-                        )
-                      })}
+
+              {turn === lastWithList && turn.ready ? (
+                <View style={styles.sheet}>
+                  <View style={styles.sheetHead}>
+                    <Text style={styles.sheetTitle}>
+                      {t.toSave} · {turn.ready.length}
+                    </Text>
+                    <View style={styles.notSaved}>
+                      <Text style={styles.notSavedText}>● {t.notSavedYet}</Text>
                     </View>
-                  ) : null}
+                  </View>
+                  {turn.ready.map((e) => (
+                    <View key={e.key} style={styles.line}>
+                      <CategoryTile cat={TOOL_CATEGORY[e.tool] ?? 'work'} size={34} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Label style={{ color: colors.blueprint }}>{KIND_LABEL[e.tool] ?? e.tool.replace(/_/g, ' ')}</Label>
+                        <Text style={font.strong} numberOfLines={2}>
+                          {e.summary}
+                        </Text>
+                      </View>
+                      <StateMark state="pending" size={22} />
+                    </View>
+                  ))}
                 </View>
-              ))}
+              ) : null}
+
+              {turn.replies.map((reply, i) => {
+                const options = [...reply.buttons, ...reply.list_rows]
+                return (
+                  <MesiriPanel key={i}>
+                    <Text style={styles.replyText}>{reply.text}</Text>
+                    {options.length ? (
+                      <View style={styles.options}>
+                        {options.map((option, k) => {
+                          const main = k === 0 && reply.type === 'buttons'
+                          const chosen = turn.chose === option.title
+                          return (
+                            <Pressable
+                              key={option.id}
+                              accessibilityRole="button"
+                              disabled={!!turn.chose || busy}
+                              onPress={() => tap(turn.id, option.id, option.title)}
+                              style={({ pressed }) => [
+                                styles.option,
+                                main && styles.optionMain,
+                                chosen && styles.optionChosen,
+                                (pressed || (turn.chose && !chosen)) && { opacity: 0.5 },
+                              ]}
+                            >
+                              <Text style={[font.button, { color: colors.ink, fontSize: main ? 17 : 15 }]}>
+                                {chosen ? '✓ ' : ''}
+                                {option.title}
+                              </Text>
+                              {option.description ? <Text style={font.tiny}>{option.description}</Text> : null}
+                            </Pressable>
+                          )
+                        })}
+                      </View>
+                    ) : null}
+                  </MesiriPanel>
+                )
+              })}
             </View>
           ))}
           {notice ? <Text style={[font.small, { color: colors.brand }]}>{notice}</Text> : null}
@@ -285,7 +355,7 @@ export default function Speak() {
         {phase === 'recording' ? (
           <View style={styles.bars} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             {levels.map((l, i) => (
-              <View key={i} style={[styles.bar, { height: 8 + l * 80 }]} />
+              <View key={i} style={[styles.bar, { height: 8 + l * 72 }]} />
             ))}
           </View>
         ) : null}
@@ -298,12 +368,18 @@ export default function Speak() {
                 value={draft}
                 onChangeText={setDraft}
                 placeholder={t.typeHere}
-                placeholderTextColor={colors.nightMuted}
+                placeholderTextColor={colors.blueprintMid}
                 multiline
                 style={styles.input}
               />
-              <Pressable accessibilityRole="button" accessibilityLabel={t.send} onPress={sendTyped} disabled={!draft.trim() || busy} style={[styles.sendButton, (!draft.trim() || busy) && { opacity: 0.5 }]}>
-                <Send size={22} color={colors.ink} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.send}
+                onPress={sendTyped}
+                disabled={!draft.trim() || busy}
+                style={[styles.sendButton, (!draft.trim() || busy) && { opacity: 0.5 }]}
+              >
+                <Send size={20} color={colors.ink} />
               </Pressable>
             </View>
           ) : null}
@@ -313,7 +389,7 @@ export default function Speak() {
               accessibilityLabel={t.typeInstead}
               onPress={() => setTyping((v) => !v)}
               disabled={phase === 'recording'}
-              style={[styles.close, { width: TOUCH + 8, height: TOUCH + 8 }, phase === 'recording' && { opacity: 0.3 }]}
+              style={[styles.round, phase === 'recording' && { opacity: 0.3 }]}
             >
               <Keyboard size={22} color="#fff" strokeWidth={1.8} />
             </Pressable>
@@ -324,9 +400,9 @@ export default function Speak() {
               onPress={phase === 'recording' ? stop : start}
               style={[styles.bigMic, phase === 'recording' && styles.bigMicOn, (phase === 'sending' || busy) && { opacity: 0.5 }]}
             >
-              {phase === 'recording' ? <View style={styles.stopSquare} /> : <Mic size={36} color={colors.ink} strokeWidth={2.2} />}
+              {phase === 'recording' ? <View style={styles.stopSquare} /> : <Mic size={34} color={colors.ink} strokeWidth={2.2} />}
             </Pressable>
-            <View style={{ width: TOUCH + 8 }} />
+            <View style={{ width: TOUCH + 4 }} />
           </View>
           <Text style={styles.footnote}>{phase === 'recording' ? t.tapToStop : turns.length ? t.sayAChange : t.speakNow}</Text>
         </View>
@@ -336,34 +412,42 @@ export default function Speak() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.md },
-  close: { width: TOUCH, height: TOUCH, borderRadius: radius.md, borderWidth: 1, borderColor: colors.nightRaised, alignItems: 'center', justifyContent: 'center' },
-  siteName: { fontFamily: family.displaySemi, fontSize: 16, color: '#fff', letterSpacing: -0.2 },
-  body: { padding: space.lg, gap: space.xl, flexGrow: 1 },
-  prompt: { fontFamily: family.display, fontSize: 26, lineHeight: 31, letterSpacing: -0.6, color: '#fff' },
-  hints: { borderTopWidth: 1, borderTopColor: colors.nightRaised },
-  hint: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.nightRaised },
-  hintText: { fontFamily: family.body, fontSize: 16, color: colors.nightText },
-  said: { gap: 6 },
-  saidText: { fontFamily: family.displaySemi, color: '#fff', fontSize: 22, lineHeight: 29, letterSpacing: -0.3 },
-  thinking: { fontFamily: family.monoMedium, color: colors.brand, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
-  reply: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.lg, gap: space.md, borderWidth: 1, borderColor: colors.card },
-  replyHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.brand },
-  replyText: { fontFamily: family.body, fontSize: 16, lineHeight: 24, color: colors.ink },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: space.md, gap: space.md },
+  close: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' },
+  sitePill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: radius.pill, paddingVertical: 6, paddingLeft: 6, paddingRight: 12, flexShrink: 1 },
+  siteDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  siteDotText: { fontFamily: family.display, fontSize: 12, color: colors.ink },
+  siteText: { fontFamily: family.display, fontSize: 15, color: '#fff', flexShrink: 1 },
+  body: { paddingHorizontal: 14, paddingBottom: space.lg, gap: space.lg, flexGrow: 1 },
+  youSaid: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, padding: 14, gap: 8 },
+  voiceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  prompt: { fontFamily: family.display, fontSize: 26, lineHeight: 31, color: '#fff' },
+  hints: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: radius.lg, paddingHorizontal: 12 },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  hintText: { fontFamily: family.body, fontSize: 15, color: colors.nightText },
+  saidText: { fontFamily: family.semi, color: '#fff', fontSize: 19, lineHeight: 28 },
+  kept: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: radius.lg, padding: 12 },
+  sheet: { backgroundColor: colors.ground, borderRadius: radius.xl, overflow: 'hidden' },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
+  sheetTitle: { fontFamily: family.display, fontSize: 20, letterSpacing: 0.5, color: colors.ink },
+  notSaved: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandEdge, backgroundColor: colors.brandSoft, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 2 },
+  notSavedText: { fontFamily: family.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.brandInk },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.lineSoft },
+  replyText: { fontFamily: family.body, fontSize: 15, lineHeight: 22, color: colors.blueprint },
   options: { gap: 8 },
-  option: { minHeight: TOUCH, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8 },
-  optionMain: { minHeight: MAIN_ACTION, backgroundColor: colors.brand, borderColor: colors.brand, alignItems: 'center' },
-  optionChosen: { borderWidth: 2, borderColor: colors.ink },
-  bars: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, height: 96 },
-  bar: { width: 4, borderRadius: 1, backgroundColor: colors.brand },
-  bottom: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md, borderTopWidth: 1, borderTopColor: colors.nightRaised },
+  option: { minHeight: TOUCH - 4, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 6 },
+  optionMain: { minHeight: MAIN_ACTION, backgroundColor: colors.brand, borderColor: colors.brand },
+  optionChosen: { backgroundColor: colors.ink, borderColor: colors.ink },
+  bars: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, height: 88 },
+  bar: { width: 4, borderRadius: 2, backgroundColor: colors.brand },
+  bottom: { paddingHorizontal: 14, paddingTop: space.md, gap: space.md },
   typeRow: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-end' },
-  input: { flex: 1, minHeight: 52, maxHeight: 140, borderRadius: radius.md, backgroundColor: colors.nightCard, borderWidth: 1, borderColor: colors.nightRaised, color: '#fff', fontFamily: family.body, fontSize: 17, paddingHorizontal: 14, paddingVertical: 14 },
-  sendButton: { width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, minHeight: 52, maxHeight: 140, borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', fontFamily: family.body, fontSize: 17, paddingHorizontal: 16, paddingVertical: 14 },
+  sendButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.xl },
-  bigMic: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  bigMicOn: { borderWidth: 8, borderColor: 'rgba(242,194,48,0.25)' },
-  stopSquare: { width: 26, height: 26, borderRadius: 4, backgroundColor: colors.ink },
-  footnote: { fontFamily: family.monoMedium, color: colors.nightMuted, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center' },
+  round: { width: TOUCH + 4, height: TOUCH + 4, borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' },
+  bigMic: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  bigMicOn: { borderWidth: 8, borderColor: 'rgba(255,210,63,0.3)' },
+  stopSquare: { width: 26, height: 26, borderRadius: 6, backgroundColor: colors.ink },
+  footnote: { fontFamily: family.monoMedium, color: colors.blueprintSoft, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center' },
 })

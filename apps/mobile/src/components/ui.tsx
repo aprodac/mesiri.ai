@@ -2,48 +2,87 @@ import * as React from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Plus } from 'lucide-react-native'
-import { colors, family, font, HAIRLINE, MAIN_ACTION, radius, space, TOUCH } from '../theme'
+import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg'
+import {
+  ArrowLeft,
+  Camera,
+  ChevronDown,
+  CloudRain,
+  Hammer,
+  Settings,
+  TriangleAlert,
+  Truck,
+  Users,
+  type LucideIcon,
+} from 'lucide-react-native'
+import { category as CAT, colors, family, font, HAIRLINE, MAIN_ACTION, radius, space, TOUCH, type Category } from '../theme'
 import { useSite } from '../lib/session'
 import { useWords } from '../lib/i18n'
 
-// The app's parts, in its Swiss-on-site look (src/theme.ts): paper, ink, hairlines, one yellow.
-
-/** The hazard-tape line at the top of the main screens: thin, the one loud construction mark. */
-export function HazardStripe() {
-  return (
-    <View style={styles.stripe} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {Array.from({ length: 40 }, (_, i) => (
-        <View key={i} style={[styles.stripeBlock, { backgroundColor: i % 2 ? colors.ink : colors.brand }]} />
-      ))}
-    </View>
-  )
-}
+// The app's parts in the blueprint system (src/theme.ts; docs/plans/mobile-ux-v2-plan.md §4d). Each cue has one
+// meaning everywhere: CategoryTile = what kind of thing, StateMark = what state, TimeChip = how urgent, Button kinds =
+// what to do (one "accent" yellow per screen), MesiriPanel = Mesiri talking.
 
 export function Screen({ children, dark, style }: { children: React.ReactNode; dark?: boolean; style?: StyleProp<ViewStyle> }) {
   const insets = useSafeAreaInsets()
-  return <View style={[{ flex: 1, paddingTop: insets.top, backgroundColor: dark ? colors.night : colors.ground }, style]}>{children}</View>
+  return <View style={[{ flex: 1, paddingTop: insets.top, backgroundColor: dark ? colors.blueprint : colors.ground }, style]}>{children}</View>
 }
 
-/** Drawing capitals: "SITE", "01", "REQ-0012". */
-export function Label({ children, style, tone }: { children: React.ReactNode; style?: StyleProp<TextStyle>; tone?: 'ink' | 'muted' | 'light' }) {
-  const color = tone === 'ink' ? colors.ink : tone === 'light' ? colors.nightMuted : colors.muted
+/** Kept for the sign-in screen's top edge: a thin blueprint line (the hazard stripe is gone in this system). */
+export function HazardStripe() {
+  return <View style={{ height: 3, backgroundColor: colors.blueprint }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+}
+
+/** Drawing capitals: "NEEDS YOU", "PO-0005". */
+export function Label({ children, style, tone }: { children: React.ReactNode; style?: StyleProp<TextStyle>; tone?: 'ink' | 'muted' | 'light' | 'yellow' }) {
+  const color = tone === 'ink' ? colors.ink : tone === 'light' ? colors.blueprintMid : tone === 'yellow' ? colors.brand : colors.muted
   return <Text style={[font.label, { color }, style]}>{children}</Text>
 }
 
-/** A section's head: its label, a hairline, and what is on the right ("6 / 7", an action). */
-export function SectionHead({ label, right, style }: { label: string; right?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+/** A section's head: its label, a count badge when it has one, a hairline, and what is on the right. */
+export function SectionHead({ label, count, right, style }: { label: string; count?: number; right?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.sectionHead, style]}>
       <Label>{label}</Label>
+      {count ? (
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{count}</Text>
+        </View>
+      ) : null}
       <View style={styles.sectionRule} />
       {right}
     </View>
   )
 }
 
-/** The site this person is reporting for, always at the top; tapping it changes site. */
-export function SiteButton() {
+// ── The blueprint ──────────────────────────────────────────────────────────
+
+/** The drawing grid, drawn once (only behind Today's title block). */
+function DrawingGrid() {
+  return (
+    <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <Pattern id="drawing-grid" width={16} height={16} patternUnits="userSpaceOnUse">
+          <Path d="M16 0H0V16" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+        </Pattern>
+      </Defs>
+      <Rect width="100%" height="100%" fill="url(#drawing-grid)" />
+    </Svg>
+  )
+}
+
+/** The one hero of a screen: a rounded blueprint panel; with ``grid`` its drawing grid (Today only). */
+export function TitleBlock({ children, grid, style }: { children: React.ReactNode; grid?: boolean; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.titleBlock, style]}>
+      {grid ? <DrawingGrid /> : null}
+      {children}
+    </View>
+  )
+}
+
+/** The site this person is reporting for; tapping it changes site. ``light`` on the blueprint. */
+export function SiteButton({ light, sub }: { light?: boolean; sub?: string }) {
   const { current } = useSite()
   const router = useRouter()
   const { t } = useWords()
@@ -54,40 +93,40 @@ export function SiteButton() {
       onPress={() => router.push('/switch-site')}
       style={({ pressed }) => [styles.siteButton, pressed && styles.pressed]}
     >
-      <Label>{current?.project.name ?? '—'}</Label>
+      <Label tone={light ? 'light' : 'muted'}>{sub ?? current?.project.name ?? '—'}</Label>
       <View style={styles.siteRow}>
-        <Text style={styles.siteName} numberOfLines={1}>
+        <Text style={[styles.siteName, light && { color: '#fff' }]} numberOfLines={1}>
           {current?.site.name ?? ''}
         </Text>
-        <ChevronDown size={18} color={colors.ink} strokeWidth={2.2} />
+        <View style={[styles.siteChevron, light ? { backgroundColor: 'rgba(255,255,255,0.16)' } : { backgroundColor: colors.sand }]}>
+          <ChevronDown size={12} color={light ? '#fff' : colors.ink} strokeWidth={3} />
+        </View>
       </View>
     </Pressable>
   )
 }
 
+/** The top of a tab that is not Today: the site, and what is on the right. */
 export function TopBar({ right }: { right?: React.ReactNode }) {
   return (
-    <View>
-      <HazardStripe />
-      <View style={styles.topBar}>
-        <SiteButton />
-        {right}
-      </View>
+    <View style={styles.topBar}>
+      <SiteButton />
+      {right}
     </View>
   )
 }
 
 /** A dot and a word: "● ONLINE" / "● NO SIGNAL". */
-export function Status({ ok, label }: { ok: boolean; label: string }) {
+export function Status({ ok, label, light }: { ok: boolean; label: string; light?: boolean }) {
   return (
     <View style={styles.status} accessibilityLabel={label}>
-      <View style={[styles.statusDot, { backgroundColor: ok ? colors.done : colors.warn }]} />
-      <Label style={{ color: ok ? colors.done : colors.warn }}>{label}</Label>
+      <View style={[styles.statusDot, { backgroundColor: ok ? (light ? '#7fd1a8' : colors.done) : colors.danger }]} />
+      <Label style={{ color: ok ? (light ? colors.blueprintSoft : colors.done) : light ? '#ffb3a3' : colors.warn }}>{label}</Label>
     </View>
   )
 }
 
-export function BackHeader({ title, subtitle, dark }: { title: string; subtitle?: string; dark?: boolean }) {
+export function BackHeader({ title, subtitle, dark, cat }: { title: string; subtitle?: string; dark?: boolean; cat?: Category }) {
   const router = useRouter()
   const { t } = useWords()
   return (
@@ -96,10 +135,11 @@ export function BackHeader({ title, subtitle, dark }: { title: string; subtitle?
         accessibilityRole="button"
         accessibilityLabel={t.back}
         onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-        style={({ pressed }) => [styles.back, dark && { borderColor: colors.nightRaised }, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.back, dark && { borderColor: 'rgba(255,255,255,0.4)' }, pressed && styles.pressed]}
       >
         <ArrowLeft size={20} color={dark ? '#fff' : colors.ink} strokeWidth={2} />
       </Pressable>
+      {cat ? <CategoryTile cat={cat} size={40} /> : null}
       <View style={{ flexShrink: 1, gap: 2 }}>
         {subtitle ? <Label tone={dark ? 'light' : 'muted'}>{subtitle}</Label> : null}
         <Text style={[font.title, dark && { color: '#fff' }]}>{title}</Text>
@@ -108,85 +148,87 @@ export function BackHeader({ title, subtitle, dark }: { title: string; subtitle?
   )
 }
 
-/** A flat panel: the card colour on the paper, a hairline edge, no shadow. */
+/** A white panel on the paper, rounded, a hairline edge. */
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>
 }
 
-type Tone = 'done' | 'todo' | 'warn'
+// ── Cue 1: what kind of thing ──────────────────────────────────────────────
 
-/** A row's state as a small square: done (ink, a tick), to tell (an empty outline, a plus), attention (brick, !). */
-export function StatusMark({ tone }: { tone: Tone }) {
-  if (tone === 'done')
-    return (
-      <View style={[styles.mark, { borderColor: colors.ink }]}>
-        <Check size={14} color={colors.ink} strokeWidth={2.6} />
-      </View>
-    )
-  if (tone === 'warn')
-    return (
-      <View style={[styles.mark, { backgroundColor: colors.warn, borderColor: colors.warn }]}>
-        <Text style={{ color: '#fff', fontFamily: family.display, fontSize: 14, lineHeight: 16 }}>!</Text>
-      </View>
-    )
+export const CATEGORY_ICON: Record<Category, LucideIcon> = {
+  people: Users,
+  work: Hammer,
+  material: Truck,
+  machine: Settings,
+  problem: TriangleAlert,
+  photo: Camera,
+  weather: CloudRain,
+}
+
+export function CategoryTile({ cat, size = 36, dim }: { cat: Category; size?: number; dim?: boolean }) {
+  const c = CAT[cat]
+  const Icon = CATEGORY_ICON[cat]
   return (
-    <View style={[styles.mark, { borderStyle: 'dashed', borderColor: colors.faint }]}>
-      <Plus size={13} color={colors.muted} strokeWidth={2.4} />
+    <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.32), backgroundColor: c.tint, alignItems: 'center', justifyContent: 'center', opacity: dim ? 0.55 : 1 }}>
+      <Icon size={Math.round(size * 0.5)} color={c.fg} strokeWidth={1.9} />
     </View>
   )
 }
 
-/** One line of the site's day: its number, what, what was told, and its state. */
-export function DayRow({
-  index,
-  title,
-  detail,
-  tone,
-  first,
-  onPress,
-}: {
-  index?: number
-  title: string
-  detail: string
-  tone: Tone
-  first?: boolean
-  onPress: () => void
-}) {
+// ── Cue 2: what state ──────────────────────────────────────────────────────
+
+export type State = 'done' | 'todo' | 'warn' | 'waiting' | 'pending' | 'voice' | 'question'
+
+/** A round mark; the shape differs as well as the colour, so it reads without colour too. */
+export function StateMark({ state, size = 24 }: { state: State; size?: number }) {
+  const s = MARKS[state]
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${title}. ${detail}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, !first && styles.rowLine, pressed && { backgroundColor: colors.sand }]}
+    <View
+      accessibilityLabel={s.label}
+      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: s.bg, borderWidth: 2, borderStyle: s.dashed ? 'dashed' : 'solid', borderColor: s.border, alignItems: 'center', justifyContent: 'center' }}
     >
-      {index !== undefined ? <Label style={styles.rowIndex}>{String(index).padStart(2, '0')}</Label> : null}
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={[font.small, tone === 'todo' && { color: colors.faint }, tone === 'warn' && { color: colors.warn }]} numberOfLines={1}>
-          {detail}
-        </Text>
-      </View>
-      <StatusMark tone={tone} />
-      <ChevronRight size={16} color={colors.faint} />
-    </Pressable>
+      <Text style={{ color: s.fg, fontFamily: family.display, fontSize: size * 0.5, lineHeight: size * 0.62 }}>{s.mark}</Text>
+    </View>
   )
 }
+const MARKS: Record<State, { bg: string; border: string; fg: string; mark: string; dashed?: boolean; label: string }> = {
+  done: { bg: colors.ink, border: colors.ink, fg: '#fff', mark: '✓', label: 'done' },
+  todo: { bg: 'transparent', border: colors.faint, fg: colors.muted, mark: '', dashed: true, label: 'to tell' },
+  warn: { bg: colors.danger, border: colors.danger, fg: '#fff', mark: '!', label: 'needs attention' },
+  waiting: { bg: '#fff', border: colors.blueprint, fg: colors.blueprint, mark: '◔', label: 'waiting' },
+  pending: { bg: colors.brandSoft, border: colors.brandEdge, fg: colors.brandInk, mark: '', dashed: true, label: 'not saved yet' },
+  voice: { bg: colors.brand, border: colors.brand, fg: colors.ink, mark: '◉', label: 'from your voice' },
+  question: { bg: colors.blueprintPale, border: colors.blueprint, fg: colors.blueprint, mark: '?', dashed: true, label: 'Mesiri asks' },
+}
+/** The old name, kept for the screens that use it. */
+export const StatusMark = ({ tone }: { tone: 'done' | 'todo' | 'warn' }) => <StateMark state={tone} />
 
-/** Progress as a tape: one segment per part of the day, filled when told. */
-export function Tape({ done, total, dark }: { done: number; total: number; dark?: boolean }) {
+// ── Cue 3: how urgent ──────────────────────────────────────────────────────
+
+export type Urgency = 'overdue' | 'today' | 'answered' | 'tomorrow' | 'open'
+const CHIPS: Record<Urgency, { bg: string; fg: string; border: string }> = {
+  overdue: { bg: colors.danger, fg: '#fff', border: colors.danger },
+  today: { bg: colors.brand, fg: colors.ink, border: colors.brand },
+  answered: { bg: colors.blueprint, fg: '#fff', border: colors.blueprint },
+  tomorrow: { bg: 'transparent', fg: colors.blueprint, border: colors.blueprint },
+  open: { bg: 'transparent', fg: colors.warn, border: colors.danger },
+}
+/** Solid = act now; outlined = know it. */
+export function TimeChip({ urgency, label }: { urgency: Urgency; label: string }) {
+  const c = CHIPS[urgency]
   return (
-    <View style={styles.tape} accessibilityLabel={`${done} / ${total}`}>
-      {Array.from({ length: total }, (_, i) => (
-        <View key={i} style={[styles.tapeCell, { backgroundColor: i < done ? colors.brand : dark ? colors.nightRaised : colors.lineSoft }]}>
-          <View style={[styles.tapeTick, { backgroundColor: i < done ? colors.ink : dark ? colors.charcoal : colors.line }]} />
-        </View>
-      ))}
+    <View style={[styles.chipTime, { backgroundColor: c.bg, borderColor: c.border }]}>
+      <Text style={[styles.chipTimeText, { color: c.fg }]}>{label}</Text>
     </View>
   )
 }
 
-type Kind = 'primary' | 'secondary' | 'dark' | 'accent'
+// ── Cue 4: what to do, who is talking ──────────────────────────────────────
 
+type Kind = 'accent' | 'primary' | 'secondary' | 'light' | 'text'
+
+/** accent: the one yellow "do this now" per screen. primary: navy, an action on a card. secondary: outline, the
+ * other way. light: outline on the blueprint. text: go and look. */
 export function Button({
   label,
   onPress,
@@ -194,6 +236,7 @@ export function Button({
   icon,
   busy,
   disabled,
+  small,
   style,
 }: {
   label: string
@@ -202,25 +245,26 @@ export function Button({
   icon?: React.ReactNode
   busy?: boolean
   disabled?: boolean
+  small?: boolean
   style?: StyleProp<ViewStyle>
 }) {
-  // Primary is ink (calm in sunlight, never cheap); the yellow accent is kept for the one action on a dark screen.
-  const look = kind === 'secondary' ? styles.secondary : kind === 'accent' ? styles.accent : styles.primary
-  const text = kind === 'secondary' || kind === 'accent' ? colors.ink : colors.card
+  const look = { accent: styles.accent, primary: styles.primary, secondary: styles.secondary, light: styles.lightBtn, text: styles.textBtn }[kind]
+  const text = kind === 'primary' || kind === 'light' ? '#fff' : kind === 'text' ? colors.blueprint : colors.ink
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
       disabled={disabled || busy}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, look, pressed && styles.pressed, disabled && !busy && { opacity: 0.3 }, style]}
+      style={({ pressed }) => [styles.button, small && styles.buttonSmall, look, pressed && styles.pressed, disabled && !busy && { opacity: 0.35 }, style]}
     >
       {busy ? <ActivityIndicator color={text} /> : icon}
-      <Text style={[font.button, { color: text }]}>{label}</Text>
+      <Text style={[font.button, { color: text }, small && { fontSize: 14 }]}>{label}</Text>
     </Pressable>
   )
 }
 
+/** A choice: a pill; chosen = drawing ink. */
 export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress: () => void }) {
   return (
     <Pressable
@@ -229,8 +273,20 @@ export function Chip({ label, selected, onPress }: { label: string; selected?: b
       onPress={onPress}
       style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && styles.pressed]}
     >
-      <Text style={{ fontFamily: family.semi, fontSize: 15, color: selected ? colors.card : colors.ink }}>{label}</Text>
+      <Text style={{ fontFamily: family.semi, fontSize: 15, color: selected ? '#fff' : colors.ink }}>{label}</Text>
     </Pressable>
+  )
+}
+
+/** Mesiri talking: a pale-blueprint panel with its mark. */
+export function MesiriPanel({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.mesiri, style]}>
+      <View style={styles.mesiriMark}>
+        <Text style={{ fontFamily: family.display, fontSize: 14, color: colors.brand }}>M</Text>
+      </View>
+      <View style={{ flex: 1, gap: 8 }}>{children}</View>
+    </View>
   )
 }
 
@@ -252,34 +308,116 @@ export function Loading({ label }: { label: string }) {
   )
 }
 
+// ── Today's parts ──────────────────────────────────────────────────────────
+
+/** One part of the day: its kind, what was told, its figure (or "+ Tell"), its state. */
+export function DayRow({
+  cat,
+  title,
+  detail,
+  figure,
+  state,
+  last,
+  tellLabel,
+  onPress,
+}: {
+  cat: Category
+  title: string
+  detail: string
+  figure?: string | null
+  state: 'done' | 'todo' | 'warn'
+  last?: boolean
+  tellLabel: string
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${detail}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, !last && styles.rowLine, pressed && { backgroundColor: colors.sand }]}
+    >
+      <CategoryTile cat={cat} size={36} dim={state === 'todo'} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={[font.tiny, state === 'todo' && { color: colors.faint }, state === 'warn' && { color: colors.warn }]} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      {state === 'todo' ? (
+        <View style={styles.tell}>
+          <Text style={styles.tellText}>{tellLabel}</Text>
+        </View>
+      ) : figure ? (
+        <Text style={[styles.figure, state === 'warn' && { backgroundColor: colors.warnSoft, color: colors.warn }]}>{figure}</Text>
+      ) : null}
+      <StateMark state={state} />
+    </Pressable>
+  )
+}
+
+/** The day as a scale bar: one segment per part, in its kind's colour when told, dashed when not, brick when it
+ * needs attention, with the kind's icon under it. On the blueprint. */
+export function ScaleBar({ parts }: { parts: { cat: Category; state: 'done' | 'todo' | 'warn' }[] }) {
+  return (
+    <View style={styles.scale} accessibilityLabel={`${parts.filter((p) => p.state !== 'todo').length} / ${parts.length}`}>
+      {parts.map((p, i) => {
+        const c = CAT[p.cat]
+        const Icon = CATEGORY_ICON[p.cat]
+        const fill = p.state === 'todo' ? 'transparent' : p.state === 'warn' ? '#ff8a72' : c.light
+        const edge = p.state === 'todo' ? 'rgba(255,255,255,0.55)' : fill
+        return (
+          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 5 }}>
+            <View style={{ alignSelf: 'stretch', height: 10, borderRadius: 3, backgroundColor: fill, borderWidth: 1.5, borderColor: edge, borderStyle: p.state === 'todo' ? 'dashed' : 'solid' }} />
+            <Icon size={12} color={p.state === 'todo' ? 'rgba(255,255,255,0.45)' : fill} strokeWidth={2.4} />
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
+/** The old progress tape's name, kept for any screen still using it. */
+export const Tape = ({ done, total }: { done: number; total: number }) => (
+  <ScaleBar parts={Array.from({ length: total }, (_, i) => ({ cat: 'work' as Category, state: i < done ? ('done' as const) : ('todo' as const) }))} />
+)
+
 export const styles = StyleSheet.create({
-  stripe: { height: 3, flexDirection: 'row', overflow: 'hidden' },
-  stripeBlock: { width: 12, height: 3, transform: [{ skewX: '-45deg' }] },
   topBar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm, gap: space.md },
+  titleBlock: { backgroundColor: colors.blueprint, borderRadius: radius.xl, padding: space.lg, gap: space.md, overflow: 'hidden' },
   siteButton: { minHeight: TOUCH, justifyContent: 'center', gap: 2, flexShrink: 1, paddingRight: space.sm },
-  siteRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  siteName: { fontFamily: family.displaySemi, fontSize: 20, lineHeight: 24, letterSpacing: -0.3, color: colors.ink, flexShrink: 1 },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 6 },
-  statusDot: { width: 7, height: 7, borderRadius: 1 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 20 },
+  siteRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  siteName: { fontFamily: family.display, fontSize: 24, lineHeight: 28, letterSpacing: 0.2, color: colors.ink, flexShrink: 1 },
+  siteChevron: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 20 },
   sectionRule: { flex: 1, height: HAIRLINE, backgroundColor: colors.line },
+  countBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  countText: { color: '#fff', fontFamily: family.semi, fontSize: 11 },
   backHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md },
-  back: { width: 44, height: 44, borderRadius: radius.md, borderWidth: HAIRLINE, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
-  card: { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: HAIRLINE, borderColor: colors.line, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 64, paddingHorizontal: space.lg, paddingVertical: 10 },
-  rowLine: { borderTopWidth: HAIRLINE, borderTopColor: colors.lineSoft },
-  rowIndex: { width: 20, color: colors.faint },
-  rowTitle: { fontFamily: family.displaySemi, fontSize: 16, lineHeight: 21, letterSpacing: -0.2, color: colors.ink },
-  mark: { width: 22, height: 22, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  tape: { flexDirection: 'row', gap: 3, height: 10 },
-  tapeCell: { flex: 1, borderRadius: 1, justifyContent: 'flex-end' },
-  tapeTick: { width: 1, height: 4, alignSelf: 'center' },
-  button: { minHeight: MAIN_ACTION, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: space.lg },
-  primary: { backgroundColor: colors.ink },
+  back: { width: 44, height: 44, borderRadius: 22, borderWidth: HAIRLINE, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: HAIRLINE, borderColor: colors.line, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 58, paddingHorizontal: space.md, paddingVertical: 8 },
+  rowLine: { borderBottomWidth: HAIRLINE, borderBottomColor: colors.lineSoft },
+  rowTitle: { fontFamily: family.display, fontSize: 17, lineHeight: 21, letterSpacing: 0.2, color: colors.ink },
+  figure: { fontFamily: family.mono, fontSize: 13, color: colors.ink, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
+  tell: { minHeight: 34, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.faint, justifyContent: 'center' },
+  tellText: { fontFamily: family.display, fontSize: 14, color: colors.ink },
+  scale: { flexDirection: 'row', gap: 4 },
+  chipTime: { alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1.5, paddingHorizontal: 7, paddingVertical: 1 },
+  chipTimeText: { fontFamily: family.monoMedium, fontSize: 9, letterSpacing: 0.8 },
+  button: { minHeight: MAIN_ACTION, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 20 },
+  buttonSmall: { minHeight: 40, paddingHorizontal: 14 },
   accent: { backgroundColor: colors.brand },
-  secondary: { backgroundColor: 'transparent', borderWidth: HAIRLINE, borderColor: colors.ink, minHeight: TOUCH + 2 },
-  chip: { minHeight: TOUCH - 4, paddingHorizontal: 14, borderRadius: radius.sm, borderWidth: HAIRLINE, borderColor: colors.field, backgroundColor: colors.card, justifyContent: 'center' },
+  primary: { backgroundColor: colors.ink },
+  secondary: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.ink, minHeight: TOUCH + 2 },
+  lightBtn: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)', minHeight: TOUCH },
+  textBtn: { backgroundColor: 'transparent', minHeight: TOUCH, paddingHorizontal: 8 },
+  chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.field, backgroundColor: colors.card, justifyContent: 'center' },
   chipOn: { borderColor: colors.ink, backgroundColor: colors.ink },
+  mesiri: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: colors.blueprintPale, borderRadius: radius.lg, padding: space.md },
+  mesiriMark: { width: 26, height: 26, borderRadius: 8, backgroundColor: colors.blueprint, alignItems: 'center', justifyContent: 'center' },
   notice: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: 14, borderRadius: radius.md, backgroundColor: colors.warnSoft, borderWidth: HAIRLINE, borderColor: colors.warnSoft },
   pressed: { opacity: 0.6 },
 })

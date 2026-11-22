@@ -75,20 +75,20 @@ export default function Login() {
             <>
               <Field label={t.email} value={email} onChange={setEmail} keyboard="email-address" autoComplete="email" />
               <Field label={t.password} value={password} onChange={setPassword} secure autoComplete="password" />
-              <Button label={t.signIn} busy={busy} disabled={!email || !password} onPress={() => finish(() => loginWithEmail(email.trim(), password))} />
+              <Button kind="accent" label={t.signIn} busy={busy} disabled={!email || !password} onPress={() => finish(() => loginWithEmail(email.trim(), password))} />
               <Link label={t.usePhone} onPress={() => setStep('phone')} />
             </>
           ) : step === 'phone' ? (
             <>
               <Field label={t.phone} value={phone} onChange={setPhone} keyboard="phone-pad" placeholder={t.phonePlaceholder} autoComplete="tel" />
-              <Button label={t.sendCode} busy={busy} disabled={phone.replace(/\D/g, '').length < 10} onPress={askCode} />
+              <Button kind="accent" label={t.sendCode} busy={busy} disabled={phone.replace(/\D/g, '').length < 10} onPress={askCode} />
               <Link label={t.useEmail} onPress={() => setStep('email')} />
             </>
           ) : (
             <>
               {hint ? <Text style={[font.body, { color: colors.done }]}>{hint}</Text> : null}
               <Field label={t.code} value={code} onChange={setCode} keyboard="number-pad" autoComplete="one-time-code" big />
-              <Button label={t.signIn} busy={busy} disabled={code.trim().length < 4} onPress={() => finish(() => loginWithCode(phone.trim(), code.trim()))} />
+              <Button kind="accent" label={t.signIn} busy={busy} disabled={code.trim().length < 4} onPress={() => finish(() => loginWithCode(phone.trim(), code.trim()))} />
               <Link label={t.otherNumber} onPress={() => setStep('phone')} />
             </>
           )}

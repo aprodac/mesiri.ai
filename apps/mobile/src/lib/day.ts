@@ -1,5 +1,6 @@
 import type { SiteDayDetail, SiteDayReport } from './mesiri'
 import type { Words } from './i18n'
+import type { Category } from '../theme'
 
 // The site's day as the rows on Today: each says what was told, or that it is still to tell.
 // Read from the site DPR page's own data (GET /dpr/site-days/{site}), drafts included, so what
@@ -10,9 +11,23 @@ export const SECTIONS: Section[] = ['labour', 'work', 'received', 'used', 'issue
 
 export interface DayLine {
   section: Section
+  /** Its kind, for its tile and its colour on the scale bar (the cue system). */
+  cat: Category
   title: string
   detail: string
+  /** The figure on its row: "14", "3.5 cum", "1 open". */
+  figure: string | null
   tone: 'done' | 'todo' | 'warn'
+}
+
+export const SECTION_CATEGORY: Record<Section, Category> = {
+  labour: 'people',
+  work: 'work',
+  received: 'material',
+  used: 'material',
+  issues: 'problem',
+  photos: 'photo',
+  conditions: 'weather',
 }
 
 const num = (v: string | null | undefined) => Number(v ?? 0) || 0
@@ -61,13 +76,13 @@ const WEATHER: Record<string, string> = {
 
 export function dayLines(day: SiteDayDetail, t: Words): DayLine[] {
   const report = reportOf(day)
-  const lines: DayLine[] = []
-  const todo = (section: Section): DayLine => ({ section, title: sectionTitle(section, t), detail: t.notToldYet, tone: 'todo' })
+  const lines: Omit<DayLine, 'cat'>[] = []
+  const todo = (section: Section): Omit<DayLine, 'cat'> => ({ section, title: sectionTitle(section, t), detail: t.notToldYet, figure: null, tone: 'todo' })
 
   const labour = report.labour
   if (labour.headcount > 0) {
     const trades = labour.trades.map((x) => `${x.headcount} ${x.trade}`).join(', ')
-    lines.push({ section: 'labour', title: t.attendance, detail: [t.people(labour.headcount), trades].filter(Boolean).join(' · '), tone: 'done' })
+    lines.push({ section: 'labour', title: t.attendance, detail: trades || t.people(labour.headcount), figure: String(labour.headcount), tone: 'done' })
   } else lines.push(todo('labour'))
 
   const work = day.items.filter((i) => i.section === 'work')
@@ -75,7 +90,7 @@ export function dayLines(day: SiteDayDetail, t: Words): DayLine[] {
     const first = work[0]
     const q = first.quantities?.[0]
     const what = [first.title, q ? `${amount(q.quantity)} ${q.unit}` : null].filter(Boolean).join(' · ')
-    lines.push({ section: 'work', title: t.workDone, detail: work.length > 1 ? `${what} +${work.length - 1}` : what, tone: 'done' })
+    lines.push({ section: 'work', title: t.workDone, detail: work.length > 1 ? `${first.title ?? ''} +${work.length - 1}` : first.title ?? what, figure: q ? `${amount(q.quantity)} ${q.unit}` : null, tone: 'done' })
   } else lines.push(todo('work'))
 
   for (const [section, field] of [
@@ -88,7 +103,7 @@ export function dayLines(day: SiteDayDetail, t: Words): DayLine[] {
         .slice(0, 2)
         .map((m) => `${trim(num(m[field]))} ${m.unit ?? ''} ${m.material_name ?? ''}`.replace(/\s+/g, ' ').trim())
         .join(', ')
-      lines.push({ section, title: sectionTitle(section, t), detail: moved.length > 2 ? `${text} +${moved.length - 2}` : text, tone: 'done' })
+      lines.push({ section, title: sectionTitle(section, t), detail: moved.length > 2 ? `${text} +${moved.length - 2}` : text, figure: String(moved.length), tone: 'done' })
     } else lines.push(todo(section))
   }
 
@@ -99,13 +114,14 @@ export function dayLines(day: SiteDayDetail, t: Words): DayLine[] {
     lines.push({
       section: 'issues',
       title: t.problems,
-      detail: [open ? t.openProblems(open) : null, first].filter(Boolean).join(' · '),
+      detail: first || (open ? t.openProblems(open) : ''),
+      figure: open ? t.openProblems(open) : String(issues.length),
       tone: open ? 'warn' : 'done',
     })
-  } else lines.push({ section: 'issues', title: t.problems, detail: t.notToldYet, tone: 'todo' })
+  } else lines.push(todo('issues'))
 
   const photos = day.day?.photos ?? report.evidence_count ?? 0
-  lines.push(photos ? { section: 'photos', title: t.photos, detail: t.photosToday(photos), tone: 'done' } : todo('photos'))
+  lines.push(photos ? { section: 'photos', title: t.photos, detail: t.photosToday(photos), figure: String(photos), tone: 'done' } : todo('photos'))
 
   const c = report.conditions
   if (c.weather || c.site_working) {
@@ -116,9 +132,10 @@ export function dayLines(day: SiteDayDetail, t: Words): DayLine[] {
       detail: [c.weather ? WEATHER[c.weather] ?? c.weather : null, working, c.tomorrow_plan ? `Tomorrow: ${c.tomorrow_plan}` : null]
         .filter(Boolean)
         .join(' · '),
+      figure: null,
       tone: 'done',
     })
   } else lines.push(todo('conditions'))
 
-  return lines
+  return lines.map((l) => ({ ...l, cat: SECTION_CATEGORY[l.section] }))
 }

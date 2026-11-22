@@ -187,15 +187,15 @@ importers:
       '@babel/runtime':
         specifier: ^8.0.0
         version: 8.0.0
-      '@expo-google-fonts/ibm-plex-mono':
+      '@expo-google-fonts/archivo':
         specifier: 0.4.2
         version: 0.4.2
-      '@expo-google-fonts/inter':
+      '@expo-google-fonts/archivo-narrow':
         specifier: 0.4.2
         version: 0.4.2
-      '@expo-google-fonts/inter-tight':
-        specifier: 0.4.2
-        version: 0.4.2
+      '@expo-google-fonts/jetbrains-mono':
+        specifier: 0.4.1
+        version: 0.4.1
       '@expo/metro-runtime':
         specifier: ~6.1.2
         version: 6.1.2(expo@54.0.35)(react-dom@19.1.0)(react-native@0.81.5)(react@19.1.0)
@@ -1430,16 +1430,16 @@ packages:
       levn: 0.4.1
     dev: true
 
-  /@expo-google-fonts/ibm-plex-mono@0.4.2:
-    resolution: {integrity: sha512-Dlk7pBVjH13tNo2urBUcYpHnpGayEs8Uz06tKT3Gl+AenXzzbjtyzmx4PWi7HCJHsrIFvMWd79+W78NBbyrNKQ==}
+  /@expo-google-fonts/archivo-narrow@0.4.2:
+    resolution: {integrity: sha512-uD54ZIwnpiAKH2Bjj1awgfIMkVwDTKHICGa4y8n6oXdIXNwDPjk8EYWz8CIY3l9x3wVoSSRkd85rmueckJmZbA==}
     dev: false
 
-  /@expo-google-fonts/inter-tight@0.4.2:
-    resolution: {integrity: sha512-/b4YLh8v145nMfrtw0FF2EB8eRhw/SVt/LdhzN1+Faz/uSFvZkF7EtxfipV8iacDSb1PUqyssHd0tZjlzhhf2g==}
+  /@expo-google-fonts/archivo@0.4.2:
+    resolution: {integrity: sha512-FLhI4/ZVIFSHHxx15Z7Rr4QX/4ZrJozEebBEFSdHSRRwULGCuSIpbb3dz56Hslux6LZEnJ1mVpZ6CyVpUzLwIg==}
     dev: false
 
-  /@expo-google-fonts/inter@0.4.2:
-    resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
+  /@expo-google-fonts/jetbrains-mono@0.4.1:
+    resolution: {integrity: sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==}
     dev: false
 
   /@expo/cli@54.0.25(expo-router@6.0.24)(expo@54.0.35)(react-native@0.81.5)(typescript@5.9.3):
