@@ -264,3 +264,17 @@ export const fetchUnits = () => get<{ items: Unit[] }>('/materials/units-of-meas
  * same entry) answer with the first instead of recording it again. */
 export const saveRecord = (method: string, path: string, body: Record<string, unknown>, key: string) =>
   request<unknown>(method, path, { json: body, headers: { 'Idempotency-Key': key } })
+
+// ── One field, spoken into (MOB-06) ─────────────────────────────────────────
+
+export interface Dictated {
+  /** The words in English: what goes in the field. */
+  text: string
+  /** The words as heard, when different (their language). */
+  heard: string | null
+  language: string | null
+}
+
+/** Just the words of a short recording, for one field: no message to Mesiri, nothing prepared or saved. */
+export const dictate = (audio: Blob, contentType: string) =>
+  request<Dictated>('POST', '/assistant/dictate', { body: audio, contentType, timeoutMs: 60_000 })

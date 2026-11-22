@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useOutbox } from '../../src/lib/outbox'
@@ -10,11 +10,14 @@ import {
   fetchUnits,
   newKey,
   type AssistantResponse,
+  type Dictated,
   type CatalogMaterial,
   type ReadyEntry,
 } from '../../src/lib/mesiri'
 import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { useVoiceNote } from '../../src/lib/useVoiceNote'
+import { useDictation } from '../../src/lib/useDictation'
+import { spokenNumber } from '../../src/lib/numbers'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
 import { BackHeader, Button, Chip, Label, Screen } from '../../src/components/ui'
@@ -174,6 +177,54 @@ export default function EntryForm() {
   const onVoiceError = React.useCallback((m: string) => setProblem(m === 'mic' ? t.micDenied : m), [t.micDenied])
   const voice = useVoiceNote(onAnswer, onVoiceError)
 
+  // MOB-06: a mic on each field; the words go to that field only (English), the language heard shown under it.
+  const [fieldHeard, setFieldHeard] = React.useState<Record<string, string>>({})
+  const [fieldError, setFieldError] = React.useState<Record<string, string>>({})
+  const onWords = React.useCallback(
+    (field: string, words: Dictated) => {
+      const text = words.text.trim()
+      setFieldError((old) => ({ ...old, [field]: '' }))
+      setFieldHeard((old) => ({ ...old, [field]: words.heard ?? '' }))
+      const add = (old: string) => (old.trim() ? `${old.trim()} ${text}` : text)
+      if (field === 'material') setSearch(text.replace(/[.!?]+$/, ''))
+      else if (field === 'quantity') {
+        // The number in the words ("50 bags" → 50), and the unit when one of the units is named.
+        const n = spokenNumber(text)
+        if (n !== null) setQuantity(String(+n.toFixed(3)))
+        else setFieldError((old) => ({ ...old, quantity: t.noNumberHeard }))
+        const said = text.toLowerCase()
+        const unit = (units.data?.items ?? []).find((u) => new RegExp(`\\b${u.code.toLowerCase()}\\b`).test(said) || said.includes(u.display_name.toLowerCase()))
+        if (unit) setUnitId(unit.id)
+      } else if (field === 'supplier') setSupplier(text.replace(/[.!?]+$/, ''))
+      else if (field === 'work') setWorkItem(text.replace(/[.!?]+$/, ''))
+      else if (field === 'note') setNote(add)
+      else if (field === 'narrative') setNarrative(add)
+    },
+    [t.noNumberHeard, units.data],
+  )
+  const onFieldError = React.useCallback(
+    (field: string, m: string) => setFieldError((old) => ({ ...old, [field]: m === 'mic' ? t.micDenied : m })),
+    [t.micDenied],
+  )
+  const dictation = useDictation(onWords, onFieldError)
+  const mic = (field: string) => (
+    <FieldMic
+      listening={dictation.field === field && dictation.phase === 'recording'}
+      hearing={dictation.field === field && dictation.phase === 'hearing'}
+      disabled={dictation.phase !== 'idle' && dictation.field !== field}
+      label={dictation.field === field && dictation.phase === 'recording' ? t.tapToStop : t.speakThisField}
+      onPress={() => dictation.toggle(field)}
+    />
+  )
+  const under = (field: string) =>
+    fieldError[field] ? (
+      <Text style={[font.tiny, { color: colors.warn }]}>{fieldError[field]}</Text>
+    ) : fieldHeard[field] ? (
+      <Text style={font.tiny}>
+        {t.heardAs} {fieldHeard[field]}
+      </Text>
+    ) : null
+
   const save = useMutation({
     mutationFn: async () => {
       const date = str(base.occurred_date) || todayFor(me)
@@ -281,7 +332,11 @@ export default function EntryForm() {
                   </Pressable>
                 ) : (
                   <>
-                    <TextInput accessibilityLabel={t.material} value={search} onChangeText={setSearch} placeholder={t.searchMaterial} placeholderTextColor={colors.faint} style={styles.input} />
+                    <View style={styles.withMic}>
+                      <TextInput accessibilityLabel={t.material} value={search} onChangeText={setSearch} placeholder={t.searchMaterial} placeholderTextColor={colors.faint} style={[styles.input, styles.grow]} />
+                      {mic('material')}
+                    </View>
+                    {under('material')}
                     {matches.map((m) => (
                       <Pressable
                         key={m.id}
@@ -301,7 +356,11 @@ export default function EntryForm() {
                 )}
               </Field>
               <Field label={t.howMuch} tag={tag('quantity')}>
-                <TextInput accessibilityLabel={t.howMuch} value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.faint} style={[styles.input, styles.big, heard.has('quantity') && styles.fromVoice]} />
+                <View style={styles.withMic}>
+                  <TextInput accessibilityLabel={t.howMuch} value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.faint} style={[styles.input, styles.big, styles.grow, heard.has('quantity') && styles.fromVoice]} />
+                  {mic('quantity')}
+                </View>
+                {under('quantity')}
               </Field>
               <Field label={t.unit} tag={tag('unit')}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
@@ -312,15 +371,27 @@ export default function EntryForm() {
               </Field>
               {kind === 'received' ? (
                 <Field label={t.supplier} tag={tag('supplier')}>
-                  <TextInput accessibilityLabel={t.supplier} value={supplier} onChangeText={setSupplier} style={[styles.input, heard.has('supplier') && styles.fromVoice]} />
+                  <View style={styles.withMic}>
+                    <TextInput accessibilityLabel={t.supplier} value={supplier} onChangeText={setSupplier} style={[styles.input, styles.grow, heard.has('supplier') && styles.fromVoice]} />
+                    {mic('supplier')}
+                  </View>
+                  {under('supplier')}
                 </Field>
               ) : (
                 <Field label={t.usedFor} tag={tag('work')}>
-                  <TextInput accessibilityLabel={t.usedFor} value={workItem} onChangeText={setWorkItem} style={[styles.input, heard.has('work') && styles.fromVoice]} />
+                  <View style={styles.withMic}>
+                    <TextInput accessibilityLabel={t.usedFor} value={workItem} onChangeText={setWorkItem} style={[styles.input, styles.grow, heard.has('work') && styles.fromVoice]} />
+                    {mic('work')}
+                  </View>
+                  {under('work')}
                 </Field>
               )}
               <Field label={t.note} tag={tag('note')}>
-                <TextInput accessibilityLabel={t.note} value={note} onChangeText={setNote} multiline style={[styles.input, styles.multi, heard.has('note') && styles.fromVoice]} />
+                <View style={styles.withMic}>
+                  <TextInput accessibilityLabel={t.note} value={note} onChangeText={setNote} multiline style={[styles.input, styles.multi, styles.grow, heard.has('note') && styles.fromVoice]} />
+                  {mic('note')}
+                </View>
+                {under('note')}
               </Field>
             </>
           ) : (
@@ -340,7 +411,11 @@ export default function EntryForm() {
                 </View>
               </Field>
               <Field label={t.whatHappened} tag={tag('narrative')}>
-                <TextInput accessibilityLabel={t.whatHappened} value={narrative} onChangeText={setNarrative} multiline style={[styles.input, styles.multi, heard.has('narrative') && styles.fromVoice]} />
+                <View style={styles.withMic}>
+                  <TextInput accessibilityLabel={t.whatHappened} value={narrative} onChangeText={setNarrative} multiline style={[styles.input, styles.multi, styles.grow, heard.has('narrative') && styles.fromVoice]} />
+                  {mic('narrative')}
+                </View>
+                {under('narrative')}
               </Field>
             </>
           )}
@@ -368,6 +443,21 @@ export default function EntryForm() {
         </View>
       </KeyboardAvoidingView>
     </Screen>
+  )
+}
+
+/** A field's own mic: a square beside it; yellow while it listens, a spinner while the words are heard. */
+function FieldMic({ listening, hearing, disabled, label, onPress }: { listening: boolean; hearing: boolean; disabled: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled || hearing}
+      onPress={onPress}
+      style={({ pressed }) => [styles.fieldMic, listening && styles.fieldMicOn, (pressed || disabled) && { opacity: 0.4 }]}
+    >
+      {hearing ? <ActivityIndicator color={colors.ink} /> : listening ? <View style={styles.stop} /> : <Mic size={20} color={colors.ink} strokeWidth={1.9} />}
+    </Pressable>
   )
 }
 
@@ -401,5 +491,9 @@ const styles = StyleSheet.create({
   tagMark: { width: 8, height: 8, borderRadius: 1, backgroundColor: colors.brand },
   match: { minHeight: TOUCH + 4, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.lineSoft, backgroundColor: colors.card },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  withMic: { flexDirection: 'row', gap: space.sm, alignItems: 'stretch' },
+  grow: { flex: 1, minWidth: 0 },
+  fieldMic: { width: 54, minHeight: 54, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  fieldMicOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   footer: { padding: space.lg, paddingBottom: 24, backgroundColor: colors.ground, borderTopWidth: 1, borderTopColor: colors.line },
 })
