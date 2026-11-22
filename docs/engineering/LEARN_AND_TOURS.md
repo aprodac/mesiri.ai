@@ -145,6 +145,9 @@ step's words in another place.
   (`scripts/scene_audio/make_scene_audio.py` → `public/learn/scenes`, played by `lib/scene-sound.ts`), on or off with
   the guide voice. A new or renamed chapter in `JOURNEY_CHAPTERS`, or a changed line, means running that script again;
   until then its card is simply silent.
+- **One narrator at a time** (UX-101, `lib/narration.ts`): a scene's lines have the floor; a guide line waits for them,
+  one playing pauses and goes on after, and a new line from any voice (tour, walkthrough, hint, Live) stops the others.
+  Never play sound around these two systems.
 - Site words in capitals (BOQ, DPR, GRN, RA, PO, GST, TDS, PDF, CSV) are spelled out for the voice by `spokenWords`, and
   "&" is read "and". A new abbreviation goes in its `SPELLED` list.
 

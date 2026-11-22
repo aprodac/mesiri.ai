@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { SCENE_AUDIO, type SceneAudioId } from './scene-audio.gen'
+import { sceneBegin } from './narration'
 
 // UX-73: the sound of the sample company's scenes (components/sandbox-scenes.tsx): the narrator's lines (made once with
 // ElevenLabs) and the sound under them, static files in public/learn/scenes made by
@@ -7,6 +8,7 @@ import { SCENE_AUDIO, type SceneAudioId } from './scene-audio.gen'
 // `mesiri_guide_voice`), so muting the narrator mutes the scenes too, and the other way round.
 // A scene that starts with no click behind it (after the page loads again) may not play sound yet: the browser holds
 // it. The sound then waits, the scene shows "Tap for sound", and the first tap or key plays it.
+// UX-101: a scene with sound on screen has the floor (lib/narration.ts): the guide voice waits, or pauses, until it goes.
 
 const VOICE_KEY = 'mesiri_guide_voice'
 
@@ -135,7 +137,15 @@ export function useSounds(cues: { id: string; volume?: number; loop?: boolean; d
   React.useEffect(() => {
     if (!cues) return
     const handles = cues.map((c) => playSound(c.id, c))
-    return () => handles.forEach((h) => h.stop())
+    // Holds the guide voice while these lines are being said (a briefing that stays open frees it once its line ends).
+    const lasts = Math.max(0, ...cues.filter((c) => !c.loop && hasSound(c.id)).map((c) => (c.delay ?? 0) + soundMs(c.id)))
+    const end = sceneSoundOn() && lasts > 0 ? sceneBegin() : () => {}
+    const timer = window.setTimeout(end, lasts + 300)
+    return () => {
+      window.clearTimeout(timer)
+      handles.forEach((h) => h.stop())
+      end()
+    }
     // `key` names the cues; the array itself is new on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])

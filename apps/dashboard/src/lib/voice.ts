@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { api } from './api'
 import { GUIDE_AUDIO } from './guide-audio.gen'
+import { addPlayer, noScene, onScenes, quietOthers, removePlayer, scenePlaying } from './narration'
 
 // Mesiri's voice on Live (WEB-63): a short line spoken at a moment ("Saved: 50
 // bags of cement", the Meet Mesiri narration), from Sarvam through the API
@@ -14,6 +15,9 @@ import { GUIDE_AUDIO } from './guide-audio.gen'
 // The walkthroughs (SS-61) use the same hook with `voice: 'guide'`: the narrator's voice (UX-76: their steps recorded
 // once with ElevenLabs, static files in public/learn/voice; any other line from the server's voice), longer lines (a step's title and text), MP3, a speed (1x to 2x, the pitch kept), pause and
 // resume, and the next step's audio fetched ahead so it starts at once.
+//
+// UX-101 (lib/narration.ts): one narrator at a time. A line waits while a sample-company scene speaks, a line playing
+// when a scene comes on pauses and goes on after it, and a new line stops every other voice's line.
 
 export type VoiceName = 'live' | 'guide'
 
@@ -59,6 +63,7 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
   const audio = React.useRef<HTMLAudioElement | null>(null)
   const clips = React.useRef(new Map<string, Promise<string>>())
   const turn = React.useRef(0)
+  const heldByScene = React.useRef(false)
 
   const player = React.useCallback(() => {
     if (!audio.current) {
@@ -67,6 +72,7 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
       a.addEventListener('pause', () => setPlaying(false))
       a.addEventListener('ended', () => setPlaying(false))
       audio.current = a
+      addPlayer(a)
     }
     return audio.current
   }, [])
@@ -97,6 +103,7 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
 
   const hush = React.useCallback(() => {
     turn.current++
+    heldByScene.current = false
     audio.current?.pause()
   }, [])
 
@@ -125,7 +132,12 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
         try {
           const url = await clip(words)
           if (mine !== turn.current || !onRef.current) return // a newer line, or muted meanwhile
+          while (scenePlaying()) {
+            await noScene() // a scene has the floor: this line waits for it
+            if (mine !== turn.current || !onRef.current) return
+          }
           const a = player()
+          quietOthers(a)
           a.src = url
           setSaid(words)
           a.playbackRate = rateRef.current // a new source resets the speed
@@ -152,12 +164,38 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
   const pause = React.useCallback(() => audio.current?.pause(), [])
   const resume = React.useCallback(() => {
     const a = audio.current
-    if (a?.src && onRef.current) void a.play().catch(() => setUnavailable(true))
+    if (!a?.src || !onRef.current) return
+    heldByScene.current = false
+    quietOthers(a)
+    void a.play().catch(() => setUnavailable(true))
   }, [])
+
+  // A scene coming on pauses this voice's line; it goes on once the scene has gone.
+  React.useEffect(
+    () =>
+      onScenes((scene) => {
+        const a = audio.current
+        if (!a) return
+        if (scene) {
+          if (!a.paused) {
+            heldByScene.current = true
+            a.pause()
+          }
+        } else if (heldByScene.current) {
+          heldByScene.current = false
+          if (onRef.current && a.src) void a.play().catch(() => undefined)
+        }
+      }),
+    [],
+  )
 
   React.useEffect(
     () => () => {
-      audio.current?.pause()
+      const a = audio.current
+      if (a) {
+        a.pause()
+        removePlayer(a)
+      }
       for (const url of clips.current.values()) void url.then((u) => URL.revokeObjectURL(u)).catch(() => undefined)
     },
     [],
