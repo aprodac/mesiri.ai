@@ -122,6 +122,24 @@ Sources: [Projektfabrik app redesign](https://contra.com/p/EqoOPelo-projektfabri
 [Wavespace: UI design trends](https://www.wavespace.agency/blog/ui-design-trends),
 [Apple Design Awards 2025](https://developer.apple.com/design/awards/2025/).
 
+## 4c. Chosen 22 Nov: the blueprint colours, a new template (canvas page V4)
+
+Asked: *"go with the blueprint colours with another type of font and bottom bar and another template itself; I like
+the colour combination and the blueprint vibe."* Drawn as a template (Today, Speak, Attendance):
+
+- **Colours (kept from C):** paper `#f3efe6`, drawing ink `#15233f`, blueprint `#1e3a6e` with a 16 px drawing grid,
+  highlighter yellow `#ffd23f`, pale blueprint `#dfe6f3` / `#b9c8e6`, brick for problems `#c4472f` / `#f6c9bd`.
+- **Template:** a blueprint **title block** at the top of each main screen (project, site, date, weather in a ruled
+  grid, like a drawing's title block), the day's progress as a **scale bar** (0–9, filled in yellow), "Needs you" as
+  **detail bubbles** (circled references: PO 05, RQ 12), the day as a **schedule table** (NO · PART · QTY · mark)
+  with highlighter on what matters; hard edges throughout.
+- **Bottom bar:** solid drawing-ink bar, square-cap line icons, small mono labels, the active tab underlined in
+  yellow; the mic a yellow disc with a dashed "section marker" ring, raised out of the bar.
+- **Type (choice in Tweaks):** Archivo Narrow (drawing title blocks, default), Space Grotesk, or Barlow Condensed for
+  headings, with JetBrains Mono for references. Instrument Serif dropped.
+- **Speak:** the whole screen on the blueprint; the TO SAVE list as a paper sheet with its own title row; Save in
+  yellow.
+
 ## 5. Build order (proposed, each a tracker item)
 
 | ID | What | Backend? |
