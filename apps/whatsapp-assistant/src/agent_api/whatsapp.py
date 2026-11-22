@@ -365,6 +365,12 @@ class ApiWhatsApp:
         if not tap and not _REPLAYING.get() and (retry_attempt.get() or 1) == 1:
             await self._answer_kept(ctx, message.correlation_id)
         said = (message.text or "").strip()
+        if tap.startswith(OPTION_PREFIX) and said in ("", tap):
+            # UX-102 (22 Nov, Ilan: "even after selecting site it always keeps asking in loop"): WhatsApp sends a
+            # button's title with its tap; the dashboard, the Live deck and the mobile app send the id alone, so
+            # "Annex" arrived as "apiag:opt:<q>:0", named no site, and the site was asked again. The title is read
+            # from the question that was asked, for every channel.
+            said = await self._option_title(tap, ctx) or said
         if tap.startswith(WHY_PREFIX):
             said = "(tapped why it was cancelled)"
             reply = await self._on_why(tap[len(WHY_PREFIX):], message, ctx)
@@ -1542,6 +1548,17 @@ class ApiWhatsApp:
         return ReplySpec(text=text)
 
     # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
+
+    async def _option_title(self, tap: str, ctx: Any) -> str | None:
+        """UX-102: the title of the option button ``tap`` (``apiag:opt:<question>:<n>``) on the question open now;
+        None for a button of another question (``_closed_question`` answers it) or one that is not there."""
+        state = await self._state(ctx)
+        asked_id = question_of(tap)
+        if asked_id is not None and asked_id != state.get("asked_id"):
+            return None
+        options = [str(o) for o in (state.get("asked") or {}).get("options") or []]
+        number = tap.rsplit(":", 1)[-1]
+        return options[int(number)] if number.isdigit() and int(number) < len(options) else None
 
     async def _closed_question(self, tap: str, ctx: Any) -> ReplySpec | None:
         """WA-266: what a tap on an EARLIER question's button gets, or None when the button belongs to the question
