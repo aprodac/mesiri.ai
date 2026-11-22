@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { ArrowRight, CloudOff, TriangleAlert } from 'lucide-react-native'
+import { ArrowRight } from 'lucide-react-native'
+import { StateMark, TimeChip } from './ui'
 import { useOutbox, useSignal, type OutboxItem } from '../lib/outbox'
 import { useWords } from '../lib/i18n'
 import { colors, family, font, radius, space, TOUCH } from '../theme'
@@ -26,10 +27,10 @@ export function OutboxPanel() {
     <View style={{ gap: space.sm }}>
       {pending ? (
         <View style={[styles.card, styles.waiting]} accessibilityLiveRegion="polite">
-          <CloudOff size={20} color={colors.brand} strokeWidth={2} />
+          <StateMark state="waiting" size={24} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.titleLight}>{t.waitingToSend(pending)}</Text>
-            <Text style={[font.tiny, { color: colors.nightMuted }]}>{online ? t.sendingNow : t.waitingNote}</Text>
+            <Text style={[font.tiny, { color: colors.blueprintSoft }]}>{online ? t.sendingNow : t.waitingNote}</Text>
           </View>
         </View>
       ) : null}
@@ -40,9 +41,11 @@ export function OutboxPanel() {
           onPress={() => router.push({ pathname: '/speak', params: { from: x.id } })}
           style={({ pressed }) => [styles.card, styles.answered, pressed && { opacity: 0.7 }]}
         >
-          <View style={styles.yellowMark} />
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <Text style={styles.title}>{t.answered}</Text>
+          <View style={styles.mesiriMark}>
+            <Text style={styles.mesiriM}>M</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+            <TimeChip urgency="answered" label={t.answered.toUpperCase()} />
             <Text style={font.tiny} numberOfLines={1}>
               {[name(x), when(x), x.place].filter(Boolean).join(' · ')}
             </Text>
@@ -53,7 +56,7 @@ export function OutboxPanel() {
       ))}
       {failed.map((x) => (
         <View key={x.id} style={[styles.card, styles.failed]}>
-          <TriangleAlert size={20} color={colors.warn} strokeWidth={2} />
+          <StateMark state="warn" size={24} />
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
             <Text style={styles.title}>
               {t.notSent} · {name(x)}
@@ -75,11 +78,12 @@ export function OutboxPanel() {
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: 14, borderRadius: radius.md },
-  waiting: { backgroundColor: colors.charcoal },
-  answered: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, minHeight: TOUCH + 12 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: 12, borderRadius: radius.lg },
+  waiting: { backgroundColor: colors.blueprint },
+  answered: { backgroundColor: colors.blueprintPale, minHeight: TOUCH + 16 },
+  mesiriMark: { width: 28, height: 28, borderRadius: 9, backgroundColor: colors.blueprint, alignItems: 'center', justifyContent: 'center' },
+  mesiriM: { fontFamily: family.display, fontSize: 15, color: colors.brand },
   failed: { backgroundColor: colors.warnSoft, alignItems: 'flex-start' },
-  yellowMark: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.brand },
   title: { fontFamily: family.displaySemi, fontSize: 15, color: colors.ink },
   titleLight: { fontFamily: family.displaySemi, fontSize: 15, color: '#fff' },
   link: { fontFamily: family.displaySemi, fontSize: 15, color: colors.ink },

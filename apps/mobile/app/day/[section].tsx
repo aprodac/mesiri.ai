@@ -9,7 +9,7 @@ import { todayFor, useSession, useSite } from '../../src/lib/session'
 import { amount, reportOf, SECTION_CATEGORY, sectionTitle, SECTIONS, words, type Section } from '../../src/lib/day'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { BackHeader, Button, Card, Chip, Loading, Notice, Screen, Label } from '../../src/components/ui'
+import { BackHeader, Button, Card, CategoryTile, Chip, Label, Loading, Notice, Screen, SectionHead, StateMark } from '../../src/components/ui'
 import { colors, family, font, space } from '../../src/theme'
 
 // One row of Today opened: what was told for it today, and the way to tell more (speak or type).
@@ -82,11 +82,13 @@ export default function DaySection() {
 
         {section === 'conditions' && report ? (
           <Card style={{ padding: space.lg, gap: space.md }}>
+            <Label>{t.weather}</Label>
             <View style={styles.chips}>
               {WEATHERS.map((w) => (
                 <Chip key={w.id} label={lang === 'ml' ? w.ml : w.en} selected={report.conditions.weather === w.id} onPress={() => conditions.mutate({ weather: w.id })} />
               ))}
             </View>
+            <Label>{t.workingDay}</Label>
             <View style={styles.chips}>
               {WORKING.map((w) => (
                 <Chip key={w.id} label={lang === 'ml' ? w.ml : w.en} selected={report.conditions.site_working === w.id} onPress={() => conditions.mutate({ site_working: w.id })} />
@@ -99,22 +101,28 @@ export default function DaySection() {
 
         {section !== 'conditions' && day.isSuccess ? (
           lines.length ? (
-            <Card>
-              {lines.map((line, i) => (
-                <View key={i} style={[styles.row, i > 0 && styles.line]}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.title}>{line.title}</Text>
-                    {line.detail ? <Text style={font.tiny}>{line.detail}</Text> : null}
+            <View style={{ gap: space.sm }}>
+              <SectionHead label={t.toldToday} count={lines.length} />
+              <Card>
+                {lines.map((line, i) => (
+                  <View key={i} style={[styles.row, i > 0 && styles.line]}>
+                    <CategoryTile cat={SECTION_CATEGORY[section]} size={34} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.title}>{line.title}</Text>
+                      {line.detail ? <Text style={font.tiny}>{line.detail}</Text> : null}
+                      {line.draft ? <Label style={{ color: colors.blueprint }}>{t.draftMark}</Label> : null}
+                    </View>
+                    <StateMark state={line.draft ? 'waiting' : section === 'issues' && /OPEN|ACK/i.test(line.detail ?? '') ? 'warn' : 'done'} />
                   </View>
-                  {line.draft ? <Label style={{ color: colors.todo }}>{t.draftMark}</Label> : null}
-                </View>
-              ))}
-            </Card>
+                ))}
+              </Card>
+            </View>
           ) : (
             <Notice tone="info" text={t.notToldYet} />
           )
         ) : null}
 
+        <SectionHead label={t.tellMore} />
         {FORMS[section] ? (
           <Button
             kind="accent"
@@ -136,7 +144,7 @@ export default function DaySection() {
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.md },
+  body: { paddingHorizontal: 12, paddingBottom: 32, gap: space.md },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 60, paddingHorizontal: space.lg, paddingVertical: 10 },
   title: { fontFamily: family.displaySemi, fontSize: 16, lineHeight: 21, letterSpacing: -0.2, color: colors.ink },

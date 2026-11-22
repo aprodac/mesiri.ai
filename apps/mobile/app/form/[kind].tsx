@@ -20,7 +20,7 @@ import { useDictation } from '../../src/lib/useDictation'
 import { spokenNumber } from '../../src/lib/numbers'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { BackHeader, Button, Chip, Label, Screen } from '../../src/components/ui'
+import { BackHeader, Button, Chip, Label, MesiriPanel, Screen, StateMark } from '../../src/components/ui'
 import { colors, family, font, radius, space, TOUCH } from '../../src/theme'
 
 // MOB-05: a form for one kind of entry, posting to the route the dashboard's own form uses. "Speak to fill" sends
@@ -283,7 +283,7 @@ export default function EntryForm() {
   const tag = (field: string) =>
     heard.has(field) ? (
       <View style={styles.tag}>
-        <View style={styles.tagMark} />
+        <StateMark state="voice" size={16} />
         <Label style={{ color: colors.brandInk }}>{t.fromVoice}</Label>
       </View>
     ) : null
@@ -315,11 +315,18 @@ export default function EntryForm() {
 
           {said ? (
             <View style={styles.heard}>
-              <Label>{t.youSaid}</Label>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <StateMark state="voice" size={16} />
+                <Label>{t.youSaid}</Label>
+              </View>
               <Text style={font.body}>{said}</Text>
             </View>
           ) : null}
-          {mesiri ? <Text style={[font.body, styles.mesiri]}>{mesiri}</Text> : null}
+          {mesiri ? (
+            <MesiriPanel>
+              <Text style={[font.body, { color: colors.blueprint }]}>{mesiri}</Text>
+            </MesiriPanel>
+          ) : null}
           {problem ? <Text style={{ color: colors.warn, fontSize: 14 }}>{problem}</Text> : null}
 
           {isMaterial ? (
@@ -476,11 +483,11 @@ function Field({ label, tag, children }: { label: string; tag?: React.ReactNode;
 
 const styles = StyleSheet.create({
   body: { paddingHorizontal: space.lg, paddingBottom: 32, gap: space.xl },
-  speak: { minHeight: 60, borderRadius: radius.md, backgroundColor: colors.ink, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: 14, paddingVertical: 10 },
-  speakOn: { borderWidth: 2, borderColor: colors.brand },
+  speak: { minHeight: 64, borderRadius: radius.xl, backgroundColor: colors.blueprint, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: 14, paddingVertical: 10 },
+  speakOn: { borderWidth: 3, borderColor: colors.brand },
   speakIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   stop: { width: 12, height: 12, borderRadius: 2, backgroundColor: colors.ink },
-  heard: { borderLeftWidth: 0, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: space.md, gap: 4 },
+  heard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, borderRadius: radius.lg, padding: space.md, gap: 4 },
   mesiri: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.md, borderWidth: 1, borderColor: colors.line },
   input: { minHeight: 54, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, paddingHorizontal: 14, fontFamily: family.semi, fontSize: 17, color: colors.ink },
   inputText: { fontFamily: family.semi, fontSize: 17, color: colors.ink, flex: 1 },
@@ -494,7 +501,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   withMic: { flexDirection: 'row', gap: space.sm, alignItems: 'stretch' },
   grow: { flex: 1, minWidth: 0 },
-  fieldMic: { width: 54, minHeight: 54, borderRadius: radius.md, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  fieldMic: { width: 54, minHeight: 54, borderRadius: 27, borderWidth: 1, borderColor: colors.field, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   fieldMicOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   footer: { padding: space.lg, paddingBottom: 24, backgroundColor: colors.ground, borderTopWidth: 1, borderTopColor: colors.line },
 })

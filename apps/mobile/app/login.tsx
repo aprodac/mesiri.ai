@@ -4,7 +4,7 @@ import { ApiError } from '../src/lib/api'
 import { useWords, LANGS } from '../src/lib/i18n'
 import { loginWithCode, loginWithEmail, requestCode } from '../src/lib/mesiri'
 import { useSession } from '../src/lib/session'
-import { Button, Chip, HazardStripe, Label, Screen } from '../src/components/ui'
+import { Button, Chip, Label, Screen, TitleBlock } from '../src/components/ui'
 import { colors, family, font, radius, space } from '../src/theme'
 
 // Sign in with the WhatsApp number on their account and a code sent on WhatsApp (the dashboard's own
@@ -51,7 +51,6 @@ export default function Login() {
 
   return (
     <Screen>
-      <HazardStripe />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.langs}>
@@ -59,17 +58,15 @@ export default function Login() {
               <Chip key={l.id} label={l.name} selected={lang === l.id} onPress={() => setLang(l.id)} />
             ))}
           </View>
-          <View style={styles.mark}>
+          <TitleBlock>
             <View style={styles.wordRow}>
               <Text style={styles.word}>Mesiri</Text>
               <View style={styles.dot} />
             </View>
-            <Label>{t.siteApp}</Label>
-          </View>
-          <View style={{ gap: 8 }}>
-            <Text style={font.display}>{t.signInTitle}</Text>
-            <Text style={[font.body, { color: colors.muted }]}>{t.signInLead}</Text>
-          </View>
+            <Label tone="light">{t.siteApp}</Label>
+            <Text style={styles.signIn}>{t.signInTitle.toUpperCase()}</Text>
+            <Text style={[font.body, { color: colors.blueprintSoft }]}>{t.signInLead}</Text>
+          </TitleBlock>
 
           {step === 'email' ? (
             <>
@@ -150,11 +147,12 @@ function Link({ label, onPress }: { label: string; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  body: { padding: space.xl, gap: space.xl, paddingTop: space.lg },
+  body: { padding: 12, gap: space.xl, paddingTop: space.lg },
   langs: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
   mark: { gap: 6, paddingTop: space.xl, paddingBottom: space.md },
   wordRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  word: { fontFamily: family.display, fontSize: 30, lineHeight: 32, letterSpacing: -1, color: colors.ink },
+  word: { fontFamily: family.display, fontSize: 30, lineHeight: 32, letterSpacing: 0.3, color: '#fff' },
+  signIn: { fontFamily: family.display, fontSize: 40, lineHeight: 42, letterSpacing: 0.5, color: '#fff', marginTop: space.md },
   dot: { width: 9, height: 9, borderRadius: 1, backgroundColor: colors.brand, marginBottom: 6 },
   input: {
     height: 56,

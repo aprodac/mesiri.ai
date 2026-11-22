@@ -2,14 +2,14 @@ import * as React from 'react'
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, TriangleAlert } from 'lucide-react-native'
+import { Plus } from 'lucide-react-native'
 import { useWords } from '../../src/lib/i18n'
 import { fetchStock, type StockRow } from '../../src/lib/mesiri'
 import { useSite } from '../../src/lib/session'
 import { ApiError } from '../../src/lib/api'
 import { kept } from '../../src/lib/kept'
-import { Button, Card, Label, Loading, Notice, Screen, TopBar } from '../../src/components/ui'
-import { colors, family, font, space } from '../../src/theme'
+import { Button, Card, CategoryTile, Label, Loading, Notice, PageHero, Screen, SectionHead, StateMark, TimeChip } from '../../src/components/ui'
+import { category, colors, family, font, space } from '../../src/theme'
 
 // The site's stock: running low first (it counts what is on order), days left at this week's use.
 
@@ -40,53 +40,56 @@ export default function SiteStock() {
 
   return (
     <Screen>
-      <TopBar />
       <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={stock.isRefetching} onRefresh={() => stock.refetch()} />}>
-        <View style={styles.hero}>
-          <Label>{rows.length ? t.stockCount(rows.length, low.length) : t.site}</Label>
-          <Text style={font.display}>{t.stock}</Text>
-        </View>
-        {low.length ? (
-          <Notice
-            icon={<TriangleAlert size={20} color={colors.warn} strokeWidth={2} />}
-            text={`${t.runningLow(low.length)} ${low
-              .slice(0, 2)
-              .map((r) => r.material_name)
-              .join(', ')}`}
-          />
-        ) : null}
+        <PageHero title={t.stock} figure={rows.length || null} figureLabel={t.materialsWord}>
+          {low.length ? (
+            <View style={styles.heroNote}>
+              <StateMark state="warn" size={20} />
+              <Text style={styles.heroNoteText} numberOfLines={2}>
+                {t.runningLow(low.length)} {low.slice(0, 2).map((r) => r.material_name).join(', ')}
+              </Text>
+            </View>
+          ) : null}
+        </PageHero>
         {stock.isLoading ? <Loading label={t.loading} /> : null}
         {stock.isError ? <Notice text={stock.error instanceof ApiError ? stock.error.message : t.couldNotLoad} /> : null}
         {stock.isSuccess && rows.length === 0 ? <Notice tone="info" text={t.noStock} /> : null}
         {rows.length ? (
-          <Card>
-            {rows.map((r, i) => {
-              // How long it lasts at this week's use, against two weeks: a gauge, brick when running low.
-              const days = r.days_left ?? null
-              const fill = days === null ? 0 : Math.max(0.04, Math.min(1, days / GAUGE_DAYS))
-              return (
-                <View key={r.material_id} style={[styles.row, i > 0 && styles.line]} accessible accessibilityLabel={`${r.material_name}, ${show(num(r.closing))} ${r.unit}. ${note(r)}`}>
-                  <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {r.material_name}
-                    </Text>
-                    <View style={styles.gauge}>
-                      <View style={[styles.gaugeFill, { width: `${fill * 100}%`, backgroundColor: r.running_low ? colors.warn : colors.ink }]} />
+          <View style={{ gap: space.sm }}>
+            <SectionHead label={t.atThisSite} count={rows.length} />
+            <Card>
+              {rows.map((r, i) => {
+                // How long it lasts at this week's use, against two weeks: a gauge, brick when running low.
+                const days = r.days_left ?? null
+                const fill = days === null ? 0 : Math.max(0.04, Math.min(1, days / GAUGE_DAYS))
+                return (
+                  <View key={r.material_id} style={[styles.row, i > 0 && styles.line]} accessible accessibilityLabel={`${r.material_name}, ${show(num(r.closing))} ${r.unit}. ${note(r)}`}>
+                    <CategoryTile cat="material" size={36} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={styles.name} numberOfLines={1}>
+                          {r.material_name}
+                        </Text>
+                        {r.running_low ? <TimeChip urgency="overdue" label={t.low.toUpperCase()} /> : null}
+                      </View>
+                      <View style={styles.gauge}>
+                        <View style={[styles.gaugeFill, { width: `${fill * 100}%`, backgroundColor: r.running_low ? colors.danger : category.material.fg }]} />
+                      </View>
+                      <Text style={[font.tiny, r.running_low && { color: colors.warn }]} numberOfLines={1}>
+                        {note(r)}
+                      </Text>
                     </View>
-                    <Text style={[font.tiny, r.running_low && { color: colors.warn }]} numberOfLines={1}>
-                      {note(r)}
-                    </Text>
+                    <View style={styles.qty}>
+                      <Text style={styles.figure}>{show(num(r.closing))}</Text>
+                      <Label>{r.unit}</Label>
+                    </View>
                   </View>
-                  <View style={styles.qty}>
-                    <Text style={font.figure}>{show(num(r.closing))}</Text>
-                    <Label>{r.unit}</Label>
-                  </View>
-                </View>
-              )
-            })}
-          </Card>
+                )
+              })}
+            </Card>
+          </View>
         ) : null}
-        <Button label={t.askForMaterial} icon={<Plus size={20} color={colors.brand} strokeWidth={2.4} />} onPress={() => router.push('/speak')} />
+        <Button kind="accent" label={t.askForMaterial} icon={<Plus size={20} color={colors.ink} strokeWidth={2.4} />} onPress={() => router.push('/speak')} />
       </ScrollView>
     </Screen>
   )
@@ -96,12 +99,14 @@ export default function SiteStock() {
 const GAUGE_DAYS = 14
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.lg },
-  hero: { gap: 4, paddingTop: space.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.lg, minHeight: 76, paddingHorizontal: space.lg, paddingVertical: 12 },
+  body: { paddingHorizontal: 12, paddingBottom: 24, gap: space.lg },
+  heroNote: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 14, padding: 10 },
+  heroNoteText: { flex: 1, fontFamily: family.body, fontSize: 13, color: '#fff' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 76, paddingHorizontal: space.md, paddingVertical: 12 },
   line: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
-  name: { fontFamily: family.displaySemi, fontSize: 16, letterSpacing: -0.2, color: colors.ink },
-  gauge: { height: 3, backgroundColor: colors.lineSoft, borderRadius: 1, overflow: 'hidden' },
-  gaugeFill: { height: 3 },
-  qty: { alignItems: 'flex-end', minWidth: 64 },
+  name: { fontFamily: family.display, fontSize: 17, letterSpacing: 0.2, color: colors.ink, flexShrink: 1 },
+  gauge: { height: 4, backgroundColor: colors.lineSoft, borderRadius: 2, overflow: 'hidden' },
+  gaugeFill: { height: 4, borderRadius: 2 },
+  qty: { alignItems: 'flex-end', minWidth: 56 },
+  figure: { fontFamily: family.mono, fontSize: 18, color: colors.ink },
 })

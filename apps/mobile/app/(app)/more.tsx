@@ -1,11 +1,18 @@
 import * as React from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { ChevronRight, LogOut } from 'lucide-react-native'
+import { Building2, ChevronRight, Languages, LogOut } from 'lucide-react-native'
 import { LANGS, useWords } from '../../src/lib/i18n'
 import { personName, useSession, useSite } from '../../src/lib/session'
-import { Button, Chip, Label, Screen, SectionHead, TopBar } from '../../src/components/ui'
-import { colors, family, font, space } from '../../src/theme'
+import { Button, Card, CategoryTile, Chip, Label, PageHero, Screen, SectionHead } from '../../src/components/ui'
+import { colors, family, font, radius, space } from '../../src/theme'
+
+// More: the same hero as every tab, then plain grouped cards (site, language, the person). Site and language are
+// settings, not kinds of site work, so they carry a neutral blueprint icon, not a category tile.
+
+function SettingIcon({ children }: { children: React.ReactNode }) {
+  return <View style={styles.settingIcon}>{children}</View>
+}
 
 export default function More() {
   const { t, lang, setLang } = useWords()
@@ -14,42 +21,54 @@ export default function More() {
   const router = useRouter()
   return (
     <Screen>
-      <TopBar />
       <ScrollView contentContainerStyle={styles.body}>
-        <View style={styles.hero}>
-          <Label>{me?.org_name ?? me?.organization_name ?? ''}</Label>
-          <Text style={font.display}>{t.more}</Text>
-        </View>
+        <PageHero title={t.more} />
 
         <View style={styles.section}>
           <SectionHead label={t.switchSite} />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/switch-site')}
-            style={({ pressed }) => [styles.link, pressed && { opacity: 0.6 }]}
-          >
-            <View style={{ flex: 1, gap: 2 }}>
-              <Label>{current?.project.name ?? '—'}</Label>
-              <Text style={styles.big}>{current?.site.name ?? '—'}</Text>
-            </View>
-            <ChevronRight size={20} color={colors.ink} />
-          </Pressable>
+          <Card>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/switch-site')} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.sand }]}>
+              <SettingIcon>
+                <Building2 size={18} color={colors.blueprint} strokeWidth={1.9} />
+              </SettingIcon>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Label>{current?.project.name ?? '—'}</Label>
+                <Text style={styles.big}>{current?.site.name ?? '—'}</Text>
+              </View>
+              <ChevronRight size={20} color={colors.ink} />
+            </Pressable>
+          </Card>
         </View>
 
         <View style={styles.section}>
           <SectionHead label={t.language} />
-          <View style={styles.chips}>
-            {LANGS.map((l) => (
-              <Chip key={l.id} label={l.name} selected={lang === l.id} onPress={() => setLang(l.id)} />
-            ))}
-          </View>
-          <Text style={font.small}>{t.languageNote}</Text>
+          <Card style={{ padding: space.md, gap: space.md }}>
+            <View style={styles.rowPlain}>
+              <SettingIcon>
+                <Languages size={18} color={colors.blueprint} strokeWidth={1.9} />
+              </SettingIcon>
+              <View style={styles.chips}>
+                {LANGS.map((l) => (
+                  <Chip key={l.id} label={l.name} selected={lang === l.id} onPress={() => setLang(l.id)} />
+                ))}
+              </View>
+            </View>
+            <Text style={font.small}>{t.languageNote}</Text>
+          </Card>
         </View>
 
         <View style={styles.section}>
           <SectionHead label={t.signedInAs} />
-          <Text style={styles.big}>{personName(me)}</Text>
-          <Button kind="secondary" label={t.signOut} icon={<LogOut size={18} color={colors.ink} />} onPress={() => void signOut()} />
+          <Card style={{ padding: space.md, gap: space.md }}>
+            <View style={styles.rowPlain}>
+              <CategoryTile cat="people" size={40} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.big}>{personName(me)}</Text>
+                <Label>{me?.org_name ?? me?.organization_name ?? ''}</Label>
+              </View>
+            </View>
+            <Button kind="secondary" label={t.signOut} icon={<LogOut size={18} color={colors.ink} />} onPress={() => void signOut()} />
+          </Card>
         </View>
       </ScrollView>
     </Screen>
@@ -57,10 +76,11 @@ export default function More() {
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: space.lg, paddingBottom: 48, gap: space.xxl },
-  hero: { gap: 4, paddingTop: space.sm },
-  section: { gap: space.md },
-  link: { flexDirection: 'row', alignItems: 'center', minHeight: 56 },
-  big: { fontFamily: family.displaySemi, fontSize: 20, lineHeight: 25, letterSpacing: -0.3, color: colors.ink },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  body: { paddingHorizontal: 12, paddingBottom: 24, gap: space.xl },
+  section: { gap: space.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 64, paddingHorizontal: space.md },
+  rowPlain: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  settingIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.blueprintPale, alignItems: 'center', justifyContent: 'center' },
+  big: { fontFamily: family.display, fontSize: 20, lineHeight: 24, letterSpacing: 0.2, color: colors.ink },
+  chips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 })

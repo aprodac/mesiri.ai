@@ -106,6 +106,28 @@ export function SiteButton({ light, sub }: { light?: boolean; sub?: string }) {
   )
 }
 
+/** The hero of every tab but Today: the same rounded blueprint panel (no grid), the site, the tab's name in big
+ * capitals and its one figure on the right ("4 MATERIALS"), then whatever the tab adds under it. */
+export function PageHero({ title, figure, figureLabel, children }: { title: string; figure?: string | number | null; figureLabel?: string; children?: React.ReactNode }) {
+  return (
+    <TitleBlock style={{ marginTop: space.sm }}>
+      <SiteButton light />
+      <View style={styles.heroRow}>
+        <Text style={styles.heroTitle} numberOfLines={1}>
+          {title.toUpperCase()}
+        </Text>
+        {figure !== undefined && figure !== null ? (
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.heroFigure}>{figure}</Text>
+            {figureLabel ? <Label tone="light">{figureLabel}</Label> : null}
+          </View>
+        ) : null}
+      </View>
+      {children}
+    </TitleBlock>
+  )
+}
+
 /** The top of a tab that is not Today: the site, and what is on the right. */
 export function TopBar({ right }: { right?: React.ReactNode }) {
   return (
@@ -384,6 +406,9 @@ export const Tape = ({ done, total }: { done: number; total: number }) => (
 
 export const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm, gap: space.md },
+  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: space.md },
+  heroTitle: { fontFamily: family.display, fontSize: 40, lineHeight: 42, letterSpacing: 0.5, color: '#fff', flexShrink: 1 },
+  heroFigure: { fontFamily: family.display, fontSize: 28, lineHeight: 30, color: colors.brand },
   titleBlock: { backgroundColor: colors.blueprint, borderRadius: radius.xl, padding: space.lg, gap: space.md, overflow: 'hidden' },
   siteButton: { minHeight: TOUCH, justifyContent: 'center', gap: 2, flexShrink: 1, paddingRight: space.sm },
   siteRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
