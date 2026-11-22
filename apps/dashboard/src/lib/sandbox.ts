@@ -336,6 +336,8 @@ export interface DaysPassed {
   failed: { id: string; what: string; error: string }[]
   /** UX-71: the days' notable moments, for the "a day passes" scene (in plan order). */
   highlights?: { day: number; who: string; kind: string; what: string }[]
+  /** UX-103: everything the cast did on the day landed on, for the briefing's "what each person did". */
+  story?: { who: string; kind: string; what: string; site: string | null; project: string | null }[]
   /** UX-71: on handover, the whole run's totals for the end credits. */
   finale?: { days: number; entries: number; by_kind: Record<string, number> } | null
 }

@@ -147,6 +147,8 @@ class MovedOut(BaseModel):
     highlights: list[dict[str, Any]] = []
     #: UX-71: on handover, the whole run's totals for the end credits.
     finale: dict[str, Any] | None = None
+    #: UX-103: everything the cast did on the day landed on ({who, kind, what, site, project}), for the briefing.
+    story: list[dict[str, Any]] = []
     for_you: list[ForYouOut] = []
     waiting: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []

@@ -32,3 +32,13 @@ def test_routine_entries_never_show() -> None:
 
 def test_nothing_played_nothing_shown() -> None:
     assert pl.pick_highlights([]) == []
+
+
+def test_ux103_the_days_story_has_every_entry_of_that_day_with_who_and_where() -> None:
+    entries = [e for e in sp.plan().entries if e.day in (2, 3)]
+    story = pl.day_story(entries, 2)
+    assert len(story) == sum(e.day == 2 for e in entries)  # every entry, routine ones too, of that day only
+    assert {s["who"] for s in story} <= set(sp.WHO.values())
+    ravi = [s for s in story if s["who"] == "Ravi" and s["kind"] == "work"]
+    assert ravi and all(s["site"] in sp.SITE_NAME.values() and s["project"] for s in ravi)
+    assert pl.day_story([], 2) == []

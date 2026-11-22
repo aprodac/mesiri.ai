@@ -49,7 +49,7 @@ step's words in another place.
   sense without the light: "Every evening each site gets its report", not "Click here".
 - **Practice is on the dashboard first** (asked 21 Nov 2026: "change all the scenes where it says send it on WhatsApp
   to entering through the dashboard itself"): a practice is the page's own form (`kind: 'here'`, the step's `target`
-  the real button). Only what has no form yet (a site's day, attendance, machine hours) is typed into Tell Mesiri, the
+  the real button). A site's day has its form on Today (UX-104, `today.record-day`). Only what has no form yet (machine hours) is typed into Tell Mesiri, the
   New box (`kind: 'whatsapp'`: its card's main button is "Type it into Tell Mesiri"; WhatsApp is a small link, hidden in
   the sample company). Steps that only mention a way say the dashboard first and WhatsApp as the site's other way.
 - **Practice is real data** (decision D-L3). Every practice is one of these two, never neither:
@@ -145,6 +145,9 @@ step's words in another place.
   (`scripts/scene_audio/make_scene_audio.py` → `public/learn/scenes`, played by `lib/scene-sound.ts`), on or off with
   the guide voice. A new or renamed chapter in `JOURNEY_CHAPTERS`, or a changed line, means running that script again;
   until then its card is simply silent.
+- **One narrator at a time** (UX-101, `lib/narration.ts`): a scene's lines have the floor; a guide line waits for them,
+  one playing pauses and goes on after, and a new line from any voice (tour, walkthrough, hint, Live) stops the others.
+  Never play sound around these two systems.
 - Site words in capitals (BOQ, DPR, GRN, RA, PO, GST, TDS, PDF, CSV) are spelled out for the voice by `spokenWords`, and
   "&" is read "and". A new abbreviation goes in its `SPELLED` list.
 

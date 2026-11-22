@@ -95,6 +95,9 @@ class Moved:
     highlights: list[dict[str, Any]] = field(default_factory=list)
     #: UX-71: on the last day (handover), the whole run's totals for the end credits: {days, entries, by_kind}.
     finale: dict[str, Any] | None = None
+    #: UX-103: everything the cast did on the day landed on, for the morning briefing's "what each person did":
+    #: {who, kind, what, site, project} (names, in plan order).
+    story: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: UX-71: the kinds worth a line in the "a day passes" scene (not the routine attendance, use and site notes).
@@ -103,6 +106,13 @@ NOTABLE = ("issue", "request", "order", "delivery", "supplier_payment", "client_
 #: At most this many moments a day, and in all.
 HIGHLIGHTS_A_DAY = 4
 HIGHLIGHTS_MAX = 24
+
+
+def day_story(played: list[Any], day: int) -> list[dict[str, Any]]:
+    """UX-103: what each person of the cast did on ``day``, every entry, for the briefing's story of their day."""
+    return [{"who": sp.WHO[e.role], "kind": e.kind, "what": e.what,
+             "site": sp.SITE_NAME.get(e.site or ""), "project": sp.PROJECT_NAME.get(e.project or "")}
+            for e in played if e.day == day]
 
 
 def pick_highlights(played: list[Any]) -> list[dict[str, Any]]:
@@ -1044,4 +1054,5 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
     return Moved(day=target, date=date, token=token, expires_at=expires,
                  summary=[{"who": who, "kind": kind, "count": n, **_words(kind)}
                           for (who, kind), n in sorted(summary.items())],
-                 for_you=for_you, waiting=waiting, failed=failed, highlights=pick_highlights(played_now), finale=finale)
+                 for_you=for_you, waiting=waiting, failed=failed, highlights=pick_highlights(played_now), finale=finale,
+                 story=day_story(played_now, target))
