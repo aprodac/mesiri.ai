@@ -89,3 +89,22 @@ rates; "rmt" became "rm"). Totals right: contract ₹82,06,050, cost ₹61,31,50
 | 3.7 | UX | BOQ lines with no cost rate | Only a quiet "—" and "cost —"; the section header drops its margin | Mark the line "needs a cost rate" with an Add rate action | Low |
 | 3.8 | UX | Materials per unit | No total shown (26 cum × 8 bags + 3 % ≈ 214 bags), unlike Add line's live "₹1,150 × 160 = ₹1,84,000"; the line then shows "Cement 8 bags per cum" without the 3 % | Live total in the dialog; show wastage on the line | Low |
 | 3.9 | Logic | Project stage | A new project with no start date is "Running" | "Not started" (or "Won") until it has a start date or the first update | Low |
+
+### Step 7: drawings and documents (project manager) — tested and fixed 23 Nov
+
+Done on localhost (Palm Grove Villas): uploaded the A-101 ground floor plan, the contract summary and the building
+permit from the sample kit. Each filed itself (Drawings › Architectural with "1 to ask the architect"; Contract,
+locked; Approvals & permits). Uploading the same file twice is refused.
+
+| # | Kind | Where | What happened | Fixed (23 Nov, branch Ad) | Severity |
+|---|---|---|---|---|---|
+| 7.1 | Data | Upload new revision | A changed drawing whose title block still said "A" was kept as rev A again: two "rev A" | One letter per revision: the button asks for the letter; empty = read from the drawing, the next letter when it repeats one (said in a note); a repeated letter typed, re-uploaded or edited in is refused (409). `next_revision` on GET /documents/{id} | High |
+| 7.2 | UX | Revisions list | Plain text: an old revision could not be opened to compare | Rows open that revision; an old one says "Old revision: rev X is the one to build from" with a button to it; "superseded" shown as "out of date" | Medium |
+| 7.3 | UX | "Full drawing check" link | Opened an empty upload page on All projects, asking for the same PDF again | Opens `?document=` and checks the kept drawing at once, with "Back to Documents" | Medium |
+| 7.4 | UX | Preview | A failed preview showed `{"detail":"Not Found"}` (locally the plain backend app has no /media route; production does) | Preview and download through `GET /documents/{id}/file`; a failure says "The preview did not load" with Try again | Low |
+| 7.5 | UX | Same file again | Red error toast | Calm note; the kept one opens (409 now carries `reason: same_file`) | Low |
+| 7.6 | Data | Permits | "Valid until" left empty: no expiry warning without typing | Read from a permit PDF's words ("valid up to 31/03/2029", "3 years from the date of issue" + the issue date); shown with how it was read; nothing made up when the paper does not say | Medium |
+
+Not covered: expiry from a photo or scan (no text); no WhatsApp reminder exists for expiring papers (only the banner on
+Documents, 30 days before); production's upload size limit for normal routes is not in the repo (Documents says
+25 MB, the drawing check 8 MB).

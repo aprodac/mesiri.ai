@@ -6,6 +6,7 @@ block the drawing reader found on page 1. A guess only: the person sees it and c
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -146,3 +147,106 @@ def find_score(query: str, doc: Mapping[str, Any]) -> float:
         extra |= {"architectural", "arch", "plan", "elevation"}
     score += sum(1 for t in q if t in extra)
     return score
+
+
+# --- Revisions: one letter per revision (Step 7 test, 23 Nov 2026) -------------------------------------------------
+
+def same_revision(a: str | None, b: str | None) -> bool:
+    """"b" and "B ", or two blanks: the same revision letter."""
+    return (a or "").strip().upper() == (b or "").strip().upper()
+
+
+def next_revision(revision: str | None) -> str:
+    """The letter after this one, as architects number them: A -> B, Z -> AA, 0 -> 1, R2 -> R3, P09 -> P10.
+    No letter yet -> A."""
+    rev = (revision or "").strip().upper()
+    if not rev or rev == "-":
+        return "A"
+    m = re.match(r"^(.*?)(\d+)$", rev)
+    if m:
+        digits = m.group(2)
+        return f"{m.group(1)}{str(int(digits) + 1).zfill(len(digits))}"
+    if rev.isalpha():
+        letters = list(rev)
+        i = len(letters) - 1
+        while i >= 0 and letters[i] == "Z":
+            letters[i] = "A"
+            i -= 1
+        if i < 0:
+            return "A" + "".join(letters)
+        letters[i] = chr(ord(letters[i]) + 1)
+        return "".join(letters)
+    return f"{rev}-1"
+
+
+# --- A permit's last day, read from its text (Step 7 test, 23 Nov 2026) ---------------------------------------------
+
+_MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
+                                            "dec"))}
+_DAY_MONTH_YEAR = r"(\d{1,2})(?:st|nd|rd|th)?[\s.\-/]+([A-Za-z]{3,9})\.?,?[\s.\-/]+(\d{4})"
+_MONTH_DAY_YEAR = r"([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})"
+_NUMERIC = r"(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})"
+_ISO = r"(\d{4})-(\d{2})-(\d{2})"
+_ANY_DATE = re.compile(f"{_ISO}|{_NUMERIC}|{_DAY_MONTH_YEAR}|{_MONTH_DAY_YEAR}")
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "ten": 10, "twelve": 12}
+#: "Valid up to 31/03/2029", "Validity: till 31 March 2029", "Expiry date 2029-03-31", "expires on ...".
+_UNTIL = re.compile(r"(?:valid(?:ity)?\s*(?:date\s*)?[:\-]?\s*(?:up\s*to|upto|till|until|through|to)|expir(?:y|es|ing|"
+                    r"ation)(?:\s*date)?(?:\s*on)?|valid\s*(?:up\s*)?to)\s*[:\-]?\s*", re.IGNORECASE)
+#: "Validity 3 years from the date of issue", "valid for three years from the date of this permit".
+_FOR = re.compile(r"valid(?:ity)?\s*[:\-]?\s*(?:for\s*|of\s*)?(\d{1,2}|" + "|".join(_NUMBER_WORDS) +
+                  r")\s*(year|month)s?\s*from\s*(?:the\s*)?(?:date\s*of\s*)?(?:issue|this|permit|sanction|approval)",
+                  re.IGNORECASE)
+#: Where the issue date is written: "Date 30 September 2026", "Issued on ...", "Date of issue: ...".
+_ISSUED = re.compile(r"(?:date\s*of\s*issue|issue\s*date|issued\s*on|dated?)\s*[:\-]?\s*", re.IGNORECASE)
+
+
+def _date_at(text: str, start: int, within: int = 40) -> datetime.date | None:
+    m = _ANY_DATE.search(text, start, start + within + 25)
+    if m is None or m.start() - start > within:
+        return None
+    g = m.groups()
+    try:
+        if g[0]:
+            return datetime.date(int(g[0]), int(g[1]), int(g[2]))
+        if g[3]:  # Indian order: day / month / year
+            return datetime.date(int(g[5]), int(g[4]), int(g[3]))
+        if g[6]:
+            month = _MONTHS.get(g[7][:3].lower())
+            return datetime.date(int(g[8]), month, int(g[6])) if month else None
+        month = _MONTHS.get(g[9][:3].lower())
+        return datetime.date(int(g[11]), month, int(g[10])) if month else None
+    except ValueError:
+        return None
+
+
+def _add_months(day: datetime.date, months: int) -> datetime.date:
+    month0 = day.month - 1 + months
+    year, month = day.year + month0 // 12, month0 % 12 + 1
+    last = (datetime.date(year + (month == 12), month % 12 + 1, 1) - datetime.timedelta(days=1)).day
+    return datetime.date(year, month, min(day.day, last))
+
+
+def valid_until_of(text: str) -> tuple[datetime.date, str] | None:
+    """A permit, licence or NOC's last day from its own words, and how it was read (shown to the person to check):
+    "valid up to 31/03/2029" as written, or "validity 3 years from the date of issue" counted from the issue date
+    (the day before the anniversary). None when the paper does not say."""
+    text = " ".join(text.split())
+    for m in _UNTIL.finditer(text):
+        day = _date_at(text, m.end())
+        if day is not None:
+            return day, f"“{text[m.start():m.end()].strip(' :-')} {day.strftime('%d %b %Y')}”"
+    m = _FOR.search(text)
+    if m is None:
+        return None
+    count = int(m.group(1)) if m.group(1).isdigit() else _NUMBER_WORDS[m.group(1).lower()]
+    months = count * 12 if m.group(2).lower() == "year" else count
+    issued = None
+    for d in _ISSUED.finditer(text):
+        issued = _date_at(text, d.end(), within=15)
+        if issued is not None:
+            break
+    if issued is None:
+        return None
+    unit = "year" if m.group(2).lower() == "year" else "month"
+    return (_add_months(issued, months) - datetime.timedelta(days=1),
+            f"{count} {unit}{'s' if count > 1 else ''} from issue ({issued.strftime('%d %b %Y')})")

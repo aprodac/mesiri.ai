@@ -225,7 +225,7 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
     if dup is not None:
         raise HTTPException(status_code=409, detail={"message": f"This file is already kept: {dup['title']}"
                                                                 f"{' rev ' + dup['revision'] if dup['revision'] else ''}",
-                                                     "document_id": str(dup["id"])})
+                                                     "document_id": str(dup["id"]), "reason": "same_file"})
     read = await _read_drawing(data) if kind == "application/pdf" and guess else None
     first = next((s for s in (read or {}).get("sheets") or [] if s.get("has_text")), None)
     hints = naming.guess(name, first) if guess else {}
@@ -253,16 +253,50 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
                                                     "document")
 
     old = supersede or await store.current_by_number(conn, org, project_id, values["number"])
+    revision_note = None
     if old is not None:
         if not may_manage(auth.role):
             raise HTTPException(status_code=403, detail=f"{values['number']} rev {old['revision'] or '-'} is current; "
                                                         "only the owner, an admin or a project manager can issue a "
                                                         "new revision")
-        if supersede is None and (old.get("revision") or "") == (values["revision"] or ""):
+        # One letter per revision: a new revision never repeats a letter this document already used (the site would
+        # not know which "rev A" to build from).
+        chain = supersede if supersede is not None else {
+            "id": old["id"], "project_id": project_id, "number": values["number"], "revision": old.get("revision")}
+        # An archived revision was withdrawn (a wrong upload): its letter is free again.
+        used = [h.get("revision") for h in await store.history(conn, org, chain) if h.get("status") != "archived"]
+        repeats = any(naming.same_revision(values["revision"], u) for u in used)
+        current = old.get("revision") or "-"
+        nxt = _next_unused(current, used)
+        if supersede is None and repeats:
+            said = ("is already current" if naming.same_revision(values["revision"], current)
+                    else f"is already kept (rev {current} is current)")
             raise HTTPException(status_code=409, detail={
-                "message": f"{values['number']} rev {old['revision'] or '-'} is already current. Give the new "
-                           f"revision letter, or upload it as a new revision of that document.",
+                "message": f"{values['number']} rev {values['revision'] or '-'} {said}. Give the new revision letter "
+                           f"({nxt}?), or upload it as a new revision of that document.",
                 "document_id": str(old["id"])})
+        if repeats and _clean(given.get("revision")) is not None:
+            raise HTTPException(status_code=409, detail={
+                "message": f"Rev {values['revision']} is already used on this document (rev {current} is current). "
+                           f"Give the new letter, such as {nxt}.",
+                "document_id": str(old["id"])})
+        if repeats or not values["revision"]:
+            # Not given, and the drawing's title block still says the old letter (or says none): the next letter.
+            read_as = values["revision"]
+            values["revision"] = nxt
+            guessed = [g for g in guessed if g != "revision"] + ["revision"]
+            revision_note = (f"The drawing still says rev {read_as}, so it is kept as rev {values['revision']}. "
+                             "Change it if the architect used another letter." if read_as else
+                             f"No revision letter on the drawing, so it is kept as rev {values['revision']}.")
+
+    valid_until = _date(given.get("valid_until"), "valid_until")
+    valid_from = None
+    if valid_until is None and values["folder"] == "approval" and kind == "application/pdf" and guess:
+        # A permit, licence or NOC says how long it holds: read it, so the expiry reminder needs no typing.
+        found = await _valid_until(data)
+        if found is not None:
+            valid_until, valid_from = found
+            guessed.append("valid_until")
 
     doc_id = uuid.uuid4()
     key = await _save_file(object_storage, org, project_id, doc_id, name, data, kind)
@@ -284,7 +318,7 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
         await live.render_plans(data, facts, object_storage, f"documents/{org}/{project_id}/{doc_id}")
     await store.insert(conn, org, project_id, {
         "id": doc_id, **values, "status": "current", "supersedes_id": old["id"] if old else None,
-        "valid_until": _date(given.get("valid_until"), "valid_until"), "restricted": restricted,
+        "valid_until": valid_until, "restricted": restricted,
         "object_key": key, "file_name": name, "content_type": kind, "size_bytes": len(data), "sha256": sha,
         "pages": (read or {}).get("pages"), "facts": facts, "source": "web",
         "work_package_id": given.get("work_package_id"), "uploaded_by": auth.user_id,
@@ -297,7 +331,30 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
     out["guessed"] = guessed
     out["superseded"] = {"id": str(old["id"]), "revision": old.get("revision")} if old else None
     out["checks"] = len((facts or {}).get("checks") or [])
+    out["revision_note"] = revision_note
+    out["valid_until_read"] = valid_from
     return out
+
+
+def _next_unused(current: str | None, used: list[str | None]) -> str:
+    """The letter after ``current`` that this document has not used yet."""
+    nxt = naming.next_revision(None if current in (None, "-") else current)
+    while any(naming.same_revision(nxt, u) for u in used):
+        nxt = naming.next_revision(nxt)
+    return nxt
+
+
+async def _valid_until(data: bytes) -> tuple[datetime.date, str] | None:
+    """A permit PDF's last day and how it was read (``naming.valid_until_of``), or None. Never fails the upload."""
+    from mesiri.domains.drawings import pdf_text
+
+    try:
+        pages = await asyncio.wait_for(asyncio.to_thread(pdf_text.pages, data), timeout=10)
+    except Exception:  # noqa: BLE001 -- a paper that cannot be read is still kept, with no date
+        _log.info("documents.permit_not_read", exc_info=True)
+        return None
+    text = " ".join(w["text"] for p in pages[:5] for w in p.get("words") or [])
+    return naming.valid_until_of(text)
 
 
 @router.get("/projects/{project_id}/documents/find")
@@ -369,6 +426,9 @@ async def get_document(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(g
     out["url"] = await signed_media_url(object_storage, doc["object_key"])
     out["history"] = _out(await store.history(conn, auth.organization_id, doc))
     out["can_manage"] = may_manage(auth.role)
+    # The letter the next revision gets when the drawing does not say (one letter per revision).
+    latest = next((h["revision"] for h in out["history"] if h["status"] == "current"), doc["revision"])
+    out["next_revision"] = _next_unused(latest, [h["revision"] for h in out["history"] if h["status"] != "archived"])
     if doc["has_facts"]:
         facts = await store.facts(conn, auth.organization_id, doc_id) or {}
         out["facts"] = {k: facts.get(k) for k in ("floors", "levels", "fixtures", "checks", "pages")}
@@ -435,6 +495,13 @@ async def change_document(doc_id: uuid.UUID, body: DocumentChange,
             raise HTTPException(status_code=409, detail=f"{values['number']} is already another current document")
     if "title" in values and not values["title"]:
         raise HTTPException(status_code=422, detail="A document needs a title")
+    if values.get("revision") and not naming.same_revision(values["revision"], doc["revision"]):
+        other = next((h for h in await store.history(conn, auth.organization_id, doc)
+                      if h["id"] != doc_id and h["status"] != "archived"
+                      and naming.same_revision(h["revision"], values["revision"])), None)
+        if other is not None:
+            raise HTTPException(status_code=409, detail=f"Rev {values['revision'].upper()} is already another revision of "
+                                                        "this document (one letter per revision)")
     await store.update(conn, auth.organization_id, doc_id, values)
     return _row(await store.one(conn, auth.organization_id, doc_id) or {})
 

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, CalendarClock, FileText, FolderOpen, Lock, MapPinned, Search, Upload } from 'lucide-react'
+import { Archive, CalendarClock, Download, ExternalLink, FileText, FolderOpen, History, Lock, MapPinned, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/page/page-kit'
 import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import {
-  archiveDocument, DISCIPLINE_NAMES, documentError, fetchDocument, fetchDocuments, fileSize, FOLDER_NAMES, FOLDER_ORDER,
+  alreadyKeptId, archiveDocument, DISCIPLINE_NAMES, documentError, fetchDocument, fetchDocumentFile, fetchDocuments, fileSize, FOLDER_NAMES, FOLDER_ORDER,
   MAX_UPLOAD_BYTES, updateDocument, uploadDocument, uploadRevision, type DocumentsList, type Folder, type ProjectDocument,
 } from '@/lib/documents'
 import { usePageTitle } from '@/lib/page-title'
@@ -76,7 +76,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
           </span>
         </Callout>
       )}
-      <Dropzone projectId={projectId} folder={folder} />
+      <Dropzone projectId={projectId} folder={folder} onOpen={setOpenId} />
       <div className="grid min-w-0 gap-4 md:grid-cols-[13rem_1fr]">
         <nav className="flex gap-1 overflow-x-auto md:flex-col" aria-label="Folders" data-guide="docs.folders">
           <FolderButton active={folder === null} onClick={() => setFolder(null)} label="All" count={total} />
@@ -102,7 +102,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
           )}
         </div>
       </div>
-      <DocSheet id={openId} projectId={projectId} onClose={() => setOpenId(null)} />
+      <DocSheet id={openId} projectId={projectId} onOpen={setOpenId} onClose={() => setOpenId(null)} />
     </div>
   )
 }
@@ -177,7 +177,7 @@ function useRefresh(projectId: string) {
   }
 }
 
-function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | null }) {
+function Dropzone({ projectId, folder, onOpen }: { projectId: string; folder: Folder | null; onOpen: (id: string) => void }) {
   const toast = useToast()
   const refresh = useRefresh(projectId)
   const [dragging, setDragging] = React.useState(false)
@@ -187,7 +187,8 @@ function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | n
   const send = async (files: FileList | null) => {
     if (!files?.length) return
     let kept = 0
-    for (const file of Array.from(files)) {
+    const list = Array.from(files)
+    for (const file of list) {
       if (file.size > MAX_UPLOAD_BYTES) { toast.error(`${file.name} is over 25 MB`, 'Send the drawings in smaller sets.'); continue }
       setBusy(file.name)
       try {
@@ -195,9 +196,15 @@ function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | n
         kept += 1
         const what = [out.number, out.title, out.revision ? `rev ${out.revision}` : null].filter(Boolean).join(' ')
         const more = out.superseded ? `; rev ${out.superseded.revision ?? '-'} is now out of date` : out.checks ? `; ${out.checks} thing${out.checks > 1 ? 's' : ''} to ask the architect` : ''
-        toast.success(`Kept: ${what} in ${FOLDER_NAMES[out.folder]}${more}`)
+        const valid = out.valid_until && out.valid_until_read ? `Valid to ${dayLabel(out.valid_until)}, read from it: ${out.valid_until_read}. It shows at the top of Documents from 30 days before it runs out.` : undefined
+        toast.success(`Kept: ${what} in ${FOLDER_NAMES[out.folder]}${more}`, out.revision_note ?? valid)
       } catch (e) {
-        toast.error(`${file.name} not kept`, documentError(e))
+        const kept = alreadyKeptId(e)
+        // The same file again is not a failure: say where it is, and open it when it was the only file.
+        if (kept) {
+          toast.info(`${file.name} is already kept`, list.length === 1 ? 'Opened it for you.' : documentError(e))
+          if (list.length === 1) onOpen(kept)
+        } else toast.error(`${file.name} not kept`, documentError(e))
       }
     }
     setBusy(null)
@@ -228,7 +235,20 @@ function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | n
   )
 }
 
-function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: string; onClose: () => void }) {
+/** The stored file as a local link, fetched through the API: a preview that fails says so in words. */
+function useFileLink(id: string | undefined, wanted: boolean) {
+  const file = useQuery({ queryKey: ['document-file', id], queryFn: () => fetchDocumentFile(id!), enabled: !!id && wanted, staleTime: 10 * 60_000, retry: 1 })
+  const [link, setLink] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!file.data) { setLink(null); return }
+    const url = URL.createObjectURL(file.data)
+    setLink(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file.data])
+  return { link, loading: file.isLoading, failed: file.isError, retry: () => file.refetch() }
+}
+
+function DocSheet({ id, projectId, onOpen, onClose }: { id: string | null; projectId: string; onOpen: (id: string) => void; onClose: () => void }) {
   const toast = useToast()
   const refresh = useRefresh(projectId)
   const query = useQuery({ queryKey: ['document', id], queryFn: () => fetchDocument(id!), enabled: !!id })
@@ -238,6 +258,10 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
     if (doc) setForm({ title: doc.title, number: doc.number ?? '', revision: doc.revision ?? '', folder: doc.folder, valid_until: doc.valid_until ?? '' })
   }, [doc])
   const revInput = React.useRef<HTMLInputElement>(null)
+  // A new revision waits for its letter: empty = read from the drawing, or the next letter if it still says the old one.
+  const [revFile, setRevFile] = React.useState<File | null>(null)
+  const [revLetter, setRevLetter] = React.useState('')
+  React.useEffect(() => { setRevFile(null); setRevLetter('') }, [id])
 
   const save = useMutation({
     mutationFn: () => updateDocument(id!, { title: form.title, number: form.number || null, revision: form.revision || null, folder: form.folder as Folder, valid_until: form.valid_until || null }),
@@ -250,12 +274,28 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
     onError: (e) => toast.error('Not archived', documentError(e)),
   })
   const revise = useMutation({
-    mutationFn: (file: File) => uploadRevision(id!, file),
-    onSuccess: (out) => { toast.success(`Rev ${out.revision ?? 'new'} is now current`); refresh(); onClose() },
+    mutationFn: ({ file, letter }: { file: File; letter: string }) => uploadRevision(id!, file, letter.trim() || undefined),
+    onSuccess: (out) => {
+      toast.success(`Rev ${out.revision ?? 'new'} is now current${out.superseded ? `; rev ${out.superseded.revision ?? '-'} is out of date` : ''}`, out.revision_note ?? undefined)
+      refresh(); onOpen(out.id)
+    },
     onError: (e) => toast.error('New revision not kept', documentError(e)),
   })
-  const isImage = doc?.content_type.startsWith('image/')
+  const isImage = !!doc?.content_type.startsWith('image/')
   const isPdf = doc?.content_type === 'application/pdf'
+  const file = useFileLink(doc?.id, isPdf || isImage)
+  const current = doc?.history.find((h) => h.status === 'current')
+  const download = async () => {
+    try {
+      const blob = await fetchDocumentFile(doc!.id)
+      const url = URL.createObjectURL(blob)
+      const a = Object.assign(document.createElement('a'), { href: url, download: doc!.file_name })
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    } catch (e) {
+      toast.error('Download did not start', documentError(e))
+    }
+  }
 
   return (
     <Sheet open={!!id} onOpenChange={(o) => !o && onClose()}>
@@ -263,16 +303,32 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
         <SheetHeader>
           <SheetTitle>{doc ? [doc.number, doc.title].filter(Boolean).join(' · ') : 'Document'}</SheetTitle>
           <SheetDescription>
-            {doc ? `${FOLDER_NAMES[doc.folder]}${doc.revision ? ` · rev ${doc.revision}` : ''} · ${doc.status === 'current' ? 'current' : doc.status} · ${doc.file_name}` : ''}
+            {doc ? `${FOLDER_NAMES[doc.folder]}${doc.revision ? ` · rev ${doc.revision}` : ''} · ${doc.status === 'superseded' ? 'out of date' : doc.status} · ${doc.file_name}` : ''}
           </SheetDescription>
         </SheetHeader>
         {!doc ? <Skeleton className="mx-4 h-64" /> : (
           <div className="flex flex-col gap-4 px-4 pb-6">
-            {doc.url && isPdf && <iframe title={doc.title} src={doc.url} className="h-[28rem] w-full rounded-md border" />}
-            {doc.url && isImage && <img src={doc.url} alt={doc.title} className="max-h-[28rem] w-full rounded-md border object-contain" />}
-            {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm underline underline-offset-2">Open / download</a>}
+            {doc.status === 'superseded' && (
+              <Callout tone="draft" icon={History}
+                action={current && <Button size="sm" variant="outline" onClick={() => onOpen(current.id)}>Open rev {current.revision ?? '-'}</Button>}>
+                Old revision: rev {current?.revision ?? '-'} is the one to build from.
+              </Callout>
+            )}
+            {(isPdf || isImage) && (file.loading ? <Skeleton className="h-[28rem] w-full" /> : file.failed ? (
+              <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-md border bg-muted/30 p-4 text-center text-sm">
+                <p className="font-medium">The preview did not load</p>
+                <p className="text-muted-foreground">The file is kept. Try again, or download it.</p>
+                <Button size="sm" variant="outline" onClick={file.retry}>Try again</Button>
+              </div>
+            ) : file.link && (isPdf
+              ? <iframe title={doc.title} src={file.link} className="h-[28rem] w-full rounded-md border" />
+              : <img src={file.link} alt={doc.title} className="max-h-[28rem] w-full rounded-md border object-contain" />))}
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button type="button" onClick={download} className="inline-flex items-center gap-1 underline underline-offset-2"><Download className="size-3.5" /> Download</button>
+              {file.link && isPdf && <a href={file.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2"><ExternalLink className="size-3.5" /> Open in a new tab</a>}
+            </div>
 
-            {doc.facts?.live_plan && (
+            {doc.facts?.live_plan && doc.status === 'current' && (
               <Callout tone="info" icon={MapPinned} action={<Button asChild size="sm" variant="outline"><Link to={`/planning/live?project=${projectId}`}>Open live plan</Link></Button>}>
                 On the live plans
               </Callout>
@@ -284,7 +340,7 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                   {doc.facts.pages} page{doc.facts.pages === 1 ? '' : 's'}{doc.facts.floors?.length ? ` · floors: ${doc.facts.floors.join(', ')}` : ''}
                   {doc.facts.levels?.length ? ` · ${doc.facts.levels.length} levels` : ''}{doc.facts.checks?.length ? ` · ${doc.facts.checks.length} to ask the architect` : ''}
                 </p>
-                <Link to="/planning/drawing-check" className="text-xs underline underline-offset-2">Full drawing check</Link>
+                <Link to={`/planning/drawing-check?project=${projectId}&document=${doc.id}`} className="text-xs underline underline-offset-2">Full drawing check</Link>
               </section>
             )}
 
@@ -293,9 +349,12 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                 <p className="mb-1 text-sm font-medium">Revisions</p>
                 <ul className="text-sm">
                   {doc.history.map((h) => (
-                    <li key={h.id} className="flex justify-between gap-2 py-0.5">
-                      <span>rev {h.revision ?? '-'} <span className="text-muted-foreground">{h.status}</span></span>
-                      <span className="text-xs text-muted-foreground">{dayLabel(h.created_at)}</span>
+                    <li key={h.id}>
+                      <button type="button" disabled={h.id === doc.id} onClick={() => onOpen(h.id)}
+                        className={cn('flex w-full justify-between gap-2 rounded px-1 py-0.5 text-left', h.id === doc.id ? 'bg-muted font-medium' : 'hover:bg-muted/60')}>
+                        <span>rev {h.revision ?? '-'} <span className="font-normal text-muted-foreground">{h.status === 'current' ? 'current' : 'out of date'}{h.id === doc.id ? ' · open' : ''}</span></span>
+                        <span className="text-xs font-normal text-muted-foreground">{dayLabel(h.created_at)}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -312,15 +371,21 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                   {FOLDER_ORDER.map((f) => <option key={f} value={f}>{FOLDER_NAMES[f]}</option>)}
                 </select>
               </div>
-              <div className="grid gap-1"><Label htmlFor="d-valid">Valid until</Label><DatePicker id="d-valid" value={form.valid_until ?? ''} onChange={(v) => setForm((f) => ({ ...f, valid_until: v }))} /></div>
+              <div className="grid gap-1">
+                <Label htmlFor="d-valid">Valid until</Label>
+                <DatePicker id="d-valid" value={form.valid_until ?? ''} onChange={(v) => setForm((f) => ({ ...f, valid_until: v }))} />
+                {form.folder === 'approval' && !form.valid_until && <p className="text-[11px] text-muted-foreground">Add its last day: it then shows at the top of Documents 30 days before it runs out.</p>}
+              </div>
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <Button type="submit" size="sm" disabled={save.isPending}>Save details</Button>
                 {doc.can_manage && doc.status === 'current' && (
                   <>
-                    <input ref={revInput} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) revise.mutate(f); e.target.value = '' }} />
-                    <Button type="button" size="sm" variant="outline" disabled={revise.isPending} onClick={() => revInput.current?.click()}>
-                      <Upload className="size-3.5" /> {revise.isPending ? 'Uploading…' : 'Upload new revision'}
-                    </Button>
+                    <input ref={revInput} type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.docx,.xlsx,.dwg" onChange={(e) => { const f = e.target.files?.[0]; if (f) setRevFile(f); e.target.value = '' }} />
+                    {!revFile && (
+                      <Button type="button" size="sm" variant="outline" disabled={revise.isPending} onClick={() => revInput.current?.click()}>
+                        <Upload className="size-3.5" /> Upload new revision
+                      </Button>
+                    )}
                   </>
                 )}
                 {doc.can_manage && doc.status !== 'archived' && (
@@ -330,6 +395,24 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                   </Button>
                 )}
               </div>
+              {revFile && (
+                <div className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:col-span-2">
+                  <p className="text-sm"><span className="font-medium">New revision:</span> {revFile.name}</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="grid gap-1">
+                      <Label htmlFor="d-newrev">Revision letter</Label>
+                      <Input id="d-newrev" className="w-24" placeholder={doc.next_revision ?? ''} value={revLetter} onChange={(e) => setRevLetter(e.target.value)} />
+                    </div>
+                    <Button type="button" size="sm" disabled={revise.isPending} onClick={() => revise.mutate({ file: revFile, letter: revLetter })}>
+                      {revise.isPending ? 'Uploading…' : 'Keep as current'}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={revise.isPending} onClick={() => { setRevFile(null); setRevLetter('') }}>Cancel</Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Leave it empty and Mesiri reads it from the drawing's title block. If that shows no new letter, it is kept as rev {doc.next_revision ?? 'next'}. Rev {doc.revision ?? '-'} becomes out of date.
+                  </p>
+                </div>
+              )}
             </form>
           </div>
         )}

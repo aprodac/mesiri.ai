@@ -220,3 +220,67 @@ async def test_the_file_route_names_the_revision_and_keeps_money_papers_in(clien
     contract = (await _up(client, ctx, "Agreement.pdf", _drawing(number="", title="", extra="agreement"))).json()
     assert (await client.get(f"/documents/{contract['id']}/file", headers=_h(ctx["engineer"]))).status_code == 404
     assert (await client.get(f"/documents/{contract['id']}/file", headers=_h(ctx["pm"]))).status_code == 200
+
+
+# --- Step 7 test (23 Nov 2026): one letter per revision; a permit's last day read; a copy says where it is -------
+
+async def test_a_new_revision_never_repeats_a_letter(client, ctx):
+    old = (await _up(client, ctx, "a101.pdf", _drawing(number="A-101", rev="A"))).json()
+    detail = (await client.get(f"/documents/{old['id']}", headers=_h(ctx["pm"]))).json()
+    assert detail["next_revision"] == "B"
+    # The architect changed the drawing but not its title block: kept as the next letter, and said so.
+    r = await client.post(f"/documents/{old['id']}/revisions", headers=_h(ctx["pm"]),
+                          files={"file": ("a101 rev b.pdf", _drawing(number="A-101", rev="A", extra="x"), "application/pdf")})
+    assert r.status_code == 201, r.text
+    new = r.json()
+    assert new["revision"] == "B" and "still says rev A" in new["revision_note"] and new["superseded"]["revision"] == "A"
+    hist = (await client.get(f"/documents/{new['id']}", headers=_h(ctx["pm"]))).json()
+    assert [(h["revision"], h["status"]) for h in hist["history"]] == [("B", "current"), ("A", "superseded")]
+    assert hist["next_revision"] == "C"
+    # A letter given by hand that this drawing already used is refused, never kept twice.
+    r = await client.post(f"/documents/{new['id']}/revisions", headers=_h(ctx["pm"]), data={"revision": "a"},
+                          files={"file": ("again.pdf", _drawing(number="A-101", rev="A", extra="y"), "application/pdf")})
+    assert r.status_code == 409 and "such as C" in r.json()["detail"]["message"]
+    # The same through Documents' drop zone (matched by number), with an older letter.
+    r = await _up(client, ctx, "old a101.pdf", _drawing(number="A-101", rev="A", extra="z"))
+    assert r.status_code == 409 and "rev A is already kept (rev B is current)" in r.json()["detail"]["message"]
+    # Nor by editing the details.
+    r = await client.patch(f"/documents/{new['id']}", json={"revision": "A"}, headers=_h(ctx["pm"]))
+    assert r.status_code == 409 and "one letter per revision" in r.json()["detail"]
+    # A letter the title block gives that is new is kept as it is.
+    r = await client.post(f"/documents/{new['id']}/revisions", headers=_h(ctx["pm"]),
+                          files={"file": ("c.pdf", _drawing(number="A-101", rev="C", extra="w"), "application/pdf")})
+    assert r.status_code == 201 and r.json()["revision"] == "C" and r.json()["revision_note"] is None
+
+
+def _permit(lines: list[str]) -> bytes:
+    from fpdf import FPDF
+
+    pdf = FPDF(unit="pt", format="A4")
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=11)
+    for i, line in enumerate(lines):
+        pdf.text(60, 80 + 18 * i, line)
+    return bytes(pdf.output())
+
+
+async def test_a_permits_last_day_is_read_so_the_reminder_needs_no_typing(client, ctx):
+    r = await _up(client, ctx, "Building permit.pdf", _permit([
+        "Building permit", "Permit no. TMC/BP/2026/1187", "Date 30 September 2026",
+        "Validity 3 years from the date of issue"]))
+    assert r.status_code == 201, r.text
+    assert (r.json()["folder"], r.json()["valid_until"]) == ("approval", "2029-09-29")
+    assert "valid_until" in r.json()["guessed"] and "3 years from issue" in r.json()["valid_until_read"]
+    # A date given by hand wins; a paper that does not say gets none (never made up).
+    r = await _up(client, ctx, "Fire NOC.pdf", _permit(["Fire NOC", "Valid up to 31/03/2028"]), valid_until="2027-12-31")
+    assert r.json()["valid_until"] == "2027-12-31" and r.json()["valid_until_read"] is None
+    r = await _up(client, ctx, "Insurance policy.pdf", _permit(["Contractor's all risk insurance"]))
+    assert r.json()["folder"] == "approval" and r.json()["valid_until"] is None
+
+
+async def test_the_same_file_again_names_the_one_kept(client, ctx):
+    data = _drawing(number="S-201")
+    kept = (await _up(client, ctx, "s201.pdf", data)).json()
+    r = await _up(client, ctx, "s201 copy.pdf", data)
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "same_file"
+    assert r.json()["detail"]["document_id"] == kept["id"]

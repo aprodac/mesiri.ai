@@ -1,11 +1,13 @@
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { useMutation } from '@tanstack/react-query'
-import { AlertTriangle, Building2, FileSearch, Info, Layers, Ruler, Upload } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Link, useSearchParams } from 'react-router-dom'
+import { AlertTriangle, ArrowLeft, Building2, FileSearch, Info, Layers, Ruler, Upload } from 'lucide-react'
 import { Callout, StatStrip, type Stat } from '@/components/dpr-page'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
 import { maySeeBoq } from '@/lib/boq'
+import { fetchDocument, fetchDocumentFile } from '@/lib/documents'
 import { readDrawing, type DrawingCheck, type DrawingReadWithDrafts as DrawingRead, type DrawingSheet, type StructureTakeoff } from '@/lib/drawings'
 import { DraftBoq, DraftSchedule } from '@/components/drawings/drafts'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -53,6 +55,21 @@ export default function DrawingCheckPage() {
     mutationFn: readDrawing,
     onError: (e) => toast.error('Could not read the drawing', apiErrorMessage(e)),
   })
+  // From Documents ("Full drawing check"): check the kept drawing itself, never ask for the same PDF again.
+  const [params] = useSearchParams()
+  const documentId = params.get('document')
+  const projectId = params.get('project')
+  const kept = useQuery({ queryKey: ['document', documentId], queryFn: () => fetchDocument(documentId!), enabled: !!documentId && maySeeBoq(me?.role) })
+  const started = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    const doc = kept.data
+    if (!doc || started.current === doc.id || doc.content_type !== 'application/pdf') return
+    started.current = doc.id
+    fetchDocumentFile(doc.id)
+      .then((blob) => read.mutate(new File([blob], doc.file_name, { type: 'application/pdf' })))
+      .catch((e) => toast.error('Could not open the drawing', apiErrorMessage(e)))
+  }, [kept.data, read, toast])
+  const keptName = kept.data ? [kept.data.number, kept.data.title, kept.data.revision ? `rev ${kept.data.revision}` : null].filter(Boolean).join(' ') : null
   const pick = (file: File | undefined) => {
     if (!file) return
     if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -74,6 +91,12 @@ export default function DrawingCheckPage() {
   return (
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <ModuleHeader icon={FileSearch} title="Drawing check" />
+      {documentId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+          <span>{kept.isError ? 'That drawing could not be opened.' : keptName ? <>Checking <span className="font-medium">{keptName}</span> from Documents</> : 'Opening the drawing…'}</span>
+          <Link to={`/planning/documents${projectId ? `?project=${projectId}` : ''}`} className="inline-flex items-center gap-1 text-xs underline underline-offset-2"><ArrowLeft className="size-3" /> Back to Documents</Link>
+        </div>
+      )}
 
       <button
         type="button"

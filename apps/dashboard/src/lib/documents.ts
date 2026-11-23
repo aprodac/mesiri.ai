@@ -59,6 +59,8 @@ export interface DocumentDetail extends ProjectDocument {
   url: string | null
   history: { id: string; revision: string | null; status: string; file_name: string; created_at: string }[]
   can_manage: boolean
+  /** The letter a new revision gets when its drawing does not say one (never a letter already used). */
+  next_revision?: string
   facts?: { floors: string[]; levels: { value: number; pages: number[] }[]; checks: { message?: string; text?: string }[]; pages: number; live_plan?: boolean }
 }
 
@@ -66,6 +68,10 @@ export interface Uploaded extends ProjectDocument {
   guessed: string[]
   superseded: { id: string; revision: string | null } | null
   checks: number
+  /** Set when the revision letter was not given and the drawing still said the old one (or none): what was kept. */
+  revision_note?: string | null
+  /** A permit's expiry read from its own words ("3 years from issue (30 Sep 2026)"); null when not read. */
+  valid_until_read?: string | null
 }
 
 export async function fetchDocuments(projectId: string, params: { folder?: string; q?: string; status?: string } = {}): Promise<DocumentsList> {
@@ -88,6 +94,19 @@ export async function uploadRevision(id: string, file: File, revision?: string):
   form.append('file', file)
   if (revision) form.append('revision', revision)
   return (await api.post<Uploaded>(`/documents/${id}/revisions`, form)).data
+}
+
+/** The stored file itself, through the API (the same people who may see the document). For the preview, the
+ *  download and the drawing check, so a failure can be told in words instead of a broken frame. */
+export async function fetchDocumentFile(id: string): Promise<Blob> {
+  return (await api.get(`/documents/${id}/file`, { responseType: 'blob', timeout: 120_000 })).data as Blob
+}
+
+/** A refused upload that is the same file already kept: its id, to open it instead. */
+export function alreadyKeptId(err: unknown): string | null {
+  const res = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response
+  const detail = res?.data?.detail as { document_id?: unknown; reason?: unknown } | undefined
+  return res?.status === 409 && detail?.reason === 'same_file' && detail.document_id ? String(detail.document_id) : null
 }
 
 export async function updateDocument(id: string, body: Partial<Pick<ProjectDocument, 'folder' | 'discipline' | 'number' | 'title' | 'revision' | 'valid_until' | 'restricted'>>) {
