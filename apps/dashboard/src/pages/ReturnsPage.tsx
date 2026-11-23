@@ -168,7 +168,7 @@ function ReturnRow({ ret: r, money, selected, onPick }: { ret: MaterialReturn; m
   const more = r.lines.length - 1
   const look = RETURN_LOOK[r.status]
   return (
-    <button type="button" onClick={onPick} aria-current={selected || undefined} className={cn('flex w-full gap-3 border-b px-3 py-3 text-left transition hover:bg-muted/40 sm:px-4', selected && 'bg-yellow-50 shadow-[inset_0_0_0_2px_theme(colors.yellow.300)] dark:bg-yellow-950/40', r.status === 'cancelled' && 'opacity-60')}>
+    <button type="button" data-record-id={r.id} onClick={onPick} aria-current={selected || undefined} className={cn('flex w-full gap-3 border-b px-3 py-3 text-left transition hover:bg-muted/40 sm:px-4', selected && 'bg-yellow-50 shadow-[inset_0_0_0_2px_theme(colors.yellow.300)] dark:bg-yellow-950/40', r.status === 'cancelled' && 'opacity-60')}>
       {first && <CategoryTile mainCategory={first.main_category} />}
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-center justify-between gap-2">

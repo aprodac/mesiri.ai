@@ -21,3 +21,7 @@ mkdir -p /tmp/journey && (cd apps/dashboard && NODE_PATH=$(npm root -g) node ../
 The script does each "your turn" the way a person would (types the dates, fills the contract dialog, uploads the
 kit's estimate, taps a wrong then the right line, Add all, picks 4.1 Plastering). Extend it for each new chapter.
 Don't press Escape in it: Escape stops the guide.
+
+`audit_chapters.cjs` (UX-107) jumps to chapters from the bubble's list and logs, per step, the address it opened, what it
+lit and a screenshot (`node audit_chapters.cjs /tmp/real.json /tmp/audit 5 15`; `APP=` for another dashboard address).
+It presses Next / Skip through every "Your turn", so later chapters run on what was not done.

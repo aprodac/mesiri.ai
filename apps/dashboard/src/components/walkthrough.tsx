@@ -21,7 +21,7 @@ import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/li
 import { useTrial } from '@/lib/trial'
 import { SCENE_BUSY_EVENT, inSandbox, peekSandboxStart, playToDay, sandboxSceneBusy, takeSandboxStart, useSandboxClock, whenOpeningDone } from '@/lib/sandbox'
 import {
-  JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  JOURNEY_CHAPTERS, OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkFind, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { waLink } from '@/lib/whatsapp-modal'
@@ -114,6 +114,35 @@ async function readState(check: WalkCheck, project: string | null): Promise<{ id
   const list = Array.isArray(data) ? data : ((data as Record<string, unknown[]>)?.[check.rows ?? 'items'] ?? [])
   const ids = new Set((Array.isArray(list) ? list : []).map((r) => String((r as { id?: unknown })?.id ?? '')).filter(Boolean))
   return { ids, met: check.has ? meets(data, check.has) : false }
+}
+
+/** A story step's record (`WalkFind`): the id of the first row of its list that has every `match`; null when none does. */
+async function findRecord(find: WalkFind): Promise<string | null> {
+  const data = (await api.get(find.path, { params: find.params })).data as unknown
+  const list = Array.isArray(data) ? data : ((data as Record<string, unknown[]>)?.[find.rows ?? 'items'] ?? [])
+  const fits = (got: unknown, want: WalkFind['match'][string]) =>
+    want && typeof want === 'object' ? typeof got === 'string' && got.includes(want.has) : got === want
+  const rows = (Array.isArray(list) ? list : []).filter((r) => Object.entries(find.match).every(([path, want]) => fits(pick(r, path), want)))
+  const by = find.first
+  const row = by ? [...rows].sort((x, y) => Number(pick(x, by)) - Number(pick(y, by)))[0] : rows[0]
+  const id = row == null ? undefined : pick(row, find.key ?? 'id')
+  return id == null ? null : String(id)
+}
+
+/** The step's page with its record opened (`?id=<record>`, or the page's own key). */
+function pageWithRecord(page: string, find: WalkFind | undefined, id: string | null | undefined): string {
+  const key = find?.open === undefined ? 'id' : find.open
+  if (!find || !id || !key) return page
+  const [path, query = ''] = page.split('?')
+  const params = new URLSearchParams(query)
+  params.set(key, id)
+  return `${path}?${params}`
+}
+
+/** The record is open on this page (or there is nothing to open). */
+function recordOpen(find: WalkFind | undefined, id: string | null | undefined, search: string): boolean {
+  const key = find?.open === undefined ? 'id' : find.open
+  return !find || !id || !key || new URLSearchParams(search).get(key) === id
 }
 
 /** A dialog or sheet of the page is open (not the tour's own bubble). */
@@ -324,6 +353,9 @@ export function WalkthroughRunner() {
   const [note, setNote] = React.useState<string | null>(null)
   /** The record the last practice saved, to light up its row ("There it is"). */
   const [newRecord, setNewRecord] = React.useState<string | null>(null)
+  /** The story step's own record (`step.find`), once read: per step (`walk:index`); id null when none matched. */
+  const [found, setFound] = React.useState<{ key: string; id: string | null } | null>(null)
+  const finding = React.useRef<string | null>(null)
   /** Just finished: "Done", and the next one to do. */
   const [finished, setFinished] = React.useState<{ walk: Walkthrough; next?: Walkthrough } | null>(null)
   const guide = useStartMode()
@@ -533,18 +565,33 @@ export function WalkthroughRunner() {
         if (!found) return
         scopeRef.current = { mode: 'project', projectId: found.id } as typeof scopeRef.current
         projectRef.current(found as Parameters<typeof setProjectScope>[0])
-        if (step.page) navigateRef.current(urlWithScope(step.page, scopeRef.current))
+        if (step.page && !step.find) navigateRef.current(urlWithScope(step.page, scopeRef.current))
       }).catch(() => undefined)
     }
-    const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
-    if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
-      navigated.current = here
-      navigateRef.current(urlWithScope(step.page, scopeFor))
+    // A story step's own record: read it first, then open its page on it (below) and light its row.
+    if (step.find && found?.key !== here) {
+      if (finding.current !== here) {
+        finding.current = here
+        findRecord(step.find).catch(() => null).then((id) => setFound({ key: here, id }))
+      }
+      return
     }
+    const recordId = step.find ? found?.id : null
+    const page = step.page && pageWithRecord(step.page, step.find, recordId)
+    const scopeFor = step.allProjects ? { mode: 'portfolio' as const } : scopeRef.current
+    const there = () => !!step.page && onPage(step.page, window.location.pathname, window.location.search) && recordOpen(step.find, recordId, window.location.search)
+    // The step before was on the same page with other filters (`?q=2611-R`, then the whole list): open this step's own.
+    const before = run.walk.steps[run.index - run.dir]?.page
+    const refilter = !!step.page && !!before && before !== step.page && before.split('?')[0] === step.page.split('?')[0]
+    if (page && navigated.current !== here && (!there() || refilter)) {
+      navigated.current = here
+      navigateRef.current(urlWithScope(page, scopeFor))
+    }
+    const lit = recordId ? [`record:${recordId}`, step.target].filter(Boolean).join('|') : step.target
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
       const arrived = !step.page || onPage(step.page, window.location.pathname, window.location.search)
-      const drawn = !step.target || !!findTarget(step.target)
+      const drawn = !lit || !!findTarget(lit)
       // When is a missing target really missing (no data, the other of an either/or step, a picker already passed)?
       // At once when the page tour's content markers (startWhen) are on screen: the page has loaded. Else shortly
       // after another step of this page lit up. Else (still loading) the full WAIT_MS.
@@ -573,7 +620,7 @@ export function WalkthroughRunner() {
       }
     }, 150)
     return () => window.clearInterval(timer)
-  }, [run, step, role, practiceOff, sceneBusy, clockDay])
+  }, [run, step, role, practiceOff, sceneBusy, clockDay, found])
 
   // Leaving the walkthrough's pages by hand (the sidebar, a link) ends it: the person went their own way.
   React.useEffect(() => {
@@ -678,7 +725,9 @@ export function WalkthroughRunner() {
   // answer once it is given (or after a wrong tap).
   const target = ask
     ? (answered ? ask.answer : undefined)
-    : step?.showNew && newRecord ? [`record:${newRecord}`, step.target].filter(Boolean).join('|') : step?.target
+    : step?.showNew && newRecord ? [`record:${newRecord}`, step.target].filter(Boolean).join('|')
+    : step?.find && run && found?.key === `${run.walk.id}:${run.index}` && found.id ? [`record:${found.id}`, step.target].filter(Boolean).join('|')
+    : step?.target
   // A step that waits for its page's content (a project to pick first): watch for it while the person picks.
   const [holding, setHolding] = React.useState<'pick' | 'loading' | null>(null)
   const pageShows = holding === null

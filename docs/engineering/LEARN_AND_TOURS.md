@@ -107,6 +107,16 @@ The start mode decides only whether tours open by themselves.
   `id`), `check.rows` the key holding the rows, and `{project}` in `check.path` is the picked project. Already true
   when the step opens: it passes at once. `file:` offers a starter-kit file in the bubble; `pick:` names the project to
   open when the page asks for one ("Open Green Villa from the list"; the list is lit and the bubble sits beside it).
+- **A story step shows its own record, never a page's default list** (UX-107, asked 23 Nov: "I don't see the correct
+  specific thing and 1 is empty"). A list opens on today's open work, so the story's request, order or issue was often not
+  in it: on its own day already ordered, a chapter replayed later done ("All clear", "Nothing still to come"). A step that
+  talks about one record names it with `find` (`WalkFind`: the list route, `match` on its fields, `first: 'number'` for
+  the story's first of several, `key` when the page knows it by another id): the engine reads it, opens it on the page
+  (`?id=`) and lights its row (`data-record-id`). Its `page` gives the tab that holds it whatever its state
+  (`?tab=all`, `?status=ALL`, `&period=all`). Match on the starter kit's own references (`MCA/Q/0412`, the return note),
+  never on ids or numbers the plan may change. A list that a story step lights gives each row `data-record-id`.
+  Every story step is on Green Villa by itself (`gv()` sets `pick`), unless it is about all projects. Never tell
+  the person to open something in a step that only has Next: page clicks are held; open it for them with `find`.
 - **A step whose only ask is "open this project"** (`pick`, no `target`, no `try` or `ask`) moves on by itself once the
   project opens (UX-77); a `pick` step with a target stays, since what it shows is on the page the pick opened.
 - **While a dialog is open** the bubble steps aside to a corner note that keeps a "Your turn" step's words, so the values

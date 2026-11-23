@@ -50,7 +50,13 @@ function checkTourMarkers(): Plugin {
       const map = fs.readFileSync(path.join(SRC, 'lib/module-map.ts'), 'utf8')
       const built = new Set([...map.matchAll(/url: '([^']+)', status: 'built'/g)].map((m) => m[1]))
       const pages = [...guides.matchAll(/page: '([^']+)'/g)].map((m) => m[1])
-      const gone = pages.filter((url) => !built.has(url) && !built.has(url.split('?')[0]))
+      // A page's own view (`?view=movements`) names the page; its filters after it (`&period=all`) do not.
+      const viewOnly = (url: string) => {
+        const [path, query = ''] = url.split('?')
+        const view = new URLSearchParams(query).get('view')
+        return view ? `${path}?view=${view}` : path
+      }
+      const gone = pages.filter((url) => !built.has(url) && !built.has(url.split('?')[0]) && !built.has(viewOnly(url)))
       if (gone.length) {
         this.error(`Walkthrough steps go to pages that are not built pages in lib/module-map.ts: ${[...new Set(gone)].join(', ')}`)
       }
@@ -143,8 +149,28 @@ function checkScopeLevels(): Plugin {
   }
 }
 
+/** A folder in public/ with the same name as a page (public/learn: the tours' voice, scenes and kit; the page /learn)
+ *  made the server answer a reload of that page with the folder: nginx's `try_files $uri $uri/` found the folder, had no
+ *  index.html in it, and said 403 (23 Nov: Go back on the Learn page). Every folder in public/ gets the app's own
+ *  index.html, so a page loaded fresh at that path is the app, whatever the server's rule. */
+function appInPublicFolders(): Plugin {
+  let out = ''
+  return {
+    name: 'mesiri-app-in-public-folders',
+    apply: 'build',
+    configResolved(c) { out = path.resolve(c.root, c.build.outDir) },
+    closeBundle() {
+      const page = path.join(out, 'index.html')
+      if (!fs.existsSync(page)) return
+      for (const d of fs.readdirSync(path.resolve(__dirname, 'public'), { withFileTypes: true })) {
+        if (d.isDirectory() && fs.existsSync(path.join(out, d.name))) fs.copyFileSync(page, path.join(out, d.name, 'index.html'))
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels(), checkOneClock(), checkOneDatePicker()],
+  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels(), checkOneClock(), checkOneDatePicker(), appInPublicFolders()],
   resolve: {
     alias: {
       '@': SRC,

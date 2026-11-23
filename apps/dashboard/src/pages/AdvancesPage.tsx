@@ -96,7 +96,7 @@ export default function AdvancesPage() {
         ) : (
           <ul className="divide-y rounded-xl border" data-guide="advances.list">
             {(list.data?.items ?? []).map((a) => (
-              <li key={a.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm', a.voided_at && 'opacity-50')}>
+              <li key={a.id} data-record-id={a.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm', a.voided_at && 'opacity-50')}>
                 <span className="w-16 shrink-0 text-muted-foreground tabular-nums">{day(a.given_on)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{a.payee_name}</span>
