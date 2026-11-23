@@ -38,8 +38,14 @@ export interface Activity {
   slip_days: number
   pushed_days: number
   critical: boolean
-  after: { id: string; lag: number }[]
+  after: Link[]
   assigned_to: string | null
+  assigned_user_id?: string | null
+  /** The approved programme's dates for it (null: added since, or none approved), and how far its end moved. */
+  baseline?: { start: string | null; end: string | null } | null
+  baseline_slip_days?: number | null
+  /** Its share of the BOQ's contract value (0..1), for the people who see money: Quick plan spreads days by it. */
+  weight?: number | null
   last_update: string | null
   updates: number
   open_issues: number
@@ -50,6 +56,10 @@ export interface Activity {
   sort_order: number
 }
 
+/** "FS": starts after the other ends (+ lag working days); "SS": starts with it (+ lag working days). */
+export type LinkKind = 'FS' | 'SS'
+export interface Link { id: string; lag: number; kind?: LinkKind }
+
 export interface ScheduleProject {
   id: string
   name: string
@@ -58,13 +68,16 @@ export interface ScheduleProject {
   stage_label: string
   start_date: string | null
   planned_finish: string | null
+  /** The days site works, Monday first, "1" worked ("1111110": Sunday off), and the holidays besides. */
+  work_week?: string
+  holidays?: string[]
 }
 
 export interface Schedule {
   project: ScheduleProject
   today: string
   activities: Activity[]
-  links: { predecessor: string; successor: string; lag: number }[]
+  links: { predecessor: string; successor: string; lag: number; kind?: LinkKind }[]
   conflicts: { predecessor: string; successor: string; days: number }[]
   summary: {
     activities: number
@@ -80,8 +93,13 @@ export interface Schedule {
     /** BOQ-03: every open issue of the project, and those on no activity (their words name none of the work). */
     open_issues?: number
     issues_on_no_activity?: number
+    /** The approved programme compared with, and how many days the planned finish moved from it. */
+    baseline?: { id: string; name: string; note: string | null; locked_at: string; locked_by: string | null; finish: string | null; slip_days: number } | null
   }
   can_edit: boolean
+  /** The project's sites (to plan an activity on one), and, for those who plan, who may run an activity. */
+  sites?: { id: string; name: string }[]
+  people?: { id: string; name: string; role: string }[]
 }
 
 export interface MovedActivity {
@@ -110,7 +128,8 @@ export interface ActivityUpdate {
   milestone?: boolean
   done?: boolean
   site_id?: string | null
-  after?: { id: string; lag: number }[]
+  assigned_user_id?: string | null
+  after?: Link[]
   push?: boolean
   preview?: boolean
 }
@@ -136,7 +155,7 @@ export async function updateActivity(projectId: string, id: string, body: Activi
 
 export async function createActivity(
   projectId: string,
-  body: { name: string; start: string; end?: string; milestone?: boolean; site_id?: string | null; after?: { id: string; lag: number }[] },
+  body: { name: string; start: string; end?: string; milestone?: boolean; site_id?: string | null; assigned_user_id?: string | null; after?: Link[] },
 ): Promise<ScheduleChange> {
   return (await api.post<ScheduleChange>(`${base(projectId)}/activities`, body)).data
 }
@@ -150,6 +169,74 @@ export async function sequenceActivities(
   body: { start: string; items: { id: string; days: number }[]; link?: boolean },
 ): Promise<ScheduleChange> {
   return (await api.post<ScheduleChange>(`${base(projectId)}/sequence`, body)).data
+}
+
+/** QA Step 11: approve the programme as it stands; later moves show against it. */
+export async function approveProgramme(projectId: string, body: { name?: string; note?: string } = {}): Promise<ScheduleChange> {
+  return (await api.post<ScheduleChange>(`${base(projectId)}/baselines`, body)).data
+}
+
+/** The programme as an .xlsx (no money), to send the client or the architect. */
+export async function exportProgramme(projectId: string): Promise<Blob> {
+  return (await api.get(`${base(projectId)}/export`, { responseType: 'blob' })).data as Blob
+}
+
+// -- the working calendar (the backend's logic.Calendar, for the dialogs' previews) ------------------------------
+
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+const parse = (day: string) => new Date(`${day}T00:00:00Z`)
+
+export interface WorkCalendar { week: string; holidays: Set<string> }
+
+export function workCalendar(project?: Pick<ScheduleProject, 'work_week' | 'holidays'> | null): WorkCalendar {
+  const week = /^[01]{7}$/.test(project?.work_week ?? '') && project!.work_week!.includes('1') ? project!.work_week! : '1111111'
+  return { week, holidays: new Set(project?.holidays ?? []) }
+}
+
+/** Monday first, as the backend: getUTCDay() is Sunday first. */
+export function worksOn(cal: WorkCalendar, day: string): boolean {
+  return cal.week[(parse(day).getUTCDay() + 6) % 7] === '1' && !cal.holidays.has(day)
+}
+
+export function nextWorkDay(cal: WorkCalendar, day: string): string {
+  let d = parse(day)
+  for (let i = 0; i < 400 && !worksOn(cal, iso(d)); i++) d = new Date(d.getTime() + DAY_MS)
+  return iso(d)
+}
+
+/** The n-th working day after `day` (before it when negative); `day` itself when 0. */
+export function shiftWorkDays(cal: WorkCalendar, day: string, n: number): string {
+  let d = parse(day)
+  let left = Math.abs(n)
+  const step = n > 0 ? DAY_MS : -DAY_MS
+  while (left > 0) {
+    d = new Date(d.getTime() + step)
+    if (worksOn(cal, iso(d))) left -= 1
+  }
+  return iso(d)
+}
+
+/** The last day of `days` working days from `start` (moved to a working day first). */
+export function endForWorkDays(cal: WorkCalendar, start: string, days: number): string {
+  const first = nextWorkDay(cal, start)
+  return days <= 1 ? first : shiftWorkDays(cal, first, days - 1)
+}
+
+/** Working days from `first` to `last`, both counted. */
+export function countWorkDays(cal: WorkCalendar, first: string, last: string): number {
+  let n = 0
+  for (let d = parse(first); d <= parse(last); d = new Date(d.getTime() + DAY_MS)) if (worksOn(cal, iso(d))) n += 1
+  return n
+}
+
+export const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+
+/** "Mon–Sat", "every day", "Mon–Fri": the working week in words. */
+export function weekWords(week: string): string {
+  if (week === '1111111') return 'every day'
+  if (week === '1111110') return 'Mon–Sat'
+  if (week === '1111100') return 'Mon–Fri'
+  return WEEK_DAYS.filter((_, i) => week[i] === '1').join(', ')
 }
 
 // -- project start ----------------------------------------------------------------------------------------------
@@ -180,7 +267,7 @@ export async function fetchProjectStart(projectId: string): Promise<ProjectStart
 
 export async function updateProjectStart(
   projectId: string,
-  body: { stage?: Stage; start_date?: string; planned_finish?: string },
+  body: { stage?: Stage; start_date?: string; planned_finish?: string; work_week?: string; holidays?: string[] },
 ): Promise<ProjectStart> {
   return (await api.patch<ProjectStart>(`/projects/${projectId}/start`, body)).data
 }

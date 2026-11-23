@@ -1,15 +1,16 @@
 import * as React from 'react'
 import { CalendarPlus, Diamond, Flame, GripVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dayNum, isoOf, shortDay, STATE_WORDS, type Activity, type ActivityState, type Schedule } from '@/lib/schedule'
+import { dayNum, isoOf, shortDay, STATE_WORDS, workCalendar, worksOn, type Activity, type ActivityState, type Schedule } from '@/lib/schedule'
 
 // ST-04: the Gantt chart. One row per activity: the planned bar, the part done (measured from site reports),
 // the overrun the site's pace forecasts (striped), today's line, milestones as diamonds, the "starts after"
 // links, the critical path outlined. A bar can be dragged to new days by those who plan (the page asks before
 // moving the ones after it).
 
-export type Zoom = 'week' | 'month'
-const DAY_WIDTH: Record<Zoom, number> = { week: 30, month: 9 }
+/** QA Step 11: "fit" shows the whole job, start to handover, in the width there is. */
+export type Zoom = 'week' | 'month' | 'fit'
+const DAY_WIDTH: Record<Exclude<Zoom, 'fit'>, number> = { week: 30, month: 9 }
 const ROW = 46
 const HEAD = 46
 export const NAME_COL = 300
@@ -57,11 +58,21 @@ export function Gantt({
   onAddDates: (id: string) => void
   scrollToToday: number
 }) {
-  const dayW = DAY_WIDTH[zoom]
   const { from, to } = React.useMemo(() => range(schedule, schedule.activities), [schedule])
+  const cal = React.useMemo(() => workCalendar(schedule.project), [schedule.project])
+  const scroller = React.useRef<HTMLDivElement>(null)
+  const [room, setRoom] = React.useState(0)
+  React.useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const watch = new ResizeObserver(() => setRoom(el.clientWidth))
+    watch.observe(el)
+    setRoom(el.clientWidth)
+    return () => watch.disconnect()
+  }, [])
+  const dayW = zoom === 'fit' ? Math.max(room / (to - from + 1), 0.8) : DAY_WIDTH[zoom]
   const width = (to - from + 1) * dayW
   const today = dayNum(schedule.today)
-  const scroller = React.useRef<HTMLDivElement>(null)
   const [drag, setDrag] = React.useState<{ id: string; x0: number; dx: number } | null>(null)
   const x = (iso: string) => (dayNum(iso) - from) * dayW
   const row = new Map(activities.map((a, i) => [a.id, i]))
@@ -74,6 +85,7 @@ export function Gantt({
   React.useEffect(() => {
     const el = scroller.current
     if (!el) return
+    if (zoom === 'fit') { el.scrollLeft = 0; return }
     const toToday = (today - from) * dayW - el.clientWidth * 0.3
     const toAnchor = (anchor - from) * dayW - 24
     el.scrollLeft = Math.max(0, scrollToToday ? toToday : Math.min(toToday, toAnchor))
@@ -81,16 +93,17 @@ export function Gantt({
 
   // Header: months on top; days (week zoom) or week starts (month zoom) below.
   const months: { left: number; width: number; label: string }[] = []
+  // weekend: a day site does not work (the project's days off and holidays), shaded.
   const ticks: { left: number; label: string; weekend: boolean; monday: boolean }[] = []
   for (let n = from; n <= to; n++) {
     const iso = isoOf(n)
     const d = new Date(n * 86_400_000)
     const dow = d.getUTCDay()
     if (n === from || d.getUTCDate() === 1) {
-      months.push({ left: (n - from) * dayW, width: 0, label: d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' }) })
+      months.push({ left: (n - from) * dayW, width: 0, label: d.toLocaleDateString('en-IN', { month: 'short', year: zoom === 'fit' ? '2-digit' : 'numeric', timeZone: 'UTC' }) })
     }
-    ticks.push({ left: (n - from) * dayW, label: zoom === 'week' ? String(d.getUTCDate()) : dow === 1 ? String(d.getUTCDate()) : '', weekend: dow === 0, monday: dow === 1 })
-    void iso
+    const label = zoom === 'week' ? String(d.getUTCDate()) : zoom === 'month' && dow === 1 ? String(d.getUTCDate()) : ''
+    ticks.push({ left: (n - from) * dayW, label, weekend: zoom !== 'fit' && !worksOn(cal, iso), monday: zoom !== 'fit' && dow === 1 })
   }
   months.forEach((m, i) => (m.width = (i + 1 < months.length ? months[i + 1].left : width) - m.left))
 
@@ -167,10 +180,10 @@ export function Gantt({
           ))}
           {/* Contract finish and forecast finish */}
           {finishPlanned && (
-            <Marker left={x(finishPlanned) + dayW} label={`Handover ${shortDay(finishPlanned, schedule.today)}`} className="border-foreground text-foreground" />
+            <Marker left={x(finishPlanned) + dayW} flip={x(finishPlanned) + dayW > width - 140} label={`Handover ${shortDay(finishPlanned, schedule.today)}`} className="border-foreground text-foreground" />
           )}
           {forecast && schedule.summary.slip_days > 0 && (
-            <Marker left={x(forecast) + dayW} label={`Forecast ${shortDay(forecast, schedule.today)}`} className="border-destructive text-destructive" dashed />
+            <Marker left={x(forecast) + dayW} flip={x(forecast) + dayW > width - 140} label={`Forecast ${shortDay(forecast, schedule.today)}`} className="border-destructive text-destructive" dashed />
           )}
           {/* Today */}
           <div className="pointer-events-none absolute bottom-0 z-[5] w-0.5 bg-primary" style={{ left: (today - from) * dayW + dayW / 2, top: HEAD - 6 }}>
@@ -186,16 +199,19 @@ export function Gantt({
             {links.map((l) => {
               const p = byId.get(l.predecessor)!
               const s = byId.get(l.successor)!
-              if (!p.end || !s.start) return null
-              const x1 = p.milestone ? x(p.end) + dayW / 2 : x(p.end) + dayW
+              if (!p.end || !p.start || !s.start) return null
+              // "With it" (SS) links leave from the start of the bar; "after it ends" from its end.
+              const x1 = l.kind === 'SS' ? x(p.start) : p.milestone ? x(p.end) + dayW / 2 : x(p.end) + dayW
               const y1 = HEAD + row.get(p.id)! * ROW + ROW / 2
               const x2 = s.milestone ? x(s.start) + dayW / 2 - 7 : x(s.start)
               const y2 = HEAD + row.get(s.id)! * ROW + ROW / 2
               const bad = conflicted.has(`${p.id}>${s.id}`)
               const mid = y1 + (y2 > y1 ? ROW / 2 : -ROW / 2)
-              const d = x2 - 8 >= x1 + 4
-                ? `M${x1},${y1} H${x2 - 8} V${y2} H${x2}`
-                : `M${x1},${y1} h6 V${mid} H${x2 - 10} V${y2} H${x2}`
+              const d = l.kind === 'SS'
+                ? `M${x1},${y1} h-6 V${y2} H${x2}`
+                : x2 - 8 >= x1 + 4
+                  ? `M${x1},${y1} H${x2 - 8} V${y2} H${x2}`
+                  : `M${x1},${y1} h6 V${mid} H${x2 - 10} V${y2} H${x2}`
               return <path key={`${p.id}>${s.id}`} d={d} fill="none" strokeWidth={1.4} className={bad ? 'stroke-destructive' : 'stroke-muted-foreground/60'} strokeDasharray={bad ? '4 3' : undefined} markerEnd={`url(#${bad ? 'arrow-bad' : 'arrow'})`} />
             })}
           </svg>
@@ -248,8 +264,14 @@ export function Gantt({
                 </button>
               )
             }
+            const base = a.baseline?.start && a.baseline.end ? a.baseline : null
             return (
               <React.Fragment key={a.id}>
+                {base && (
+                  // The approved programme's dates: a thin grey bar under the planned one.
+                  <div className="pointer-events-none absolute z-[5] rounded-full bg-foreground/35" title={`Approved ${shortDay(base.start)} to ${shortDay(base.end)}`}
+                    style={{ top: top + ROW - 8, height: 3, left: x(base.start!), width: Math.max((dayNum(base.end!) - dayNum(base.start!) + 1) * dayW, 3) }} />
+                )}
                 <button type="button" aria-label={label} title={label} {...pointer}
                   className={cn(
                     'group absolute z-[6] flex items-center overflow-hidden rounded-md text-left shadow-sm transition-[box-shadow] touch-none',
@@ -301,10 +323,11 @@ export function Gantt({
   )
 }
 
-function Marker({ left, label, className, dashed }: { left: number; label: string; className: string; dashed?: boolean }) {
+function Marker({ left, label, className, dashed, flip }: { left: number; label: string; className: string; dashed?: boolean; flip?: boolean }) {
   return (
     <div className={cn('pointer-events-none absolute bottom-0 z-[3] border-l-2', dashed && 'border-dashed', className)} style={{ left, top: HEAD }}>
-      <span className="absolute top-1 left-1 whitespace-nowrap rounded bg-background/90 px-1 text-[10px] font-semibold">{label}</span>
+      {/* Near the right edge the label sits on the line's left, so it is never cut off. */}
+      <span className={cn('absolute top-1 whitespace-nowrap rounded bg-background/90 px-1 text-[10px] font-semibold', flip ? 'right-1' : 'left-1')}>{label}</span>
     </div>
   )
 }

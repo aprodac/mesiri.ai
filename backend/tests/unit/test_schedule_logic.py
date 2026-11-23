@@ -207,3 +207,69 @@ def test_boq03b_a_tie_goes_to_the_activity_running_today():
     assert activity_for_issue("slab delayed", "s1", acts, d(2026, 11, 15)) == "gf"
     assert activity_for_issue("slab delayed", "s1", acts) is None  # no day given: still no guess
     assert activity_for_issue("slab delayed", "s1", acts, d(2026, 11, 25)) is None  # neither running: no guess
+
+
+# --- QA Step 11 (23 Nov 2026): the working calendar and "starts with" links ------------------------------------------
+
+MON_SAT = logic.Calendar("1111110")
+
+
+def _d(day: int, month: int = 11) -> datetime.date:
+    return datetime.date(2026, month, day)
+
+
+def test_the_calendar_skips_sundays_and_holidays():
+    cal = logic.Calendar("1111110", [_d(25)])                    # 22 Nov 2026 is a Sunday; 25th a holiday
+    assert not cal.works(_d(22)) and not cal.works(_d(25)) and cal.works(_d(23))
+    assert cal.next_work(_d(22)) == _d(23)
+    assert cal.shift(_d(21), 1) == _d(23)                         # Saturday + 1 working day = Monday
+    assert cal.shift(_d(23), -1) == _d(21)
+    assert cal.count(_d(16), _d(28)) == 11                        # 13 days less the Sunday and the holiday
+    assert cal.end_for(_d(22), 3) == _d(26)                       # starts Mon 23, skips the 25th
+    assert logic.EVERY_DAY.count(_d(16), _d(28)) == 13 and logic.EVERY_DAY.end_for(_d(22), 3) == _d(24)
+
+
+def test_a_bad_week_falls_back_to_every_day():
+    assert logic.Calendar("0000000").every_day and logic.Calendar("11").every_day
+
+
+def test_lengths_and_progress_count_working_days():
+    a = {"id": 1, "start": _d(16), "end": _d(28), "milestone": False, "progress": None}
+    assert logic.duration(a, MON_SAT) == 12 and logic.duration(a) == 13
+    # On Mon 23 Nov six working days (16-21) are behind us of 12.
+    assert logic.expected_progress(a, _d(23), MON_SAT) == Decimal(6) / Decimal(12)
+
+
+def test_starting_on_a_sunday_is_not_behind_on_monday_morning():
+    a = {"id": 1, "start": _d(22), "end": _d(28), "milestone": False, "progress": None}
+    assert logic.assess(a, _d(23), MON_SAT)["state"] == logic.ON_TRACK
+    assert logic.assess(a, _d(23))["state"] == logic.BEHIND       # every day: Sunday was a day of work
+
+
+def test_a_push_keeps_working_days_across_a_sunday():
+    acts = [{"id": "a", "start": _d(16), "end": _d(20), "milestone": False},
+            {"id": "b", "start": _d(21), "end": _d(24), "milestone": False}]   # b: Sat-Tue = 3 working days
+    links = [{"predecessor": "a", "successor": "b", "lag": 0}]
+    moved = logic.push(acts, links, {"a": (_d(16), _d(21))}, cal=MON_SAT)
+    assert moved["b"] == (_d(23), _d(25))                         # Mon 23 + 3 working days, not Sun 22
+
+
+def test_starts_with_lets_work_run_alongside():
+    acts = [{"id": "masonry", "start": _d(16), "end": _d(28), "milestone": False},
+            {"id": "electrical", "start": _d(16), "end": _d(21), "milestone": False}]
+    ss = [{"predecessor": "masonry", "successor": "electrical", "lag": 5, "kind": "SS"}]
+    # Electrical may start 5 working days after masonry starts (Mon 16 -> Sat 21), not after masonry ends.
+    moved = logic.push(acts, ss, {}, pinned=False, cal=MON_SAT)
+    assert moved["electrical"][0] == _d(21)
+    assert logic.conflicts(acts, ss, MON_SAT) == [{"predecessor": "masonry", "successor": "electrical", "days": 5}]
+    fs = [{**ss[0], "kind": "FS", "lag": 0}]
+    assert logic.push(acts, fs, {}, pinned=False, cal=MON_SAT)["electrical"][0] == _d(30)
+
+
+def test_the_critical_path_follows_starts_with_links():
+    acts = [{"id": "masonry", "start": _d(16), "end": _d(28), "milestone": False},
+            {"id": "electrical", "start": _d(21), "end": _d(28), "milestone": False},
+            {"id": "paint", "start": _d(30), "end": _d(5, 12), "milestone": False}]
+    links = [{"predecessor": "masonry", "successor": "electrical", "lag": 5, "kind": "SS"},
+             {"predecessor": "electrical", "successor": "paint", "lag": 0}]
+    assert logic.critical(acts, links, MON_SAT) == {"masonry", "electrical", "paint"}

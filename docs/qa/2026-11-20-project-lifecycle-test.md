@@ -108,3 +108,23 @@ locked; Approvals & permits). Uploading the same file twice is refused.
 Not covered: expiry from a photo or scan (no text); no WhatsApp reminder exists for expiring papers (only the banner on
 Documents, 30 days before); production's upload size limit for normal routes is not in the repo (Documents says
 25 MB, the drawing check 8 MB).
+
+### Step 11: schedule (project manager) — tested and fixed 23 Nov
+
+Done on localhost (Palm Grove Villas): Quick plan of the 9 BOQ sections, the activity panel, the Gantt.
+
+| # | Kind | Where | What happened | Fixed (23 Nov, branch Ad) | Severity |
+|---|---|---|---|---|---|
+| 11.1 | Logic | Whole schedule | Calendar days only: activities started and ended on Sundays; no holidays | A working calendar per project (`projects.work_week`, `holidays`, 0567; "Working days" button). Lengths, progress expected, forecast, links, push, critical path, Quick plan, drag and the period report count working days. Existing projects keep every day; new ones start Mon–Sat | High |
+| 11.2 | Data / UX | Activity, Add activity | The backend kept a site per activity but the page could not set it: no plan per villa | Site picker in the panel and Add activity (can be cleared); site shown on rows; "All sites / Villa n" filter. Not covered: progress per villa from the BOQ's site split (an activity's progress is still its whole BOQ section) | High |
+| 11.3 | Data | Schedule | No approved programme: a drag overwrote the plan, nothing to argue a delay or EOT on | "Approve programme" keeps every activity's dates (`schedule_baselines`); later moves show per activity ("Approved … (+3d)"), a grey bar on the Gantt, "planned finish N days later" on the page; a revised programme is the next approval | High |
+| 11.4 | Logic | "Starts after" | Only finish-to-start; overlap only as a negative gap up to 30 days | "with it" (start-to-start + lag) beside "after it ends" (`work_package_links.kind`), in the push, conflicts and critical path; drawn from the bar's start | Medium |
+| 11.5 | UX | Quick plan | A start date in the past made the first work "Behind" at once (and tonight's delay alert) | Called out in Quick plan with "Start today" | Medium |
+| 11.6 | UX | Quick plan | 7 days per section by default; nothing said about the client's handover | Finish set against the handover ("4 days early" / "N days late"); "Spread to handover" shares the working days by each section's BOQ value (value shares only for the money roles). Not covered: durations from quantities and crew output | Medium |
+| 11.7 | UI | Gantt | Even "Months" showed about 3 months; handover off screen | "Whole job" zoom (default for long jobs) fits start to handover; the handover label never cut off; days off shaded from the calendar | Medium |
+| 11.8 | Feature | Schedule | No export | "Excel": the programme with site, links, working days, approved dates, moved days, state, forecast, who runs it (no money). Not covered: PDF print, MS Project / Primavera import | Medium |
+| 11.9 | UX | Activity | No person responsible (the field existed, not settable) | "Who runs it" picker (people on the project; the list only for those who plan), saved at once | Low |
+| 11.10 | UI | Quick plan | Dates without a year | Year shown when not this year | Low |
+
+Also found: changing the calendar keeps planned dates, so an old Sunday start shows its link as broken until re-planned
+(the dialog says so). The approve button asks with the browser's confirm box (tested through the API).

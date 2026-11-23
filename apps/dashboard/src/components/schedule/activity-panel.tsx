@@ -1,12 +1,15 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Diamond, Flame, Handshake, Link2, MessageSquareText, RotateCcw, X,
+  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Diamond, Flame, Handshake, Link2, MapPin, MessageSquareText, RotateCcw, UserRound, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { formatQuantity } from '@/lib/boq'
-import { addDays, daysBetween, plural, shortDay, STATE_WORDS, type Activity, type ActivityUpdate, type Schedule } from '@/lib/schedule'
+import {
+  countWorkDays, daysBetween, endForWorkDays, nextWorkDay, plural, shiftWorkDays, shortDay, STATE_WORDS, workCalendar,
+  type Activity, type ActivityUpdate, type LinkKind, type Schedule,
+} from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 import { STATE_BAR } from './gantt'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
@@ -62,31 +65,34 @@ export function ActivityPanel({
   onClose?: () => void
 }) {
   const today = schedule.today
+  const cal = React.useMemo(() => workCalendar(schedule.project), [schedule.project])
+  const linksOf = (x: Activity) => Object.fromEntries(x.after.map((p) => [p.id, { lag: p.lag, kind: (p.kind ?? 'FS') as LinkKind }]))
   const [start, setStart] = React.useState(a.start ?? today)
-  const [end, setEnd] = React.useState(a.end ?? addDays(a.start ?? today, 6))
+  const [end, setEnd] = React.useState(a.end ?? endForWorkDays(cal, a.start ?? today, 6))
   const [milestone, setMilestone] = React.useState(a.milestone)
-  const [after, setAfter] = React.useState<Record<string, number>>(Object.fromEntries(a.after.map((p) => [p.id, p.lag])))
+  const [after, setAfter] = React.useState<Record<string, { lag: number; kind: LinkKind }>>(linksOf(a))
   const [pickAfter, setPickAfter] = React.useState(false)
   React.useEffect(() => {
     setStart(a.start ?? today)
-    setEnd(a.end ?? addDays(a.start ?? today, 6))
+    setEnd(a.end ?? endForWorkDays(cal, a.start ?? today, 6))
     setMilestone(a.milestone)
-    setAfter(Object.fromEntries(a.after.map((p) => [p.id, p.lag])))
+    setAfter(linksOf(a))
     setPickAfter(false)
-  }, [a, today])
+  }, [a, today, cal])
 
   const others = schedule.activities.filter((x) => x.id !== a.id)
   const followers = schedule.links.filter((l) => l.predecessor === a.id).map((l) => others.find((x) => x.id === l.successor)).filter(Boolean) as Activity[]
   const datesChanged = start !== a.start || (!milestone && end !== a.end) || milestone !== a.milestone
-  const afterChanged = JSON.stringify(Object.entries(after).sort()) !== JSON.stringify(a.after.map((p) => [p.id, p.lag]).sort())
-  const length = milestone ? 0 : daysBetween(start, end) + 1
+  const afterChanged = JSON.stringify(Object.entries(after).sort()) !== JSON.stringify(Object.entries(linksOf(a)).sort())
+  // Working days on the project's calendar (Sundays and holidays off are not counted).
+  const length = milestone ? 0 : countWorkDays(cal, start, end)
   const invalid = !milestone && daysBetween(start, end) < 0
   const tone = STATE_BAR[a.state]
 
   const save = () => {
     const body: ActivityUpdate = {}
     if (datesChanged) Object.assign(body, milestone ? { start, milestone: true } : { start, end, milestone: false })
-    if (afterChanged) body.after = Object.entries(after).map(([id, lag]) => ({ id, lag }))
+    if (afterChanged) body.after = Object.entries(after).map(([id, l]) => ({ id, lag: l.lag, kind: l.kind }))
     onChange(body, `${a.name}: new ${datesChanged ? 'days' : '“starts after”'}`)
   }
 
@@ -139,11 +145,16 @@ export function ActivityPanel({
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
             <Fact label="Planned">{shortDay(a.start, today)} → {shortDay(a.end, today)}</Fact>
-            <Fact label="Length">{plural(a.duration ?? 0, 'day')}</Fact>
+            <Fact label="Length">{plural(a.duration ?? 0, 'working day')}</Fact>
             <Fact label="Started on site">{a.actual_start ? shortDay(a.actual_start, today) : 'Not yet'}</Fact>
             <Fact label="Forecast finish" bad={a.slip_days > 0}>
               {a.forecast_end ? shortDay(a.forecast_end, today) : '—'}{a.slip_days > 0 ? ` (+${a.slip_days}d)` : ''}
             </Fact>
+            {schedule.summary.baseline && (
+              <Fact label="Approved" bad={(a.baseline_slip_days ?? 0) > 0}>
+                {a.baseline ? <>{shortDay(a.baseline.start, today)} → {shortDay(a.baseline.end, today)}{a.baseline_slip_days ? ` (${a.baseline_slip_days > 0 ? '+' : ''}${a.baseline_slip_days}d)` : ''}</> : 'Added since'}
+              </Fact>
+            )}
           </dl>
         </section>
       )}
@@ -191,10 +202,10 @@ export function ActivityPanel({
           </div>
           {!milestone && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {invalid ? <span className="text-destructive">The end is before the start.</span> : <span>{plural(length, 'day')}</span>}
+              {invalid ? <span className="text-destructive">The end is before the start.</span> : <span>{plural(length, 'working day')}</span>}
               <span className="ml-auto">Quick:</span>
               {[-3, -1, 1, 3, 7].map((n) => (
-                <button key={n} type="button" className="rounded border px-1.5 py-0.5 hover:bg-muted" onClick={() => { setStart(addDays(start, n)); setEnd(addDays(end, n)) }}>
+                <button key={n} type="button" className="rounded border px-1.5 py-0.5 hover:bg-muted" onClick={() => { const s2 = nextWorkDay(cal, shiftWorkDays(cal, start, n)); setStart(s2); setEnd(endForWorkDays(cal, s2, Math.max(length, 1))) }}>
                   {n > 0 ? `+${n}` : n}d
                 </button>
               ))}
@@ -207,7 +218,10 @@ export function ActivityPanel({
               <button type="button" className="text-xs text-primary-ink hover:underline" onClick={() => setPickAfter((v) => !v)}>{pickAfter ? 'Done' : 'Change'}</button>
             </div>
             {!pickAfter ? (
-              <p className="text-sm">{Object.keys(after).length === 0 ? <span className="text-muted-foreground">Nothing · any time</span> : Object.keys(after).map((id) => others.find((o) => o.id === id)?.name).filter(Boolean).join(', ')}</p>
+              <p className="text-sm">{Object.keys(after).length === 0 ? <span className="text-muted-foreground">Nothing · any time</span> : Object.entries(after).map(([id, l]) => {
+                const name = others.find((o) => o.id === id)?.name
+                return name ? `${name}${l.kind === 'SS' ? ' (starts with it)' : ''}${l.lag ? ` ${l.lag > 0 ? '+' : ''}${l.lag}d` : ''}` : null
+              }).filter(Boolean).join(', ')}</p>
             ) : (
               <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border text-sm">
                 {others.map((o) => {
@@ -216,21 +230,44 @@ export function ActivityPanel({
                     <li key={o.id} className="flex items-center gap-2 px-2.5 py-1.5">
                       <input type="checkbox" checked={on} id={`after-${o.id}`} className="size-4" onChange={(e) => setAfter((cur) => {
                         const next = { ...cur }
-                        if (e.target.checked) next[o.id] = 0
+                        if (e.target.checked) next[o.id] = { lag: 0, kind: 'FS' }
                         else delete next[o.id]
                         return next
                       })} />
                       <label htmlFor={`after-${o.id}`} className="min-w-0 flex-1 truncate">{o.name}</label>
                       {on && (
-                        <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                          + <input type="number" value={after[o.id]} min={-30} max={90} onChange={(e) => setAfter((cur) => ({ ...cur, [o.id]: Number(e.target.value) || 0 }))} className="w-12 rounded border bg-background px-1 py-0.5 text-right tabular-nums" /> days
-                        </label>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <select aria-label={`How it follows ${o.name}`} value={after[o.id].kind} onChange={(e) => setAfter((cur) => ({ ...cur, [o.id]: { ...cur[o.id], kind: e.target.value as LinkKind } }))} className="h-6 rounded border bg-background px-1 text-xs">
+                            <option value="FS">after it ends</option>
+                            <option value="SS">with it</option>
+                          </select>
+                          + <input type="number" aria-label={`Working days after ${o.name}`} value={after[o.id].lag} min={-30} max={90} onChange={(e) => setAfter((cur) => ({ ...cur, [o.id]: { ...cur[o.id], lag: Number(e.target.value) || 0 } }))} className="w-12 rounded border bg-background px-1 py-0.5 text-right tabular-nums" /> d
+                        </span>
                       )}
                     </li>
                   )
                 })}
               </ul>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="act-site" className="flex items-center gap-1 text-xs"><MapPin className="size-3" /> Site</Label>
+              <select id="act-site" value={a.site_id ?? ''} disabled={busy} className="h-9 rounded-md border bg-background px-2 text-sm"
+                onChange={(e) => onChange({ site_id: e.target.value || null, push: false }, `${a.name}: site`)}>
+                <option value="">All sites</option>
+                {(schedule.sites ?? []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="act-person" className="flex items-center gap-1 text-xs"><UserRound className="size-3" /> Who runs it</Label>
+              <select id="act-person" value={a.assigned_user_id ?? ''} disabled={busy} className="h-9 rounded-md border bg-background px-2 text-sm"
+                onChange={(e) => onChange({ assigned_user_id: e.target.value || null, push: false }, `${a.name}: who runs it`)}>
+                <option value="">Nobody named</option>
+                {(schedule.people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -275,6 +312,7 @@ export function ActivityPanel({
       <section className="grid gap-3 p-4 text-sm sm:grid-cols-2">
         <div className="flex flex-col gap-1">
           <h3 className="flex items-center gap-1.5 font-medium"><Handshake className="size-4 text-muted-foreground" /> Who is doing it</h3>
+          {a.assigned_to && <p className="flex items-center gap-1"><UserRound className="size-3.5 text-muted-foreground" /> {a.assigned_to} runs it</p>}
           {a.work_orders.length === 0 ? (
             <p className="text-muted-foreground">No work order. <Link className="text-primary-ink hover:underline" to="/subcontract/work-orders">Give it to a subcontractor</Link></p>
           ) : a.work_orders.map((w) => (

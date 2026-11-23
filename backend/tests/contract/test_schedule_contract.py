@@ -72,8 +72,9 @@ async def _user(engine, org_id, role: str, policy: str = '{"mode": "all_projects
 
 async def _project(engine, org_id, name="Villa Kakkanad") -> tuple[uuid.UUID, uuid.UUID]:
     project_id, site_id = uuid.uuid4(), uuid.uuid4()
-    await _exec(engine, "INSERT INTO projects (id, organization_id, name, created_at, updated_at) "
-                        "VALUES (:id, :org, :name, now(), now())", id=project_id, org=org_id, name=name)
+    # Every day worked: the calendar projects had before 0567 (the tests below that count Sundays off set it).
+    await _exec(engine, "INSERT INTO projects (id, organization_id, name, work_week, created_at, updated_at) "
+                        "VALUES (:id, :org, :name, '1111111', now(), now())", id=project_id, org=org_id, name=name)
     await _exec(engine, "INSERT INTO sites (id, project_id, organization_id, name, status, created_at, updated_at) "
                         "VALUES (:id, :p, :org, 'Main building', 'active', now(), now())",
                 id=site_id, p=project_id, org=org_id)
@@ -532,3 +533,112 @@ async def test_a_drawings_draft_schedule_is_added_in_order_and_never_overwrites(
     _, engineer = await _user(test_engine, ctx["org"], "site_engineer")
     assert (await client.post(f"{url}/from-drawing", json={"start": "2026-12-01", "activities": [
         {"name": "X", "days": 1}]}, headers=_h(engineer))).status_code == 403
+
+
+# --- QA Step 11 (23 Nov 2026): working calendar, "starts with", site and person, approved programme, export ---------
+
+async def _set_calendar(client, ctx, week="1111110", holidays=()):
+    r = await client.patch(f"/projects/{ctx['project']}/start", json={"work_week": week, "holidays": list(holidays)},
+                           headers=_h(ctx["admin"]))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def test_quick_plan_skips_sundays_and_holidays(client, ctx):
+    await _set_calendar(client, ctx, holidays=["2026-12-08"])
+    ids = [await _section(client, ctx, n) for n in ("Footings", "Columns")]
+    # Sat 5 Dec 2026: Footings 3 working days = Sat 5, Mon 7, Wed 9 (Sun 6 off, Tue 8 a holiday).
+    r = await client.post(f"/projects/{ctx['project']}/schedule/sequence",
+                          json={"start": "2026-12-05", "items": [{"id": ids[0], "days": 3}, {"id": ids[1], "days": 2}]},
+                          headers=_h(ctx["admin"]))
+    assert r.status_code == 200, r.text
+    sched = r.json()["schedule"]
+    assert (_act(sched, ids[0])["start"], _act(sched, ids[0])["end"]) == ("2026-12-05", "2026-12-09")
+    assert (_act(sched, ids[1])["start"], _act(sched, ids[1])["end"]) == ("2026-12-10", "2026-12-11")
+    assert _act(sched, ids[0])["duration"] == 3
+    assert (sched["project"]["work_week"], sched["project"]["holidays"]) == ("1111110", ["2026-12-08"])
+    # Every day off is refused.
+    r = await client.patch(f"/projects/{ctx['project']}/start", json={"work_week": "0000000"}, headers=_h(ctx["admin"]))
+    assert r.status_code == 422
+
+
+async def test_a_new_project_starts_with_sunday_off(client, ctx, test_engine):
+    pid = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO projects (id, organization_id, name, created_at, updated_at) "
+                             "VALUES (:id, :org, 'New one', now(), now())", id=pid, org=ctx["org"])
+    week = (await _exec(test_engine, "SELECT work_week FROM projects WHERE id = :id", id=pid)).scalar()
+    assert week == "1111110"
+
+
+async def test_starts_with_runs_work_alongside_and_pushes_on_the_start(client, ctx):
+    masonry, electrical = await _section(client, ctx, "Masonry"), await _section(client, ctx, "Electrical")
+    await _patch(client, ctx, masonry, start="2026-12-01", end="2026-12-20")
+    await _patch(client, ctx, electrical, start="2026-12-01", end="2026-12-10")
+    r = await _patch(client, ctx, electrical, after=[{"id": masonry, "lag": 5, "kind": "SS"}])
+    assert r.status_code == 200, r.text
+    sched = r.json()["schedule"]
+    # Five days after masonry starts, not after it ends (20 Dec).
+    assert _act(sched, electrical)["start"] == "2026-12-06"
+    assert _act(sched, electrical)["after"] == [{"id": masonry, "lag": 5, "kind": "SS"}]
+    # Masonry starting later moves electrical with it.
+    r = await _patch(client, ctx, masonry, start="2026-12-04", end="2026-12-23")
+    assert _act(r.json()["schedule"], electrical)["start"] == "2026-12-09"
+    assert any(m["id"] == electrical for m in r.json()["moved"])
+
+
+async def test_site_and_who_runs_it_are_set_and_cleared(client, ctx, test_engine):
+    aid = await _section(client, ctx, "Slab")
+    se_id, se = await _user(test_engine, ctx["org"], "site_engineer")
+    r = await _patch(client, ctx, aid, site_id=str(ctx["site"]), assigned_user_id=str(se_id))
+    assert r.status_code == 200, r.text
+    a = _act(r.json()["schedule"], aid)
+    assert (a["site_id"], a["site_name"], a["assigned_user_id"], a["assigned_to"]) == (
+        str(ctx["site"]), "Main building", str(se_id), "T")
+    sched = r.json()["schedule"]
+    assert sched["sites"] == [{"id": str(ctx["site"]), "name": "Main building"}]
+    assert {p["id"] for p in sched["people"]} >= {str(se_id), str(ctx["admin_id"])}
+    r = await _patch(client, ctx, aid, site_id=None, assigned_user_id=None)
+    a = _act(r.json()["schedule"], aid)
+    assert (a["site_id"], a["assigned_user_id"]) == (None, None)
+    # Someone from another company is refused.
+    other_org = await _org(test_engine)
+    stranger, _ = await _user(test_engine, other_org, "site_engineer")
+    assert (await _patch(client, ctx, aid, assigned_user_id=str(stranger))).status_code == 422
+    # The site engineer reads the schedule without the people list or value shares.
+    mine = await _schedule(client, ctx, se)
+    assert "people" not in mine and all("weight" not in x for x in mine["activities"])
+
+
+async def test_the_approved_programme_shows_every_move_against_it(client, ctx):
+    a, b = await _section(client, ctx, "Footings"), await _section(client, ctx, "Slab")
+    url = f"/projects/{ctx['project']}/schedule/baselines"
+    assert (await client.post(url, json={}, headers=_h(ctx["admin"]))).status_code == 422  # nothing dated yet
+    await _patch(client, ctx, a, start="2026-12-01", end="2026-12-05")
+    await _patch(client, ctx, b, start="2026-12-06", end="2026-12-10", after=[{"id": a, "lag": 0}])
+    r = await client.post(url, json={}, headers=_h(ctx["admin"]))
+    assert r.status_code == 201, r.text
+    base = r.json()["schedule"]["summary"]["baseline"]
+    assert (base["name"], base["finish"], base["slip_days"]) == ("Approved programme", "2026-12-10", 0)
+    # Footings take 3 days longer: slab is pushed, and both show the move against the approved dates.
+    r = await _patch(client, ctx, a, start="2026-12-01", end="2026-12-08")
+    sched = r.json()["schedule"]
+    assert _act(sched, b)["baseline"] == {"start": "2026-12-06", "end": "2026-12-10"}
+    assert (_act(sched, a)["baseline_slip_days"], _act(sched, b)["baseline_slip_days"]) == (3, 3)
+    assert sched["summary"]["baseline"]["slip_days"] == 3
+    # A revised programme becomes the one compared with; both are listed.
+    r = await client.post(url, json={"note": "EOT for rain"}, headers=_h(ctx["admin"]))
+    assert r.json()["schedule"]["summary"]["baseline"]["name"] == "Revised programme 1"
+    listed = (await client.get(url, headers=_h(ctx["admin"]))).json()
+    assert [x["name"] for x in listed] == ["Revised programme 1", "Approved programme"]
+
+
+async def test_the_programme_exports_to_excel(client, ctx):
+    from openpyxl import load_workbook
+
+    a = await _section(client, ctx, "Footings")
+    await _patch(client, ctx, a, start="2026-12-01", end="2026-12-05", site_id=str(ctx["site"]))
+    r = await client.get(f"/projects/{ctx['project']}/schedule/export", headers=_h(ctx["admin"]))
+    assert r.status_code == 200 and "programme.xlsx" in r.headers["content-disposition"]
+    rows = [[c for c in row] for row in load_workbook(io.BytesIO(r.content)).active.iter_rows(values_only=True)]
+    head = next(i for i, row in enumerate(rows) if row[0] == "No.")
+    assert rows[head + 1][1:3] == ["Footings", "Main building"] and rows[head + 1][6] == 5

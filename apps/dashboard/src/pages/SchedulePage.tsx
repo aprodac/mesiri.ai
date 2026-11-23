@@ -3,7 +3,7 @@ import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, CalendarCheck2, CalendarRange, CheckCircle2, Clock, FileSpreadsheet, Flame, Gauge, ListOrdered, MessageCircle, Plus, Rocket,
+  AlertTriangle, BadgeCheck, CalendarCheck2, CalendarDays, CalendarRange, CheckCircle2, Clock, Download, FileSpreadsheet, Flame, Gauge, ListOrdered, MessageCircle, Plus, Rocket,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -12,14 +12,15 @@ import { Callout, PageError, Segmented, StatStrip, type Stat } from '@/component
 import { EmptyState } from '@/components/page/page-kit'
 import { ActivityPanel, StateChip } from '@/components/schedule/activity-panel'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
-import { AddActivityDialog, ConfirmChangeDialog, QuickPlanDialog } from '@/components/schedule/dialogs'
+import { AddActivityDialog, ConfirmChangeDialog, QuickPlanDialog, WorkCalendarDialog } from '@/components/schedule/dialogs'
 import { Gantt, STATE_BAR, type Zoom } from '@/components/schedule/gantt'
 import { ProjectPickList, StageChip, usePlanningProject } from '@/components/schedule/project-picker'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import {
-  addDays, createActivity, dayNum, daysBetween, deleteActivity, fetchSchedule, plural, sequenceActivities, shortDay, updateActivity,
+  addDays, approveProgramme, createActivity, dayNum, daysBetween, deleteActivity, endForWorkDays, exportProgramme, fetchSchedule, nextWorkDay,
+  plural, sequenceActivities, shortDay, updateActivity, updateProjectStart, weekWords, workCalendar,
   type Activity, type ActivityUpdate, type Schedule, type ScheduleChange,
 } from '@/lib/schedule'
 import { useReadOnly } from '@/lib/trial'
@@ -76,6 +77,8 @@ function ScheduleView({ projectId }: { projectId: string }) {
   const [quick, setQuick] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
+  const [calOpen, setCalOpen] = React.useState(false)
+  const [site, setSite] = React.useState('')
 
   const put = (s: Schedule) => queryClient.setQueryData(['schedule', projectId], s)
   const refreshOthers = () => { for (const k of ['lifecycle', 'project-start']) queryClient.invalidateQueries({ queryKey: [k] }) }
@@ -101,6 +104,25 @@ function ScheduleView({ projectId }: { projectId: string }) {
     onSuccess: (r) => { put(r.schedule); refreshOthers(); setAdding(false); if (r.focus) select(r.focus); toast.success('Added to the schedule') },
     onError: (e) => toast.error('Not added', apiErrorMessage(e)),
   })
+  const saveCalendar = useMutation({
+    mutationFn: (b: { work_week: string; holidays: string[] }) => updateProjectStart(projectId, b),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedule', projectId] }); refreshOthers(); setCalOpen(false); toast.success('Working days saved') },
+    onError: (e) => toast.error('Not saved', apiErrorMessage(e)),
+  })
+  const approve = useMutation({
+    mutationFn: () => approveProgramme(projectId),
+    onSuccess: (r) => { put(r.schedule); toast.success(`${r.schedule.summary.baseline?.name ?? 'Programme'} kept`, 'From now on every move shows against these dates.') },
+    onError: (e) => toast.error('Not approved', apiErrorMessage(e)),
+  })
+  const download = useMutation({
+    mutationFn: () => exportProgramme(projectId),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob)
+      Object.assign(document.createElement('a'), { href: url, download: `${query.data?.project.name ?? 'project'} programme.xlsx` }).click()
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    },
+    onError: (e) => toast.error('Not exported', apiErrorMessage(e)),
+  })
   const remove = useMutation({
     mutationFn: (id: string) => deleteActivity(projectId, id),
     onSuccess: () => { select(null); queryClient.invalidateQueries({ queryKey: ['schedule', projectId] }); refreshOthers(); toast.success('Removed') },
@@ -108,8 +130,10 @@ function ScheduleView({ projectId }: { projectId: string }) {
   })
 
   const ask = (id: string, body: ActivityUpdate, label: string) => {
-    // Marking finished or reopening moves nothing: save at once. Dates and links are previewed first.
-    if (body.done !== undefined) {
+    // Marking finished or reopening, or naming its site or who runs it, moves nothing: save at once. Dates and links
+    // are previewed first.
+    const movesNothing = body.done !== undefined || Object.keys(body).every((k) => ['site_id', 'assigned_user_id', 'push'].includes(k))
+    if (movesNothing) {
       save.mutate({ id, body })
       return
     }
@@ -125,13 +149,16 @@ function ScheduleView({ projectId }: { projectId: string }) {
   const today = s.today
   // A long project opens on months (the whole job at a glance); a short one, or a close look, on days.
   const span = s.summary.first_start && s.summary.planned_finish ? daysBetween(s.summary.first_start, s.summary.planned_finish) : 0
-  const view: Zoom = zoom ?? (span > 75 ? 'month' : 'week')
+  const view: Zoom = zoom ?? (span > 150 ? 'fit' : span > 75 ? 'month' : 'week')
+  const cal = workCalendar(s.project)
+  const sites = s.sites ?? []
   const canEdit = s.can_edit && !readOnly
   const counts = s.summary.counts
   const attention = s.activities.filter((a) => a.state === 'late' || a.state === 'behind')
   const undated = s.activities.filter((a) => !a.start)
   const critical = s.activities.filter((a) => a.critical && a.state !== 'done')
   const list = s.activities.filter((a) => {
+    if (site && a.site_id && a.site_id !== site) return false
     if (filter === 'attention') return a.state === 'late' || a.state === 'behind'
     if (filter === 'week') return inWeek(a, today) || a.state === 'late'
     if (filter === 'critical') return a.critical && a.state !== 'done'
@@ -177,6 +204,14 @@ function ScheduleView({ projectId }: { projectId: string }) {
         <div className="flex flex-wrap items-center gap-2" data-guide="schedule.add">
           {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><ActionIcon kind="import-excel" className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
           {canEdit && s.activities.length > 0 && undated.length !== s.activities.length && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
+          {canEdit && <Button variant="outline" className="gap-2" onClick={() => setCalOpen(true)} title={`Working days: ${weekWords(cal.week)}`}><CalendarDays className="size-4" /><span className="hidden lg:inline">{weekWords(cal.week)}</span></Button>}
+          {canEdit && s.summary.scheduled > 0 && (
+            <Button variant="outline" className="gap-2" disabled={approve.isPending} title="Keep these dates as the approved programme: later moves show against them"
+              onClick={() => window.confirm(s.summary.baseline ? `Approve the programme as it is now? It replaces "${s.summary.baseline.name}" as the one compared with (that one stays listed).` : 'Approve the programme as it is now? Every later move shows against these dates.') && approve.mutate()}>
+              <BadgeCheck className="size-4" /><span className="hidden lg:inline">{s.summary.baseline ? 'Approve again' : 'Approve programme'}</span>
+            </Button>
+          )}
+          {s.summary.scheduled > 0 && <Button variant="outline" className="gap-2" disabled={download.isPending} onClick={() => download.mutate()} title="The programme as Excel, for the client or the architect"><Download className="size-4" /><span className="hidden lg:inline">Excel</span></Button>}
           {canEdit && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> Activity</Button>}
         </div>
       </Heading>
@@ -205,6 +240,14 @@ function ScheduleView({ projectId }: { projectId: string }) {
           )}
 
           <StatStrip stats={stats} guide="schedule.stats" />
+          {s.summary.baseline && (
+            <p className="-mt-2 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              <BadgeCheck className="size-3.5" /> Compared with <strong className="text-foreground">{s.summary.baseline.name}</strong>, {shortDay(s.summary.baseline.locked_at.slice(0, 10), today)}{s.summary.baseline.locked_by ? ` by ${s.summary.baseline.locked_by}` : ''}:
+              <span className={cn('font-semibold', s.summary.baseline.slip_days > 0 ? 'text-destructive' : 'text-success')}>
+                {s.summary.baseline.slip_days > 0 ? `planned finish ${plural(s.summary.baseline.slip_days, 'day')} later` : s.summary.baseline.slip_days < 0 ? `planned finish ${plural(-s.summary.baseline.slip_days, 'day')} earlier` : 'planned finish unchanged'}
+              </span>
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented<Filter>
@@ -220,10 +263,16 @@ function ScheduleView({ projectId }: { projectId: string }) {
                 ...(undated.length ? [{ value: 'undated' as Filter, label: 'No dates', count: undated.length }] : []),
               ]}
             />
+            {sites.length > 1 && (
+              <select aria-label="Site" value={site} onChange={(e) => setSite(e.target.value)} className="h-8 rounded-md border bg-background px-2 text-sm">
+                <option value="">All sites</option>
+                {sites.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+              </select>
+            )}
             {!isMobile && (
               <div className="flex items-center gap-2">
                 <Legend />
-                <Segmented<Zoom> label="Zoom" value={view} onChange={setZoom} options={[{ value: 'week', label: 'Days' }, { value: 'month', label: 'Months' }]} />
+                <Segmented<Zoom> label="Zoom" value={view} onChange={setZoom} options={[{ value: 'week', label: 'Days' }, { value: 'month', label: 'Months' }, { value: 'fit', label: 'Whole job' }]} />
                 <Button size="sm" variant="outline" onClick={() => setTodayTick((n) => n + 1)}>Today</Button>
               </div>
             )}
@@ -248,8 +297,10 @@ function ScheduleView({ projectId }: { projectId: string }) {
                     const a = s.activities.find((x) => x.id === id)
                     if (!a?.start || !a.end) return
                     select(id)
-                    ask(id, a.milestone ? { start: addDays(a.start, days), milestone: true } : { start: addDays(a.start, days), end: addDays(a.end, days) },
-                      `Move ${a.name} ${days > 0 ? 'later' : 'earlier'} by ${plural(Math.abs(days), 'day')}`)
+                    // Lands on a working day and keeps its working days (a Sunday or a holiday is skipped).
+                    const from = nextWorkDay(cal, addDays(a.start, days))
+                    ask(id, a.milestone ? { start: from, milestone: true } : { start: from, end: endForWorkDays(cal, from, a.duration ?? 1) },
+                      `Move ${a.name} ${days > 0 ? 'later' : 'earlier'} to ${shortDay(from, today)}`)
                   }}
                   onAddDates={(id) => select(id)}
                 />
@@ -303,11 +354,16 @@ function ScheduleView({ projectId }: { projectId: string }) {
         open={quick}
         onOpenChange={setQuick}
         activities={s.activities}
+        project={s.project}
+        today={today}
         defaultStart={s.project.start_date ?? today}
         saving={sequence.isPending}
         onSubmit={(start, items) => sequence.mutate({ start, items })}
+        onCalendar={() => setCalOpen(true)}
       />
-      <AddActivityDialog open={adding} onOpenChange={setAdding} activities={s.activities} defaultStart={s.project.start_date && s.project.start_date > today ? s.project.start_date : today} saving={add.isPending} onSubmit={(b) => add.mutate(b)} />
+      <AddActivityDialog open={adding} onOpenChange={setAdding} activities={s.activities} project={s.project} sites={sites} people={s.people ?? []}
+        defaultStart={s.project.start_date && s.project.start_date > today ? s.project.start_date : today} saving={add.isPending} onSubmit={(b) => add.mutate(b)} />
+      {canEdit && <WorkCalendarDialog open={calOpen} onOpenChange={setCalOpen} project={s.project} saving={saveCalendar.isPending} onSave={(b) => saveCalendar.mutate(b)} />}
       <BoqImportDialog projectId={projectId} projectName={s.project.name} open={importing} onOpenChange={setImporting} />
     </div>
   )

@@ -87,10 +87,11 @@ async def _user(engine, org_id, role: str, policy: str = '{"mode": "all_projects
 async def _project(engine, org_id) -> uuid.UUID:
     project_id, site_id = uuid.uuid4(), uuid.uuid4()
     async with engine.begin() as conn:
+        # Every day worked (the calendar before 0567): the dates below count calendar days.
         await conn.execute(
             sa.text(
-                "INSERT INTO projects (id, organization_id, name, created_at, updated_at) "
-                "VALUES (:id, :org, 'Villa Kakkanad', now(), now())"
+                "INSERT INTO projects (id, organization_id, name, work_week, created_at, updated_at) "
+                "VALUES (:id, :org, 'Villa Kakkanad', '1111111', now(), now())"
             ),
             {"id": project_id, "org": org_id},
         )

@@ -10,6 +10,7 @@ Every function takes the request's connection and never commits.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from collections import defaultdict
 from decimal import Decimal
@@ -31,9 +32,16 @@ def _pct(value: Decimal | None) -> int | None:
 
 async def project(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> dict | None:
     row = (await conn.execute(text(
-        "SELECT id, name, client, stage, start_date, planned_finish, status FROM projects "
+        "SELECT id, name, client, stage, start_date, planned_finish, status, work_week, holidays FROM projects "
         "WHERE id = :p AND organization_id = :org"), {"p": project_id, "org": org})).mappings().first()
     return dict(row) if row else None
+
+
+def calendar(proj: dict | None) -> logic.Calendar:
+    """The project's working calendar (its days off and holidays); every day when it has none."""
+    if not proj:
+        return logic.EVERY_DAY
+    return logic.Calendar(proj.get("work_week") or "1111111", proj.get("holidays") or ())
 
 
 async def measured_by_line(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> dict[uuid.UUID, Decimal]:
@@ -59,9 +67,10 @@ async def _sections(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID
 
 
 async def links(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
-    return [{"predecessor": r["predecessor_id"], "successor": r["successor_id"], "lag": r["lag_days"]}
+    return [{"predecessor": r["predecessor_id"], "successor": r["successor_id"], "lag": r["lag_days"],
+             "kind": r["kind"]}
             for r in (await conn.execute(text(
-                "SELECT l.predecessor_id, l.successor_id, l.lag_days FROM work_package_links l "
+                "SELECT l.predecessor_id, l.successor_id, l.lag_days, l.kind FROM work_package_links l "
                 "JOIN work_packages w ON w.id = l.successor_id "
                 "WHERE l.organization_id = :org AND w.project_id = :p"), {"org": org, "p": project_id})).mappings()]
 
@@ -158,6 +167,7 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
     """The whole schedule as the dashboard and WhatsApp read it: activities with their state, the links, the
     knock-on of what is late, the critical path, and a summary."""
     proj = await project(conn, org, project_id)
+    cal = calendar(proj)
     sections = await _sections(conn, org, project_id)
     link_rows = await links(conn, org, project_id)
     measured = await measured_by_line(conn, org, project_id)
@@ -191,26 +201,29 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
             "actual_start": s["actual_start"] or seen.get("first_day"), "actual_end": s["actual_end"],
         })
     try:
-        critical = logic.critical(acts, link_rows)
-        knock = logic.knock_on(acts, link_rows, today)
+        critical = logic.critical(acts, link_rows, cal)
+        knock = logic.knock_on(acts, link_rows, today, cal)
     except logic.CycleError:
         critical, knock = set(), {"moves": {}, "planned_finish": None, "forecast_finish": None, "slip_days": 0}
-    conflicts = logic.conflicts(acts, link_rows)
+    conflicts = logic.conflicts(acts, link_rows, cal)
     after: dict[Any, list[dict]] = defaultdict(list)
     for lk in link_rows:
-        after[lk["successor"]].append({"id": lk["predecessor"], "lag": lk["lag"]})
+        after[lk["successor"]].append({"id": lk["predecessor"], "lag": lk["lag"], "kind": lk["kind"]})
+    approved = await latest_baseline(conn, org, project_id)
+    approved_by_id = {str(x["id"]): x for x in (approved or {}).get("activities") or []}
+    value_total = sum((ln["contract_value"] or Decimal(0) for ls in by_section.values() for ln in ls), Decimal(0))
 
     out = []
     counts: dict[str, int] = defaultdict(int)
     for s, a in zip(sections, acts, strict=True):
-        state = logic.assess(a, today)
+        state = logic.assess(a, today, cal)
         counts[state["state"]] += 1
         seen = updates.get(s["id"]) or {}
         lines = by_section.get(s["id"], [])
         out.append({
             "id": s["id"], "code": s["code"], "name": s["name"], "site_id": s["site_id"], "site_name": s["site_name"],
             "start": a["start"], "end": a["end"], "milestone": a["milestone"], "done": a["done"],
-            "duration": logic.duration(a) if logic.scheduled(a) else None,
+            "duration": logic.duration(a, cal) if logic.scheduled(a) else None,
             "actual_start": a["actual_start"], "actual_end": a["actual_end"],
             "progress": _pct(a["progress"]), "expected": _pct(state["expected"]),
             "state": state["state"], "days_late": state["days_late"], "forecast_end": state["forecast_end"],
@@ -224,7 +237,13 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
                        "planned_quantity": str(ln["planned_quantity"]), "done_quantity": str(ln["done_quantity"]),
                        "progress": _pct(min(ln["done_quantity"] / ln["planned_quantity"], Decimal(1)))
                        if ln["planned_quantity"] > 0 else None} for ln in lines],
-            "sort_order": s["sort_order"],
+            "sort_order": s["sort_order"], "assigned_user_id": s["assigned_user_id"],
+            # The approved programme's dates for it (None: added since, or none approved) and how far its end moved.
+            "baseline": _baseline_of(approved_by_id.get(str(s["id"]))),
+            "baseline_slip_days": _slip(approved_by_id.get(str(s["id"])), a["end"]),
+            # Its share of the BOQ's contract value (0..1): Quick plan spreads the days by it. Money-free.
+            "weight": float(sum((ln["contract_value"] or Decimal(0) for ln in lines), Decimal(0)) / value_total)
+            if value_total else None,
         })
     planned_finish = proj["planned_finish"] if proj else None
     forecast = knock["forecast_finish"]
@@ -241,9 +260,83 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
         "open_issues": len(issues),
         "issues_on_no_activity": sum(1 for i in issues if not any(
             _on_section(i, s["id"], s["site_id"]) for s in sections)),
+        "baseline": None if approved is None else {
+            "id": approved["id"], "name": approved["name"], "note": approved["note"], "locked_at": approved["locked_at"],
+            "locked_by": approved["locked_by_name"], "finish": approved["finish"],
+            "slip_days": (knock["planned_finish"] - approved["finish"]).days
+            if knock["planned_finish"] and approved["finish"] else 0},
     }
     return {"project": proj, "today": today, "activities": out, "links": link_rows, "conflicts": conflicts,
-            "summary": summary}
+            "summary": summary, "calendar": {"work_week": cal.week, "holidays": sorted(cal.holidays)},
+            "sites": await _project_sites(conn, org, project_id), "people": await _people(conn, org, project_id)}
+
+
+async def _project_sites(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    """The project's sites, for planning an activity on one (Villa 1's slab before Villa 2's)."""
+    return [dict(r) for r in (await conn.execute(text(
+        "SELECT id, name FROM sites WHERE organization_id = :org AND project_id = :p "
+        "AND COALESCE(status, 'active') <> 'archived' ORDER BY name"), {"org": org, "p": project_id})).mappings()]
+
+
+async def _people(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    """Who may run an activity: the active people on the project, and those who see every project."""
+    return [dict(r) for r in (await conn.execute(text(
+        "SELECT u.id, u.full_name AS name, u.role FROM users u WHERE u.organization_id = :org AND u.status = 'active' "
+        "AND (EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = :p AND m.user_id = u.id) "
+        "OR u.access_policy ->> 'mode' = 'all_projects' OR upper(u.role) IN ('ADMIN', 'OWNER')) "
+        "ORDER BY u.full_name"), {"org": org, "p": project_id})).mappings()]
+
+
+def _day(value: Any) -> datetime.date | None:
+    return datetime.date.fromisoformat(value) if isinstance(value, str) else value
+
+
+def _baseline_of(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    return {"start": _day(row.get("start")), "end": _day(row.get("end"))}
+
+
+def _slip(row: dict | None, end: datetime.date | None) -> int | None:
+    was = _day((row or {}).get("end"))
+    return (end - was).days if was and end else None
+
+
+# -- the approved programme (baseline) ------------------------------------------------------------------------------
+
+async def latest_baseline(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> dict | None:
+    row = (await conn.execute(text(
+        "SELECT b.id, b.name, b.note, b.finish, b.activities, b.locked_at, u.full_name AS locked_by_name "
+        "FROM schedule_baselines b LEFT JOIN users u ON u.id = b.locked_by "
+        "WHERE b.organization_id = :org AND b.project_id = :p ORDER BY b.locked_at DESC LIMIT 1"),
+        {"org": org, "p": project_id})).mappings().first()
+    if row is None:
+        return None
+    out = dict(row)
+    if isinstance(out["activities"], str):
+        out["activities"] = json.loads(out["activities"])
+    return out
+
+
+async def baselines(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    return [dict(r) for r in (await conn.execute(text(
+        "SELECT b.id, b.name, b.note, b.finish, b.locked_at, u.full_name AS locked_by "
+        "FROM schedule_baselines b LEFT JOIN users u ON u.id = b.locked_by "
+        "WHERE b.organization_id = :org AND b.project_id = :p ORDER BY b.locked_at DESC"),
+        {"org": org, "p": project_id})).mappings()]
+
+
+async def lock_baseline(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, activities: list[dict],
+                        name: str, note: str | None, user_id: uuid.UUID | None) -> uuid.UUID:
+    """The programme as it stands, copied: each dated activity's start and end."""
+    dated = [{"id": str(a["id"]), "name": a["name"], "start": a["start"].isoformat(), "end": a["end"].isoformat(),
+              "milestone": bool(a["milestone"])} for a in activities if a["start"] and a["end"]]
+    finish = max((a["end"] for a in activities if a["end"]), default=None)
+    return (await conn.execute(text(
+        "INSERT INTO schedule_baselines (organization_id, project_id, name, note, finish, activities, locked_by) "
+        "VALUES (:org, :p, :name, :note, :finish, CAST(:acts AS jsonb), :by) RETURNING id"),
+        {"org": org, "p": project_id, "name": name, "note": note, "finish": finish, "acts": json.dumps(dated),
+         "by": user_id})).scalar_one()
 
 
 # -- writes -----------------------------------------------------------------------------------------------------------
@@ -271,12 +364,14 @@ async def update_section(conn: AsyncConnection, section_id: uuid.UUID, changes: 
 
 
 async def replace_predecessors(conn: AsyncConnection, org: uuid.UUID, successor: uuid.UUID,
-                               predecessors: list[tuple[uuid.UUID, int]]) -> None:
+                               predecessors: list[tuple[Any, ...]]) -> None:
+    """``predecessors``: (id, lag) or (id, lag, kind); kind "FS" (after it ends) unless given."""
     await conn.execute(text("DELETE FROM work_package_links WHERE successor_id = :s"), {"s": successor})
-    for pred, lag in predecessors:
+    for pred, lag, *rest in predecessors:
         await conn.execute(text(
-            "INSERT INTO work_package_links (organization_id, predecessor_id, successor_id, lag_days) "
-            "VALUES (:org, :p, :s, :lag)"), {"org": org, "p": pred, "s": successor, "lag": lag})
+            "INSERT INTO work_package_links (organization_id, predecessor_id, successor_id, lag_days, kind) "
+            "VALUES (:org, :p, :s, :lag, :kind)"),
+            {"org": org, "p": pred, "s": successor, "lag": lag, "kind": (rest[0] if rest else None) or "FS"})
 
 
 async def section_in_use(conn: AsyncConnection, section_id: uuid.UUID) -> str | None:

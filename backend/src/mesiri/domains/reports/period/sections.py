@@ -173,7 +173,8 @@ def _line_weight(line: dict[str, Any]) -> Decimal | None:
 
 
 def work_numbers(activities: list[dict[str, Any]], lines: list[dict[str, Any]], work: list[dict[str, Any]],
-                 period: Period, today: datetime.date, in_site: Callable[[Any], bool]) -> dict[str, Any]:
+                 period: Period, today: datetime.date, in_site: Callable[[Any], bool],
+                 calendar: dict[str, Any] | None = None) -> dict[str, Any]:
     """The share of the whole job done in the period and planned for it, and progress to date against the plan.
 
     Pure. Lines are weighted by contract value when every line has one, else equally: ``schedule.logic
@@ -181,6 +182,8 @@ def work_numbers(activities: list[dict[str, Any]], lines: list[dict[str, Any]], 
     activity's weight times the share of its planned days that fall in the period."""
     from mesiri.domains.schedule import logic
 
+    # The project's working calendar (the Gantt's own), so a Sunday is not planned work here either.
+    cal = logic.Calendar((calendar or {}).get("work_week") or "1111111", (calendar or {}).get("holidays") or ())
     acts = [a for a in activities if in_site(a.get("site_id")) or a.get("site_id") is None]
     line_ids = {str(ln["id"]) for a in acts for ln in a.get("lines") or []}
     rows = [ln for ln in lines if str(ln["id"]) in line_ids and Decimal(str(ln.get("planned_quantity") or 0)) > 0]
@@ -216,8 +219,9 @@ def work_numbers(activities: list[dict[str, Any]], lines: list[dict[str, Any]], 
             if not w_a:
                 continue
             shape = {"start": _date(a["start"]), "end": _date(a["end"]), "milestone": a.get("milestone")}
-            plan_sum += w_a * (logic.expected_progress(shape, period.end) - logic.expected_progress(shape, before))
-            exp_sum += w_a * logic.expected_progress(shape, today)
+            plan_sum += w_a * (logic.expected_progress(shape, period.end, cal)
+                               - logic.expected_progress(shape, before, cal))
+            exp_sum += w_a * logic.expected_progress(shape, today, cal)
         plan_pct, expected_pct = plan_sum / total * 100, exp_sum / total * 100
     return {"done_pct": done_pct, "plan_pct": plan_pct, "expected_pct": expected_pct, "done_by_line": dict(done),
             "other_unit": other_unit, "has_plan": bool(scheduled)}
@@ -235,7 +239,8 @@ def work_status(done_pct: Decimal | None, plan_pct: Decimal | None) -> str:
 async def work(ctx: Ctx) -> dict[str, Any]:
     b = await _boq(ctx)
     sched, lines = b["schedule"], b["lines"]
-    n = work_numbers(sched["activities"], lines, b["work"], ctx.period, ctx.today, ctx.in_site)
+    n = work_numbers(sched["activities"], lines, b["work"], ctx.period, ctx.today, ctx.in_site,
+                     sched.get("calendar"))
     line_by_id = {str(ln["id"]): ln for ln in lines}
     rows = []
     for a in sched["activities"]:

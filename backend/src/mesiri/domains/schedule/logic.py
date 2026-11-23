@@ -9,8 +9,13 @@ here is one of them, as a plain dict:
 duration ("Slab cast", "Handover"). ``progress`` is 0..1 from what site measured (``line_progress``), or None when
 nothing on the BOQ lines can be measured. ``done`` is the PM's "this is finished".
 
-A *link* says "B starts after A" ``{"predecessor", "successor", "lag"}``: B may start on the day after A ends, plus
-``lag`` days (after a milestone, on the milestone's day plus lag).
+A *link* says "B starts after A" ``{"predecessor", "successor", "lag", "kind"}``: kind ``FS`` (the default): B may
+start on the working day after A ends, plus ``lag`` working days (after a milestone, on the milestone's day plus lag);
+kind ``SS`` ("starts with"): B may start ``lag`` working days after A starts (electrical alongside the masonry).
+
+Days are counted on the project's *calendar* (``Calendar``): its weekly days off (Sunday on most Indian sites) and
+holidays are not working days. Lengths are working days. Every function takes ``cal``; the default counts every day,
+as the schedule did before calendars (Step 11 test, 23 Nov 2026).
 
 What the schedule answers, each in one function:
 
@@ -48,6 +53,61 @@ UNSCHEDULED = "unscheduled"
 BEHIND_MARGIN = Decimal("0.15")
 
 
+class Calendar:
+    """Which days are worked: ``week`` is 7 characters, Monday first, "1" worked ("1111110": Sunday off), and
+    ``holidays`` the days off besides (Onam, Diwali). The default works every day."""
+
+    def __init__(self, week: str = "1111111", holidays: Iterable[datetime.date] = ()) -> None:
+        week = (week or "1111111").strip()
+        if len(week) != 7 or set(week) - {"0", "1"} or "1" not in week:
+            week = "1111111"
+        self.week = week
+        self.holidays = frozenset(holidays or ())
+
+    @property
+    def every_day(self) -> bool:
+        return self.week == "1111111" and not self.holidays
+
+    def works(self, day: datetime.date) -> bool:
+        return self.week[day.weekday()] == "1" and day not in self.holidays
+
+    def next_work(self, day: datetime.date) -> datetime.date:
+        """``day`` when it is worked, else the next working day."""
+        for _ in range(400):
+            if self.works(day):
+                return day
+            day += DAY
+        return day
+
+    def shift(self, day: datetime.date, n: int) -> datetime.date:
+        """The ``n``-th working day after ``day`` (before it when negative); ``day`` itself when 0."""
+        if self.every_day or n == 0:
+            return day + DAY * n
+        step = DAY if n > 0 else -DAY
+        left = abs(n)
+        while left:
+            day += step
+            if self.works(day):
+                left -= 1
+        return day
+
+    def count(self, first: datetime.date, last: datetime.date) -> int:
+        """Working days from ``first`` to ``last``, both counted; 0 when ``last`` is before ``first``."""
+        if last < first:
+            return 0
+        if self.every_day:
+            return (last - first).days + 1
+        return sum(1 for i in range((last - first).days + 1) if self.works(first + DAY * i))
+
+    def end_for(self, start: datetime.date, days: int) -> datetime.date:
+        """The last day of ``days`` working days starting on ``start`` (moved to a working day first)."""
+        first = self.next_work(start)
+        return first if days <= 1 else self.shift(first, days - 1)
+
+
+EVERY_DAY = Calendar()
+
+
 class CycleError(ValueError):
     """The links go round in a circle (A after B after A); the message names one of them."""
 
@@ -78,11 +138,11 @@ def scheduled(a: Mapping[str, Any]) -> bool:
     return a.get("start") is not None and a.get("end") is not None
 
 
-def duration(a: Mapping[str, Any]) -> int:
-    """Working length in days (calendar days; a milestone is 0)."""
+def duration(a: Mapping[str, Any], cal: Calendar = EVERY_DAY) -> int:
+    """Working length in days on the calendar (a milestone is 0; never under 1 otherwise)."""
     if a.get("milestone"):
         return 0
-    return (a["end"] - a["start"]).days + 1
+    return max(cal.count(a["start"], a["end"]), 1)
 
 
 def is_done(a: Mapping[str, Any]) -> bool:
@@ -95,16 +155,16 @@ def started(a: Mapping[str, Any]) -> bool:
     return a.get("actual_start") is not None or (progress is not None and progress > 0)
 
 
-def expected_progress(a: Mapping[str, Any], today: datetime.date) -> Decimal:
-    """Share of the planned days already behind us (0 before the start, 1 after the end)."""
+def expected_progress(a: Mapping[str, Any], today: datetime.date, cal: Calendar = EVERY_DAY) -> Decimal:
+    """Share of the planned working days already behind us (0 before the start, 1 after the end)."""
     if today < a["start"]:
         return Decimal(0)
     if today > a["end"] or a.get("milestone"):
         return Decimal(1)
-    return Decimal((today - a["start"]).days) / Decimal(duration(a))
+    return Decimal(cal.count(a["start"], today - DAY)) / Decimal(duration(a, cal))
 
 
-def forecast_end(a: Mapping[str, Any], today: datetime.date) -> datetime.date | None:
+def forecast_end(a: Mapping[str, Any], today: datetime.date, cal: Calendar = EVERY_DAY) -> datetime.date | None:
     """When it will really finish at the pace site has shown; the planned end when nothing says otherwise.
 
     Done: the day it ended (or the planned end). Not started and its start has passed: it starts today and takes its
@@ -120,24 +180,24 @@ def forecast_end(a: Mapping[str, Any], today: datetime.date) -> datetime.date | 
     if not started(a):
         if today <= a["start"]:
             return a["end"]
-        return today + DAY * (duration(a) - 1)
+        return cal.end_for(today, duration(a, cal))
     began = a.get("actual_start") or a["start"]
-    # Days of work already behind us (today's work is not reported yet), and the days left from today on.
-    days_so_far = max((today - began).days, 1)
+    # Working days already behind us (today's work is not reported yet), and the days left from today on.
+    days_so_far = max(cal.count(began, today - DAY), 1)
     if progress is None or progress <= 0:
         return max(a["end"], today)
     total = Decimal(days_so_far) / progress
     left = int((total - days_so_far).to_integral_value(rounding="ROUND_CEILING"))
-    return max(a["end"], today + DAY * max(left - 1, 0))
+    return max(a["end"], cal.end_for(today, max(left, 1)))
 
 
-def assess(a: Mapping[str, Any], today: datetime.date) -> dict[str, Any]:
+def assess(a: Mapping[str, Any], today: datetime.date, cal: Calendar = EVERY_DAY) -> dict[str, Any]:
     """State of one activity on ``today``, with the numbers the screen and the WhatsApp note show."""
     if not scheduled(a):
         return {"state": DONE if is_done(a) else UNSCHEDULED, "days_late": 0, "expected": None, "forecast_end": None,
                 "slip_days": 0}
-    expected = expected_progress(a, today)
-    forecast = forecast_end(a, today)
+    expected = expected_progress(a, today, cal)
+    forecast = forecast_end(a, today, cal)
     slip = max((forecast - a["end"]).days, 0) if forecast else 0
     if is_done(a):
         state, late = DONE, max(((a.get("actual_end") or a["end"]) - a["end"]).days, 0)
@@ -148,7 +208,7 @@ def assess(a: Mapping[str, Any], today: datetime.date) -> dict[str, Any]:
     if today < a["start"]:
         return {"state": NOT_STARTED, "days_late": 0, "expected": expected, "forecast_end": forecast, "slip_days": 0}
     progress = a.get("progress")
-    if not started(a) and today > a["start"]:
+    if not started(a) and cal.count(a["start"], today - DAY) > 0:
         state = BEHIND
     elif progress is not None and expected - progress > BEHIND_MARGIN:
         state = BEHIND
@@ -161,11 +221,15 @@ def assess(a: Mapping[str, Any], today: datetime.date) -> dict[str, Any]:
 
 # -- links -----------------------------------------------------------------------------------------------------------
 
-def earliest_after(pred: Mapping[str, Any], lag: int, succ: Mapping[str, Any] | None = None) -> datetime.date:
-    """The first day a successor may start, plus lag: the day after the predecessor ends; on the predecessor's own day
-    when either is a milestone ("Slab cast" is the day the slab work ends; work after a milestone starts that day)."""
+def earliest_after(pred: Mapping[str, Any], lag: int, succ: Mapping[str, Any] | None = None,
+                   cal: Calendar = EVERY_DAY, kind: str = "FS") -> datetime.date:
+    """The first day a successor may start. ``FS``: the working day after the predecessor ends, plus lag; on the
+    predecessor's own day when either is a milestone ("Slab cast" is the day the slab work ends; work after a milestone
+    starts that day). ``SS``: the predecessor's start, plus lag. Lag is in working days."""
+    if kind == "SS":
+        return cal.next_work(cal.shift(pred["start"], lag))
     same_day = pred.get("milestone") or bool(succ and succ.get("milestone"))
-    return pred["end"] + DAY * ((0 if same_day else 1) + lag)
+    return cal.next_work(cal.shift(pred["end"], (0 if same_day else 1) + lag))
 
 
 def order(ids: Iterable[Any], links: Iterable[Mapping[str, Any]]) -> list[Any]:
@@ -223,6 +287,7 @@ def push(
     changed: Mapping[Any, tuple[datetime.date, datetime.date]],
     *,
     pinned: bool = True,
+    cal: Calendar = EVERY_DAY,
 ) -> dict[Any, tuple[datetime.date, datetime.date]]:
     """New (start, end) for every activity that must move because of ``changed`` (which is included).
 
@@ -247,17 +312,20 @@ def push(
             p = acts.get(link["predecessor"])
             if p is None or not scheduled(p):
                 continue
-            day = earliest_after(p, int(link.get("lag") or 0), a)
+            day = earliest_after(p, int(link.get("lag") or 0), a, cal, link.get("kind") or "FS")
             floor = day if floor is None or day > floor else floor
         if floor is not None and floor > a["start"]:
-            shift = floor - a["start"]
-            a["start"], a["end"] = a["start"] + shift, a["end"] + shift
+            # It keeps its working length: 10 working days stay 10 across a Sunday or a holiday.
+            length = duration(a, cal)
+            a["start"] = floor
+            a["end"] = floor if a.get("milestone") else cal.end_for(floor, length)
             moved[i] = (a["start"], a["end"])
     return moved
 
 
 def knock_on(
-    activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]], today: datetime.date
+    activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]], today: datetime.date,
+    cal: Calendar = EVERY_DAY,
 ) -> dict[str, Any]:
     """What the slipping activities push, at the pace site is going.
 
@@ -270,11 +338,11 @@ def knock_on(
         return {"moves": {}, "planned_finish": None, "forecast_finish": None, "slip_days": 0}
     changed = {}
     for a in acts:
-        f = forecast_end(a, today)
+        f = forecast_end(a, today, cal)
         if f is not None and f > a["end"]:
-            start = a["start"] if started(a) or today <= a["start"] else today
+            start = a["start"] if started(a) or today <= a["start"] else cal.next_work(today)
             changed[a["id"]] = (start, f)
-    new = push(acts, links, changed, pinned=False)
+    new = push(acts, links, changed, pinned=False, cal=cal)
     original = {a["id"]: a for a in acts}
     moves = {i: (e - original[i]["end"]).days for i, (s, e) in new.items() if e != original[i]["end"]}
     planned = max(a["end"] for a in acts)
@@ -283,7 +351,8 @@ def knock_on(
             "slip_days": max((forecast - planned).days, 0)}
 
 
-def critical(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]]) -> set[Any]:
+def critical(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]],
+             cal: Calendar = EVERY_DAY) -> set[Any]:
     """The activities with no slack before the project's last day (zero total float), on the planned dates.
 
     Backward pass: an activity may finish as late as the earliest its successors allow (their latest start, minus
@@ -305,15 +374,22 @@ def critical(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[st
         bound = finish
         for link in succ.get(i, []):
             s_start = latest_start[link["successor"]]
-            gap = (0 if a.get("milestone") or acts[link["successor"]].get("milestone") else 1) + int(link.get("lag") or 0)
-            day = s_start - DAY * gap
+            lag = int(link.get("lag") or 0)
+            if (link.get("kind") or "FS") == "SS":
+                # It must start by the successor's latest start less the lag: its latest end follows from its length.
+                begin = cal.shift(s_start, -lag)
+                day = begin if a.get("milestone") else cal.shift(begin, duration(a, cal) - 1)
+            else:
+                gap = (0 if a.get("milestone") or acts[link["successor"]].get("milestone") else 1) + lag
+                day = cal.shift(s_start, -gap)
             bound = min(bound, day)
         latest_end[i] = bound
-        latest_start[i] = bound if a.get("milestone") else bound - DAY * (duration(a) - 1)
+        latest_start[i] = bound if a.get("milestone") else cal.shift(bound, -(duration(a, cal) - 1))
     return {i for i, a in acts.items() if not is_done(a) and (latest_end[i] - a["end"]).days <= 0}
 
 
-def conflicts(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def conflicts(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[str, Any]],
+              cal: Calendar = EVERY_DAY) -> list[dict[str, Any]]:
     """Links whose planned dates break them: the successor is planned to start before its predecessor allows."""
     acts = _by_id(activities)
     out = []
@@ -321,7 +397,7 @@ def conflicts(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[s
         p, s = acts.get(link["predecessor"]), acts.get(link["successor"])
         if not p or not s or not scheduled(p) or not scheduled(s):
             continue
-        allowed = earliest_after(p, int(link.get("lag") or 0), s)
+        allowed = earliest_after(p, int(link.get("lag") or 0), s, cal, link.get("kind") or "FS")
         if s["start"] < allowed:
             out.append({"predecessor": p["id"], "successor": s["id"], "days": (allowed - s["start"]).days})
     return out
