@@ -27,6 +27,13 @@ suspended hears that its access is paused, not the trial offer; a refused trial
 offers "Join my team"; and a first message that was real work is told it was
 not saved, so it is sent again once they are in.
 
+SS-79, testing mode (platform setting `self_serve.callback_only`, on by
+default since 26 Nov): no company is created on its own. Whatever an unknown
+number sends first (the website pre-fills "I want to try the 7-day free
+trial"), Mesiri asks its company name, posts the lead to the team's WhatsApp
+group and says the team will get back tomorrow. After that it only repeats
+that, LEAD_REPLY_LIMIT times, then stays quiet.
+
 SS-23, no loop after a refused trial: "Set up my company" is never offered
 again to that number (it could only be refused again); "Talk to our team"
 posts to the Mesiri team's WhatsApp group (once a day) so they can continue
@@ -210,6 +217,27 @@ DONE_MESSAGE = (
     "photos all work. Your daily report comes this evening."
 )
 
+#: SS-79: testing mode, the team sets up every new company by hand.
+LEAD_ASK_COMPANY = (
+    "👋 Hi{name}! Thanks for your interest in Mesiri's 7-day free trial.\n\n"
+    "What's your company name?"
+)
+LEAD_TYPE_IT = "Please type your company name as a message."
+LEAD_NOT_A_NAME = "Please send just your company name, e.g. *Suresh Builders*."
+LEAD_DONE = (
+    "Thank you! We've noted *{company}*. Our team will get back to you tomorrow to set up "
+    "your free trial."
+)
+LEAD_WAITING = "Our team has your request for *{company}* and will get back to you tomorrow."
+LEAD_TEAM_POST = (
+    "🆕 *Free trial request* from *+{wa_id}* ({name}): company *{company}*. "
+    "They were told we'll get back to them tomorrow. Please call or message them."
+)
+#: SS-79: replies after the lead is taken before Mesiri goes quiet.
+LEAD_REPLY_LIMIT = 2
+#: SS-79: the lead is remembered for a week, so a later message never asks again.
+_LEAD_TTL_SECONDS = 7 * 24 * 60 * 60
+
 TRIAL_CAPTION = "Your free trial runs until *{trial_end}*."
 #: Nothing is sent (logged as the reply): Mesiri waits for a greeting.
 QUIET = ""
@@ -350,6 +378,17 @@ class SignupJourney:
             _log.exception("signup.settings_read_failed")
             return False
 
+    async def callback_only(self) -> bool:
+        """SS-79: testing mode. Fails closed (callback): a settings read error never
+        creates a company."""
+        try:
+            async with self._db.transaction() as conn:
+                value = await PostgresPlatformSettingsRepository(conn).get(SELF_SERVE)
+            return bool(value.get("callback_only", True))
+        except Exception:  # noqa: BLE001
+            _log.exception("signup.settings_read_failed")
+            return True
+
     async def handle(self, message: Any) -> str | None:
         """Answer an unregistered sender. Returns the reply text sent (for
         the message log), or None when signup is off and the caller should
@@ -376,6 +415,9 @@ class SignupJourney:
         if await self._number_paused(wa_id):
             await self._store.clear(wa_id)
             return await self._say(wa_id, PAUSED_MESSAGE)
+
+        if await self.callback_only():
+            return await self._lead(message, state, text, lowered)
 
         if not tap and (state is None or state.stage == "welcome"):
             if lowered in (_START_WORDS if state is not None else _START_FIRST_WORDS):
@@ -516,6 +558,58 @@ class SignupJourney:
                 description=description,
             ),
         )
+
+    async def _lead(self, message: Any, state: SignupState | None, text: str, lowered: str) -> str:
+        """SS-79: ask the company name, hand it to the team, then only "we'll get back to you"."""
+        wa_id = message.sender.wa_id
+        if state is not None and state.stage == "lead_done":
+            if not state.asked_team:
+                # The team post failed last time: try again, quietly for the person.
+                state = await self._post_lead(wa_id, state, message.sender.profile_name)
+            if state.nudges >= LEAD_REPLY_LIMIT:
+                return QUIET
+            await self._store.set(
+                wa_id, replace(state, nudges=state.nudges + 1), ttl_seconds=_LEAD_TTL_SECONDS
+            )
+            return await self._say(wa_id, LEAD_WAITING.format(company=state.company_name))
+        if state is None or state.stage != "lead_company":
+            # The first message (any message) is the trial request; an old signup in progress
+            # from before testing mode is replaced by the same question.
+            await self._store.set(wa_id, SignupState(stage="lead_company"))
+            name = _clean_profile_name(message.sender.profile_name)
+            return await self._say(wa_id, LEAD_ASK_COMPANY.format(name=f" {name}" if name else ""))
+        if lowered in _CANCEL_WORDS:
+            await self._store.clear(wa_id)
+            return await self._say(wa_id, CANCELLED_MESSAGE)
+        if not text:
+            return await self._say(wa_id, LEAD_TYPE_IT)
+        company = _name_only(text, "company")
+        if len(company) > _NAME_MAX or _not_a_name(company):
+            return await self._say(wa_id, LEAD_NOT_A_NAME)
+        done = SignupState(stage="lead_done", company_name=company)
+        done = await self._post_lead(wa_id, done, message.sender.profile_name)
+        _log.info("signup.lead_taken wa_id=%s team_told=%s", wa_id, done.asked_team)
+        return await self._say(wa_id, LEAD_DONE.format(company=company))
+
+    async def _post_lead(self, wa_id: str, state: SignupState, profile_name: str | None) -> SignupState:
+        """SS-79: the lead to the team's WhatsApp group; stores and returns the state with
+        `asked_team` set when the post went out. Never raises."""
+        sent = False
+        try:
+            sent = self._notifier is not None and await self._notifier.post(
+                LEAD_TEAM_POST.format(
+                    wa_id=wa_id,
+                    name=_clean_profile_name(profile_name) or "no WhatsApp name",
+                    company=state.company_name,
+                )
+            )
+        except Exception:  # noqa: BLE001 -- the person's reply never waits on the team post
+            _log.warning("signup.lead_post_failed wa_id=%s", wa_id, exc_info=True)
+        if not sent:
+            _log.error("signup.lead_team_unreachable wa_id=%s company=%s", wa_id, state.company_name)
+        state = replace(state, asked_team=bool(sent))
+        await self._store.set(wa_id, state, ttl_seconds=_LEAD_TTL_SECONDS)
+        return state
 
     async def _heard(self, message: Any) -> str:
         """[256]: a voice answer's words ("" when it can't be heard). Names in Latin letters: the transcript when it

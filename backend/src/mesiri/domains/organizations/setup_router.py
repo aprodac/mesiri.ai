@@ -63,14 +63,14 @@ class SetupProgressResponse(BaseModel):
     # "Hide for now" (SS-19): the card stays hidden for the whole company
     # until then. None: showing.
     hidden_until: dt.datetime | None = None
-    # SS-30 (guided onboarding): the data-in steps for people who start with their own data. A vendor means the
+    # SS-79 (guided onboarding): the data-in steps for people who start with their own data. A vendor means the
     # materials workbook (or the Vendors page) has been used; a BOQ line means the BOQ is in. Starter materials are
     # seeded for every company (BE-24), so materials alone would always read as done.
     has_vendors: bool = False
     has_boq: bool = False
 
 
-#: SS-30: one read for both data-in steps.
+#: SS-79: one read for both data-in steps.
 _DATA_IN = sa.text(
     "SELECT EXISTS (SELECT 1 FROM vendors WHERE organization_id = :org) AS has_vendors, "
     "EXISTS (SELECT 1 FROM work_package_planned_items WHERE organization_id = :org) AS has_boq"

@@ -74,7 +74,7 @@ async def test_a_new_signup_has_only_its_site(conn) -> None:
     assert progress.first_project.auto_dpr is False
     assert progress.effective_status == "trial"
     assert progress.trial_days_left == 7
-    # SS-30: a new company has the starter materials but none of its own vendors or BOQ yet.
+    # SS-79: a new company has the starter materials but none of its own vendors or BOQ yet.
     assert progress.has_vendors is False
     assert progress.has_boq is False
 

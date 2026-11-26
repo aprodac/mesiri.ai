@@ -19,8 +19,12 @@ from typing import Any, Literal, Protocol
 #: A day: an owner may start on a site and finish in the evening.
 _DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
-SignupStage = Literal["welcome", "company", "site", "owner_name", "confirm"]
-_STAGES: frozenset[str] = frozenset({"welcome", "company", "site", "owner_name", "confirm"})
+#: SS-79: "lead_company" (asked for the company name) and "lead_done" (the team has it) are the
+#: testing-mode callback, where no company is created.
+SignupStage = Literal["welcome", "company", "site", "owner_name", "confirm", "lead_company", "lead_done"]
+_STAGES: frozenset[str] = frozenset(
+    {"welcome", "company", "site", "owner_name", "confirm", "lead_company", "lead_done"}
+)
 
 
 @dataclass(frozen=True, slots=True)

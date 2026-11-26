@@ -9,8 +9,8 @@ from mesiri.domains.organizations import platform_settings as ps
 
 def test_defaults():
     assert ps.default_for(ps.TRIAL_POLICY) == {"trial_days": 7, "retention_days_after_expiry": 30}
-    # Self-serve signup is off until someone switches it on.
-    assert ps.default_for(ps.SELF_SERVE) == {"signup_enabled": True}
+    # Signup is on (15 Oct), but in testing mode (SS-79): the team sets up every company by hand.
+    assert ps.default_for(ps.SELF_SERVE) == {"signup_enabled": True, "callback_only": True}
 
 
 def test_defaults_are_copies():
@@ -26,7 +26,8 @@ def test_with_defaults_fills_missing_fields_and_ignores_unknown():
 
 def test_validate_accepts_partial_update():
     assert ps.validate(ps.TRIAL_POLICY, {"trial_days": 14})["trial_days"] == 14
-    assert ps.validate(ps.SELF_SERVE, {"signup_enabled": True}) == {"signup_enabled": True}
+    assert ps.validate(ps.SELF_SERVE, {"signup_enabled": True}) == {"signup_enabled": True, "callback_only": True}
+    assert ps.validate(ps.SELF_SERVE, {"callback_only": False})["callback_only"] is False
 
 
 @pytest.mark.parametrize(
@@ -49,6 +50,8 @@ def test_validate_rejects_bad_trial_policy(value):
 def test_validate_rejects_non_boolean_switch():
     with pytest.raises(ValueError):
         ps.validate(ps.SELF_SERVE, {"signup_enabled": "yes"})
+    with pytest.raises(ValueError):
+        ps.validate(ps.SELF_SERVE, {"callback_only": "yes"})
 
 
 def test_unknown_key():

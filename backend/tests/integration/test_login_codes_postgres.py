@@ -93,5 +93,10 @@ async def test_signup_is_refused_until_switched_on(conn) -> None:
     with pytest.raises(SignupRefused, match="closed"):
         await check_signup(conn, attempt)
 
+    # SS-79: testing mode (the default) refuses web signup too.
     await settings.set(SELF_SERVE, {"signup_enabled": True}, updated_by=None)
+    with pytest.raises(SignupRefused, match="by hand"):
+        await check_signup(conn, attempt)
+
+    await settings.set(SELF_SERVE, {"signup_enabled": True, "callback_only": False}, updated_by=None)
     await check_signup(conn, attempt)

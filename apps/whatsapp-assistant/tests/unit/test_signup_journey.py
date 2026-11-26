@@ -144,8 +144,15 @@ def journey(monkeypatch):
         return enabled["on"]
 
     j.signup_enabled = fake_enabled  # type: ignore[method-assign]
+    # SS-79: these tests are the self-serve trial; testing mode has its own below.
+    callback = {"on": False}
+
+    async def fake_callback():
+        return callback["on"]
+
+    j.callback_only = fake_callback  # type: ignore[method-assign]
     return SimpleNamespace(
-        j=j, sender=sender, created_with=created_with,
+        j=j, sender=sender, created_with=created_with, callback=callback,
         outcome=outcome, enabled=enabled, guard=guard, paused=paused, notifier=notifier,
     )  # fmt: skip
 
@@ -653,3 +660,62 @@ async def test_ss25_common_greetings_restart_the_welcome(journey, greeting) -> N
     await journey.j.handle(_text("Hi"))
     await journey.j.handle(_text("hmm"))  # a nudge
     assert (await journey.j.handle(_text(greeting))).startswith("👋 Hi")
+
+
+# --- SS-79: testing mode (callback only) ---------------------------------------------------
+
+
+async def test_callback_mode_takes_the_company_name_and_creates_nothing(journey) -> None:
+    journey.callback["on"] = True
+    first = await journey.j.handle(_text("Hi Mesiri, I want to try the 7-day free trial"))
+    assert first == sj.LEAD_ASK_COMPANY.format(name=" Suresh Kumar")
+    done = await journey.j.handle(_text("We are rolla builders"))
+    assert done == sj.LEAD_DONE.format(company="Rolla Builders")
+    assert "tomorrow" in done
+    assert len(journey.notifier.posts) == 1
+    post = journey.notifier.posts[0]
+    assert WA_ID in post and "Rolla Builders" in post and "Suresh Kumar" in post
+    # Nothing else is possible: no buttons, no company, no guardrail check.
+    assert journey.sender.buttons == [] and journey.created_with == [] and journey.guard["calls"] == []
+
+
+async def test_callback_mode_then_only_says_we_will_get_back_then_goes_quiet(journey) -> None:
+    journey.callback["on"] = True
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_text("Acme Builders"))
+    waiting = sj.LEAD_WAITING.format(company="Acme Builders")
+    replies = [await journey.j.handle(_text(t)) for t in ("Hi", "10 masons today", "hello?")]
+    assert replies == [waiting, waiting, sj.QUIET]
+    assert len(journey.notifier.posts) == 1  # the team hears it once
+    assert journey.sender.buttons == [] and journey.created_with == []
+
+
+async def test_callback_mode_asks_again_for_a_name_that_is_not_one(journey) -> None:
+    journey.callback["on"] = True
+    await journey.j.handle(_text("Hi"))
+    assert await journey.j.handle(_text("hello")) == sj.LEAD_NOT_A_NAME
+    assert await journey.j.handle(_voice()) == sj.LEAD_TYPE_IT
+    assert journey.notifier.posts == []
+    assert "Suresh Builders" in await journey.j.handle(_text("Suresh Builders"))
+
+
+async def test_callback_mode_retries_a_failed_team_post(journey) -> None:
+    journey.callback["on"] = True
+    journey.notifier.ok = False
+    await journey.j.handle(_text("Hi"))
+    assert "tomorrow" in await journey.j.handle(_text("Acme Builders"))
+    journey.notifier.ok = True
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_text("Hi"))
+    assert len(journey.notifier.posts) == 2  # failed once, then sent once, not again
+
+
+async def test_callback_mode_ignores_the_trial_buttons(journey) -> None:
+    journey.callback["on"] = True
+    assert await journey.j.handle(_tap(sj.START_TRIAL_ID)) == sj.LEAD_ASK_COMPANY.format(name=" Suresh Kumar")
+    assert journey.guard["calls"] == [] and journey.created_with == []
+
+
+async def test_callback_mode_fails_closed_on_a_settings_error() -> None:
+    j = sj.SignupJourney(sender=_Sender(), store=SignupStateStore(FakeRedis()), db=_Db())
+    assert await j.callback_only() is True  # _Db's connection can't read settings

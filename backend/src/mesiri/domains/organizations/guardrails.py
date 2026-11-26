@@ -18,6 +18,8 @@ from zoneinfo import ZoneInfo
 
 # Refusal reasons (stored on signup_attempts.reason) and what the person sees.
 SIGNUP_CLOSED = "signup_closed"
+#: SS-79: while testing, the team sets up every new company by hand.
+CALLBACK_ONLY = "callback_only"
 COUNTRY_NOT_ALLOWED = "country_not_allowed"
 PREVIOUS_TRIAL = "previous_trial"
 DAILY_LIMIT = "daily_limit"
@@ -25,6 +27,10 @@ IP_LIMIT = "ip_limit"
 
 REFUSAL_MESSAGES: dict[str, str] = {
     SIGNUP_CLOSED: "Sign-up is closed for now. Contact Mesiri to get started.",
+    CALLBACK_ONLY: (
+        "Our team is setting up new companies by hand for now. Message Mesiri on WhatsApp "
+        "with your company name and we'll get back to you."
+    ),
     COUNTRY_NOT_ALLOWED: (
         "Mesiri is only available for Indian WhatsApp numbers for now. "
         "Contact Mesiri if you'd like to use it."

@@ -39,7 +39,7 @@ async def conn():
     async with engine.connect() as connection:
         tx = await connection.begin()
         settings = PostgresPlatformSettingsRepository(connection)
-        await settings.set("self_serve", {"signup_enabled": True}, updated_by=None)
+        await settings.set("self_serve", {"signup_enabled": True, "callback_only": False}, updated_by=None)
         # Isolate from whatever else the shared test database holds.
         await connection.execute(text("DELETE FROM signup_attempts"))
         await connection.execute(

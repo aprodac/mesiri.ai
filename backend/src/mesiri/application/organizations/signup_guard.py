@@ -112,6 +112,11 @@ async def check_signup(
         # Not logged: with signup off there is nothing to guard, and the
         # switch is the whole answer.
         raise SignupRefused(guardrails.REFUSAL_MESSAGES[guardrails.SIGNUP_CLOSED])
+    if self_serve.get("callback_only"):
+        # SS-79: not logged either; no company is created on its own while testing.
+        raise SignupRefused(
+            guardrails.REFUSAL_MESSAGES[guardrails.CALLBACK_ONLY], reason=guardrails.CALLBACK_ONLY
+        )
 
     rules = await settings.get(TRIAL_GUARDRAILS)
     audit = PostgresAdminAuditRepository(conn)

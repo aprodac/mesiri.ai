@@ -11,9 +11,15 @@ interface TrialPolicy {
   retention_days_after_expiry: number;
 }
 
+// SS-79: callback_only is testing mode: new numbers leave their company name and the team calls back.
+interface SelfServe {
+  signup_enabled: boolean;
+  callback_only: boolean;
+}
+
 interface SettingsResponse {
   trial_policy: { value: TrialPolicy };
-  self_serve: { value: { signup_enabled: boolean } };
+  self_serve: { value: SelfServe };
 }
 
 export default function PlatformSettingsCard() {
@@ -21,6 +27,7 @@ export default function PlatformSettingsCard() {
   const [trial, setTrial] = useState<TrialPolicy | null>(null);
   const [saved, setSaved] = useState<TrialPolicy | null>(null);
   const [signupEnabled, setSignupEnabled] = useState<boolean | null>(null);
+  const [callbackOnly, setCallbackOnly] = useState<boolean>(true);
   const [confirmSignup, setConfirmSignup] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +39,7 @@ export default function PlatformSettingsCard() {
         setTrial(res.data.trial_policy.value);
         setSaved(res.data.trial_policy.value);
         setSignupEnabled(res.data.self_serve.value.signup_enabled);
+        setCallbackOnly(res.data.self_serve.value.callback_only);
       })
       .catch((err) => setError(getErrorMessage(err, 'Could not load platform settings')));
   }, []);
@@ -52,11 +60,29 @@ export default function PlatformSettingsCard() {
     }
   };
 
+  // Both fields every time: a save replaces the whole setting, so a missing field would go back to its default.
+  const saveSelfServe = async (next: SelfServe) => {
+    const res = await api.put<{ value: SelfServe }>('/admin/platform-settings/self_serve', next);
+    setSignupEnabled(res.data.value.signup_enabled);
+    setCallbackOnly(res.data.value.callback_only);
+  };
+
+  const saveCallback = async (on: boolean) => {
+    setSaving(true);
+    try {
+      await saveSelfServe({ signup_enabled: !!signupEnabled, callback_only: on });
+      showToast(on ? 'Testing mode switched on' : 'Testing mode switched off', 'success');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Could not change testing mode'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveSignup = async (enabled: boolean) => {
     setSaving(true);
     try {
-      const res = await api.put<{ value: { signup_enabled: boolean } }>('/admin/platform-settings/self_serve', { signup_enabled: enabled });
-      setSignupEnabled(res.data.value.signup_enabled);
+      await saveSelfServe({ signup_enabled: enabled, callback_only: callbackOnly });
       setConfirmSignup(null);
       showToast(enabled ? 'Self-serve signup switched on' : 'Self-serve signup switched off', 'success');
     } catch (err) {
@@ -103,6 +129,20 @@ export default function PlatformSettingsCard() {
         </div>
         <button className="btn-secondary" disabled={saving} onClick={() => setConfirmSignup(!signupEnabled)}>
           {signupEnabled ? 'Switch off' : 'Switch on'}
+        </button>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--neutral-200)', marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-4)' }}>
+        <div>
+          <div style={{ fontWeight: 500, fontSize: '14px' }}>
+            Testing mode: <span className={`badge ${callbackOnly ? 'badge-warning' : 'badge-success'}`}>{callbackOnly ? 'On' : 'Off'}</span>
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: 4 }}>
+            When on, no company is created on its own: a new number is asked its company name, told we'll get back tomorrow, and the team group gets the lead. Web signup is refused.
+          </div>
+        </div>
+        <button className="btn-secondary" disabled={saving} onClick={() => saveCallback(!callbackOnly)}>
+          {callbackOnly ? 'Switch off' : 'Switch on'}
         </button>
       </div>
 

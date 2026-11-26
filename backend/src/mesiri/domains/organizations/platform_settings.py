@@ -32,6 +32,11 @@ DEFAULT_SELF_SERVE: dict[str, bool] = {
     # Unknown WhatsApp numbers and the web signup page can create a company.
     # On by default (Ilan, 15 Oct); switch off in control panel Settings.
     "signup_enabled": True,
+    # SS-79, testing (asked 26 Nov in session): no company is created on its own. An
+    # unknown WhatsApp number is asked only its company name, told the team will get back
+    # tomorrow, and the team's WhatsApp group gets the lead; web signup is refused.
+    # Switch off in control panel Settings to bring back the self-serve trial.
+    "callback_only": True,
 }
 
 DEFAULT_USAGE_PRICING: dict[str, float] = {
@@ -183,8 +188,9 @@ def validate(key: str, value: object) -> dict[str, object]:
             _RETENTION_DAYS_RANGE,
         )
     elif key == SELF_SERVE:
-        if not isinstance(merged["signup_enabled"], bool):
-            raise ValueError("signup_enabled must be true or false")
+        for name in ("signup_enabled", "callback_only"):
+            if not isinstance(merged[name], bool):
+                raise ValueError(f"{name} must be true or false")
     elif key == USAGE_PRICING:
         rate = merged["usd_inr"]
         if isinstance(rate, bool) or not isinstance(rate, (int, float)):
